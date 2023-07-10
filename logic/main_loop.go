@@ -5,9 +5,7 @@ func (n *NodeImpl) loop() {
 	for {
 		select {
 		case <-n.ElectionTimeOut.C:
-			if len(n.Peers) >= n.Quorum {
-				go n.BroadCastRequestVote()
-			}
+			go n.BroadCastRequestVote()
 		case <-n.HeartBeatTimeOut.C:
 			go n.BroadcastAppendEntries()
 		case req := <-n.ClientRequests:

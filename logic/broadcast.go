@@ -2,18 +2,18 @@ package logic
 
 import (
 	"errors"
-	"net/rpc"
 	"sync"
 	"time"
 )
 
-func (n *NodeImpl) CallWithTimeout(client *rpc.Client, serviceMethod string, args any, reply any, timeout time.Duration) error {
-	call := client.Go(serviceMethod, args, reply, nil)
+func (n *NodeImpl) CallWithTimeout(clientIdx int, serviceMethod string, args any, reply any, timeout time.Duration) error {
+	call := n.Peers[clientIdx].Go(serviceMethod, args, reply, nil)
 	select {
 	case <-time.After(timeout):
 		return errors.New("RPC timeout")
 	case resp := <-call.Done:
 		if resp != nil && resp.Error != nil {
+			n.Reconnect(clientIdx)
 			return resp.Error
 		}
 	}
@@ -41,11 +41,11 @@ func (n *NodeImpl) BroadCastRequestVote() {
 
 		var count sync.WaitGroup
 
-		for _, client := range n.Peers {
+		for peerID := range n.Peers {
 			count.Add(1)
-			go func(client *rpc.Client) {
+			go func(peerID int) {
 				output := &RequestVoteOutput{}
-				err := n.CallWithTimeout(client, "NodeImpl.RequestVote", input, output, 5*time.Second)
+				err := n.CallWithTimeout(peerID, "NodeImpl.RequestVote", input, output, 5*time.Second)
 				if err != nil {
 					n.log().Err(err).Msg("Client invocation error: ")
 				} else {
@@ -54,7 +54,7 @@ func (n *NodeImpl) BroadCastRequestVote() {
 				}
 
 				count.Done()
-			}(client)
+			}(peerID)
 		}
 
 		count.Wait()
@@ -101,9 +101,9 @@ func (n *NodeImpl) BroadcastAppendEntries() {
 		n.log().Info().Msg("BroadcastAppendEntries")
 		successCount := 0
 		var count sync.WaitGroup
-		for peerID, client := range n.Peers {
+		for peerID := range n.Peers {
 			count.Add(1)
-			go func(peerID int, client *rpc.Client) {
+			go func(peerID int) {
 				nextIdx := n.NextIndex[peerID]
 				input := AppendEntriesInput{
 					Term:         n.CurrentTerm,
@@ -122,7 +122,7 @@ func (n *NodeImpl) BroadcastAppendEntries() {
 				}
 
 				output := &AppendEntriesOutput{}
-				if err := n.CallWithTimeout(client, "NodeImpl.AppendEntries", input, output, 5*time.Second); err != nil {
+				if err := n.CallWithTimeout(peerID, "NodeImpl.AppendEntries", input, output, 5*time.Second); err != nil {
 					n.log().Err(err).Msg("BroadcastAppendEntries: ")
 				}
 
@@ -147,7 +147,7 @@ func (n *NodeImpl) BroadcastAppendEntries() {
 					Msg("BroadcastAppendEntries")
 
 				count.Done()
-			}(peerID, client)
+			}(peerID)
 
 		}
 		count.Wait()

@@ -38,8 +38,8 @@ func main() {
 			RpcHostURL:        ":1235",
 			RestApiHostURL:    "localhost:8081",
 			DataFileName:      "log.2.dat",
-			MinRandomDuration: 50000,
-			MaxRandomDuration: 100000,
+			MinRandomDuration: 5000,
+			MaxRandomDuration: 10000,
 			Log:               &log,
 		},
 		{
@@ -48,8 +48,8 @@ func main() {
 			RpcHostURL:        ":1236",
 			RestApiHostURL:    "localhost:8082",
 			DataFileName:      "log.3.dat",
-			MinRandomDuration: 50000,
-			MaxRandomDuration: 100000,
+			MinRandomDuration: 5000,
+			MaxRandomDuration: 10000,
 			Log:               &log,
 		},
 	}
