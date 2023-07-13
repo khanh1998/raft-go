@@ -26,12 +26,12 @@ func (s *StateMachine) Put(entry Entry) {
 			newVal -= entry.Value
 		case Plus:
 			newVal += entry.Value
-
 		case Multiply:
 			newVal *= entry.Value
 		case Divide:
 			newVal /= entry.Value
 		case Overwrite:
+			newVal = entry.Value
 		}
 
 		s.data[entry.Key] = newVal

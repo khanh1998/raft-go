@@ -53,13 +53,28 @@ func (n *NodeImpl) isLogUpToDate(lastLogIndex int, lastLogTerm int) bool {
 	}
 }
 
+// All servers: If commitIndex > lastApplied: increment lastApplied, apply log[lastApplied] to state machine (§5.3)
 func (n *NodeImpl) applyLog() {
-	for n.CommitedIndex > n.LastApplied {
+	n.log().Info().
+		Interface("state_machine", n.StateMachine.data).
+		Interface("logs", n.Logs).
+		Msg("applyLog: before")
+
+	for n.CommitIndex > n.LastApplied {
 		n.LastApplied += 1
 
-		realIndex := n.LastApplied - 1
-		for _, item := range n.Logs[realIndex].Values {
-			n.StateMachine.Put(item)
+		log, err := n.GetLog(n.LastApplied)
+		if err != nil {
+			break
+		}
+
+		for _, val := range log.Values {
+			n.StateMachine.Put(val)
 		}
 	}
+
+	n.log().Info().
+		Interface("state_machine", n.StateMachine.data).
+		Interface("logs", n.Logs).
+		Msg("applyLog: after")
 }

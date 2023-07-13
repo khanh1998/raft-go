@@ -47,8 +47,8 @@ type NodeImpl struct {
 	Logs        []Log // log entries; each entry contains command for state machine, and term when entry was received by leader (first index is 1)
 
 	// Volatile state on all servers:
-	CommitedIndex int // index of highest log entry known to be committed (initialized to 0, increases monotonically)
-	LastApplied   int // index of highest log entry applied to state machine (initialized to 0, increases monotonically)
+	CommitIndex int // index of highest log entry known to be committed (initialized to 0, increases monotonically)
+	LastApplied int // index of highest log entry applied to state machine (initialized to 0, increases monotonically)
 
 	// Volatile state on leaders:
 	// Reinitialized after election
@@ -116,6 +116,8 @@ func (n *NodeImpl) log() *zerolog.Logger {
 		Str("state", n.State.String()).
 		Int("voted for", n.VotedFor).
 		Int("term", n.CurrentTerm).
+		Int("commitIndex", n.CommitIndex).
+		Int("lastApplied", n.LastApplied).
 		Logger()
 	return &sub
 }

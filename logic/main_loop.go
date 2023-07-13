@@ -10,16 +10,15 @@ func (n *NodeImpl) loop() {
 			go n.BroadcastAppendEntries()
 		case req := <-n.ClientRequests:
 			go func() {
-				n.log().Info().Interface("request", req).Msg("[main loop]received new request from client")
-				n.AppendLog(Log{
-					Term:   n.CurrentTerm,
-					Values: req.Data,
-				})
+				// If command received from client: append entry to local log, respond after entry applied to state machine (§5.3)
 
 				if n.State == StateLeader {
-					n.resetHeartBeatTimeout()
+					n.AppendLog(Log{
+						Term:   n.CurrentTerm,
+						Values: req.Data,
+					})
 				} else {
-					// TODO: redirect to leader somehow
+					n.log().Info().Msg("follower can not process client request for now")
 				}
 			}()
 		}

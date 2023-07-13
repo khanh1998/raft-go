@@ -77,6 +77,7 @@ func (n *NodeImpl) BroadCastRequestVote() {
 			n.ToLeader()
 			n.log().Info().Msg("become leader")
 		} else if maxTerm > n.CurrentTerm {
+			// If RPC request or response contains term T > currentTerm: set currentTerm = T, convert to follower (§5.1)
 			n.ToFollower()
 			n.SetVotedFor(maxTermID)
 			n.log().Info().Msgf("follower of node %v", maxTermID)
@@ -112,7 +113,7 @@ func (n *NodeImpl) BroadcastAppendEntries() {
 				input := AppendEntriesInput{
 					Term:         n.CurrentTerm,
 					LeaderID:     n.ID,
-					LeaderCommit: n.CommitedIndex,
+					LeaderCommit: n.CommitIndex,
 				}
 
 				if nextIdx > 1 {
@@ -139,13 +140,15 @@ func (n *NodeImpl) BroadcastAppendEntries() {
 						n.log().Fatal().Interface("response", output).Msg("inconsistent response")
 					} else if output.Success {
 						successCount += 1
-						n.MatchIndex[peerIndex] = n.NextIndex[peerIndex]
+						n.MatchIndex[peerIndex] = min(n.NextIndex[peerIndex], len(n.Logs))
 
 						n.NextIndex[peerIndex] = min(n.NextIndex[peerIndex]+1, len(n.Logs)+1)
 					} else {
 						if output.Term <= n.CurrentTerm {
 							n.NextIndex[peerIndex] = max(0, n.NextIndex[peerIndex]-1)
 						} else {
+							// the appendEntries request is failed,
+							// because current leader is outdated
 							maxTerm = output.Term
 							maxTermID = output.NodeID
 						}
@@ -166,8 +169,25 @@ func (n *NodeImpl) BroadcastAppendEntries() {
 			Msg("BroadcastAppendEntries")
 
 		if successCount >= n.Quorum {
-			n.CommitedIndex = len(n.Logs)
+			// If there exists an N such that N > commitIndex, a majority
+			// of matchIndex[i] ≥ N, and log[N].term == currentTerm: set commitIndex = N (§5.3, §5.4).
+			N := n.CommitIndex + 1
+
+			log, err := n.GetLog(N)
+			if err == nil {
+				count := 0
+				for _, matchIndex := range n.MatchIndex {
+					if matchIndex >= N {
+						count += 1
+					}
+				}
+
+				if count >= n.Quorum && log.Term == n.CurrentTerm {
+					n.CommitIndex = N
+				}
+			}
 		} else if maxTerm > n.CurrentTerm {
+			// If RPC request or response contains term T > currentTerm: set currentTerm = T, convert to follower (§5.1)
 			n.SetCurrentTerm(maxTerm)
 			n.SetVotedFor(maxTermID)
 			n.ToFollower()
@@ -176,6 +196,8 @@ func (n *NodeImpl) BroadcastAppendEntries() {
 			n.SetVotedFor(0)
 			n.ToFollower()
 		}
+
+		n.applyLog()
 	} else {
 		// n.log().Info().Msg("BroadcastAppendEntries: not a leader")
 	}
