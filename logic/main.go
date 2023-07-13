@@ -82,6 +82,7 @@ func NewNode(params NewNodeParams) (Node, error) {
 		DB:             persistance.NewPersistence(params.DataFileName),
 		ClientRequests: make(chan ClientRequest),
 		stop:           make(chan struct{}),
+		StateMachine:   NewStateMachine(),
 
 		MinRandomDuration: params.MinRandomDuration,
 		MaxRandomDuration: params.MaxRandomDuration,
@@ -96,6 +97,8 @@ func NewNode(params NewNodeParams) (Node, error) {
 	if err != nil {
 		return n, err
 	}
+
+	n.applyLog()
 
 	for i := 0; i < len(params.PeerRpcURLs); i++ {
 		n.NextIndex = append(n.NextIndex, len(n.Logs)+1)
@@ -122,7 +125,7 @@ func (n NodeImpl) Stop() chan struct{} {
 }
 
 func (n *NodeImpl) resetElectionTimeout() {
-	randomElectionTimeOut := time.Duration(RandInt(n.MaxRandomDuration, n.MaxRandomDuration+n.MinRandomDuration)) * time.Millisecond
+	randomElectionTimeOut := time.Duration(RandInt(n.MaxRandomDuration+n.MinRandomDuration, n.MaxRandomDuration*2)) * time.Millisecond
 	n.log().Info().Interface("seconds", randomElectionTimeOut.Seconds()).Msg("resetElectionTimeout")
 	if n.ElectionTimeOut == nil {
 		n.ElectionTimeOut = time.NewTimer(randomElectionTimeOut)
@@ -151,9 +154,10 @@ type AppendEntriesInput struct {
 }
 
 type AppendEntriesOutput struct {
-	Term    int  // currentTerm, for leader to update itself
-	Success bool // true if follower contained entry matching prevLogIndex and prevLogTerm
-	Message string
+	Term    int    // currentTerm, for leader to update itself
+	Success bool   // true if follower contained entry matching prevLogIndex and prevLogTerm
+	Message string // for debuging purpose
+	NodeID  int    // id of the responder
 }
 
 type RequestVoteInput struct {
@@ -167,4 +171,5 @@ type RequestVoteOutput struct {
 	Term        int    // currentTerm, for candidate to update itself
 	VoteGranted bool   // true means candidate received vote
 	Message     string // for debuging purpose
+	NodeID      int    // id of the responder
 }

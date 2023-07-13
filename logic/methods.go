@@ -25,13 +25,23 @@ func (n *NodeImpl) AppendEntries(input *AppendEntriesInput, output *AppendEntrie
 		Msg("Received an AppendEntries request")
 
 	defer func() {
+		output.NodeID = n.ID
+		if output.Success {
+			n.resetElectionTimeout()
+		}
+
 		n.log().Info().
 			Interface("ID", n.ID).
 			Interface("out", output).
 			Msg("Responsed an AppendEntries request")
 	}()
 
-	n.resetElectionTimeout()
+	// If RPC request or response contains term T > currentTerm: set currentTerm = T, convert to follower (§5.1)
+	if input.Term > n.CurrentTerm {
+		n.CurrentTerm = input.Term
+		n.ToFollower()
+		n.SetVotedFor(input.LeaderID)
+	}
 
 	// 1. Reply false if term < currentTerm (§5.1)
 	if input.Term < n.CurrentTerm {
@@ -103,13 +113,17 @@ func (n *NodeImpl) RequestVote(input *RequestVoteInput, output *RequestVoteOutpu
 		Msg("Received an RequestVote request")
 
 	defer func() {
+		output.NodeID = n.ID
+
+		if output.VoteGranted {
+			n.resetElectionTimeout()
+		}
+
 		n.log().Info().
 			Interface("ID", n.ID).
 			Interface("out", output).
 			Msg("Response an RequestVote request")
 	}()
-
-	n.resetElectionTimeout()
 
 	// 1. Reply false if term < currentTerm (§5.1)
 	if input.Term < n.CurrentTerm {

@@ -6,6 +6,10 @@ type StateMachine struct {
 	data map[string]int64
 }
 
+func NewStateMachine() StateMachine {
+	return StateMachine{data: make(map[string]int64)}
+}
+
 func (s StateMachine) Get(key string) (exist bool, val int64) {
 	if val, exist = s.data[key]; exist {
 		return
