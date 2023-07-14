@@ -92,13 +92,14 @@ func (n *NodeImpl) AppendEntries(input *AppendEntriesInput, output *AppendEntrie
 
 		copy(logItem.Values, input.Entries)
 		n.AppendLog(logItem)
-		n.applyLog()
 	}
 
 	// 5. If leaderCommit > commitIndex, set commitIndex = min(leaderCommit, index of last new entry)
 	if input.LeaderCommit > n.CommitIndex {
 		n.CommitIndex = min(input.LeaderCommit, len(n.Logs))
 	}
+
+	n.applyLog()
 
 	*output = AppendEntriesOutput{Term: n.CurrentTerm, Success: true, Message: ""}
 

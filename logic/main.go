@@ -118,6 +118,8 @@ func (n *NodeImpl) log() *zerolog.Logger {
 		Int("term", n.CurrentTerm).
 		Int("commitIndex", n.CommitIndex).
 		Int("lastApplied", n.LastApplied).
+		Interface("nextIndex", n.NextIndex).
+		Interface("matchIndex", n.MatchIndex).
 		Logger()
 	return &sub
 }

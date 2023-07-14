@@ -8,6 +8,13 @@ func (n *NodeImpl) ToCandidate() {
 func (n *NodeImpl) ToLeader() {
 	n.log().Info().Msg("to leader")
 	n.State = StateLeader
+
+	n.NextIndex = make([]int, len(n.PeerURLs))
+	n.MatchIndex = make([]int, len(n.PeerURLs))
+	for i := 0; i < len(n.PeerURLs); i++ {
+		n.NextIndex[i] = len(n.Logs) + 1
+		n.MatchIndex[i] = 0
+	}
 }
 
 func (n *NodeImpl) ToFollower() {
