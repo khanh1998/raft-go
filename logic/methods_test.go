@@ -199,8 +199,13 @@ func Test_nodeImpl_AppendEntries(t *testing.T) {
 				Term:         3,
 				PrevLogIndex: 0,
 				PrevLogTerm:  0,
-				Entries: []Entry{
-					{Key: "z", Value: 3, Opcode: Overwrite},
+				Entries: []Log{
+					{
+						Term: 1, //
+						Values: []Entry{
+							{Key: "z", Value: 3, Opcode: Overwrite},
+						},
+					},
 				},
 			},
 			out: AppendEntriesOutput{
@@ -232,8 +237,13 @@ func Test_nodeImpl_AppendEntries(t *testing.T) {
 				Term:         3,
 				PrevLogIndex: 2,
 				PrevLogTerm:  2,
-				Entries: []Entry{
-					{Key: "z", Value: 3, Opcode: Overwrite},
+				Entries: []Log{
+					{
+						Term: 1,
+						Values: []Entry{
+							{Key: "z", Value: 3, Opcode: Overwrite},
+						},
+					},
 				},
 			},
 			out: AppendEntriesOutput{

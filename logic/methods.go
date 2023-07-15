@@ -92,13 +92,10 @@ func (n *NodeImpl) AppendEntries(input *AppendEntriesInput, output *AppendEntrie
 
 	// 4. Append any new entries not already in the log
 	if len(input.Entries) > 0 {
-		logItem := Log{
-			Term:   input.Term,
-			Values: make([]Entry, len(input.Entries)),
+		_, err = n.GetLog(input.PrevLogIndex + 1)
+		if err != nil { // entries are not already in the log
+			n.AppendLogs(input.Entries)
 		}
-
-		copy(logItem.Values, input.Entries)
-		n.AppendLog(logItem)
 	}
 
 	// 5. If leaderCommit > commitIndex, set commitIndex = min(leaderCommit, index of last new entry)

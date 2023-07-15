@@ -140,7 +140,7 @@ func (n *NodeImpl) BroadcastAppendEntries() {
 
 				logItem, err := n.GetLog(nextIdx)
 				if err == nil {
-					input.Entries = logItem.Values
+					input.Entries = []Log{logItem}
 				}
 
 				output := &AppendEntriesOutput{}
