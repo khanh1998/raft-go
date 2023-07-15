@@ -23,6 +23,11 @@ func (n *NodeImpl) CallWithTimeout(clientIdx int, serviceMethod string, args any
 
 func (n *NodeImpl) BroadCastRequestVote() {
 	if n.State == StateFollower {
+		// On conversion to candidate, start election:
+		// Increment currentTerm
+		// Vote for self
+		// Reset election timer
+		// Send RequestVote RPCs to all other servers
 		n.resetElectionTimeout()
 		n.log().Info().Msg("BroadCastRequestVote")
 		n.SetCurrentTerm(n.CurrentTerm + 1)
@@ -73,6 +78,7 @@ func (n *NodeImpl) BroadCastRequestVote() {
 
 		n.log().Info().Interface("responses", responses).Msg("BroadCastRequestVote: Response")
 
+		// TODO: If AppendEntries RPC received from new leader: convert to follower
 		if voteGrantedCount > n.Quorum {
 			n.ToLeader()
 			n.resetHeartBeatTimeout()
@@ -98,13 +104,19 @@ func (n *NodeImpl) BroadCastRequestVote() {
 
 func (n *NodeImpl) BroadcastAppendEntries() {
 	if n.State == StateLeader {
-		n.resetHeartBeatTimeout() //TODO: more this to inside the bellow if
+		n.resetHeartBeatTimeout()
 		n.log().Info().Msg("BroadcastAppendEntries")
 
 		successCount := 0
 		maxTerm := n.CurrentTerm
 		maxTermID := -1
 		responses := make([]*AppendEntriesOutput, len(n.PeerURLs))
+
+		// If last log index ≥ nextIndex for a follower: send AppendEntries RPC with log entries starting at nextIndex
+		// • If successful: update nextIndex and matchIndex for
+		//   follower (§5.3)
+		// • If AppendEntries fails because of log inconsistency:
+		//   decrement nextIndex and retry (§5.3)
 
 		var count sync.WaitGroup
 		for peerID := range n.Peers {
@@ -172,12 +184,11 @@ func (n *NodeImpl) BroadcastAppendEntries() {
 		if successCount >= n.Quorum {
 			// If there exists an N such that N > commitIndex, a majority
 			// of matchIndex[i] ≥ N, and log[N].term == currentTerm: set commitIndex = N (§5.3, §5.4).
-			for i := n.CommitIndex; i < len(n.Logs); i++ {
-				N := i + 1
+			for N := len(n.Logs); N > n.CommitIndex; N++ {
 
 				log, err := n.GetLog(N)
 				if err == nil {
-					count := 0
+					count := 1 // count for itself
 					for _, matchIndex := range n.MatchIndex {
 						if matchIndex >= N {
 							count += 1
@@ -186,6 +197,8 @@ func (n *NodeImpl) BroadcastAppendEntries() {
 
 					if count >= n.Quorum && log.Term == n.CurrentTerm {
 						n.CommitIndex = N
+
+						break
 					}
 				}
 			}

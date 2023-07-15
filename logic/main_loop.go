@@ -10,7 +10,8 @@ func (n *NodeImpl) loop() {
 			go n.BroadcastAppendEntries()
 		case req := <-n.ClientRequests:
 			go func() {
-				// If command received from client: append entry to local log, respond after entry applied to state machine (§5.3)
+				// If command received from client: append entry to local log,
+				// respond after entry applied to state machine (§5.3)
 
 				if n.State == StateLeader {
 					n.AppendLog(Log{

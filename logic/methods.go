@@ -26,6 +26,10 @@ func (n *NodeImpl) AppendEntries(input *AppendEntriesInput, output *AppendEntrie
 
 	defer func() {
 		output.NodeID = n.ID
+
+		// If election timeout elapses without receiving AppendEntries
+		// RPC from current leader or granting vote to candidate: convert to candidate.
+		// -> if the candidate is granted vote, we reset election time out of current node.
 		if output.Success {
 			n.resetElectionTimeout()
 		}
@@ -37,10 +41,13 @@ func (n *NodeImpl) AppendEntries(input *AppendEntriesInput, output *AppendEntrie
 	}()
 
 	// If RPC request or response contains term T > currentTerm: set currentTerm = T, convert to follower (§5.1)
+	// TODO: review this
+	// what if one node has bigger term but less log?
 	if input.Term > n.CurrentTerm {
 		n.CurrentTerm = input.Term
 		n.ToFollower()
 		n.SetVotedFor(input.LeaderID)
+		n.SetCurrentTerm(input.Term)
 	}
 
 	// 1. Reply false if term < currentTerm (§5.1)
@@ -86,7 +93,7 @@ func (n *NodeImpl) AppendEntries(input *AppendEntriesInput, output *AppendEntrie
 	// 4. Append any new entries not already in the log
 	if len(input.Entries) > 0 {
 		logItem := Log{
-			Term:   n.CurrentTerm,
+			Term:   input.Term,
 			Values: make([]Entry, len(input.Entries)),
 		}
 
@@ -120,6 +127,11 @@ func (n *NodeImpl) RequestVote(input *RequestVoteInput, output *RequestVoteOutpu
 			n.resetElectionTimeout()
 		}
 
+		// If RPC request or response contains term T > currentTerm: set currentTerm = T, convert to follower (§5.1)
+		if input.Term > n.CurrentTerm {
+			n.CurrentTerm = input.Term
+		}
+
 		n.log().Info().
 			Interface("ID", n.ID).
 			Interface("out", output).
@@ -132,6 +144,7 @@ func (n *NodeImpl) RequestVote(input *RequestVoteInput, output *RequestVoteOutpu
 
 		return nil
 	}
+
 	// 2. If votedFor is null or candidateId, and candidate’s log is at least as up-to-date as receiver’s log, grant vote (§5.2, §5.4)
 	if n.VotedFor == 0 {
 		if n.isLogUpToDate(input.LastLogIndex, input.LastLogTerm) {

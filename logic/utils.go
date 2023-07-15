@@ -53,8 +53,8 @@ func (n *NodeImpl) isLogUpToDate(lastLogIndex int, lastLogTerm int) bool {
 	}
 }
 
-// TODO: test if it work
-// All servers: If commitIndex > lastApplied: increment lastApplied, apply log[lastApplied] to state machine (§5.3)
+// All servers: If commitIndex > lastApplied: increment lastApplied,
+// apply log[lastApplied] to state machine (§5.3)
 func (n *NodeImpl) applyLog() {
 	n.log().Info().
 		Interface("state_machine", n.StateMachine.data).
