@@ -31,7 +31,11 @@ func (n *NodeImpl) AppendEntries(input *AppendEntriesInput, output *AppendEntrie
 		// RPC from current leader or granting vote to candidate: convert to candidate.
 		// -> if the candidate is granted vote, we reset election time out of current node.
 		if output.Success {
-			n.resetElectionTimeout()
+			n.resetElectionTimeout() // TODO: review this, because log syncing can take long
+
+			if n.VotedFor == 0 { // input.Term == n.CurrentTerm
+				n.SetVotedFor(input.LeaderID)
+			}
 		}
 
 		n.log().Info().
