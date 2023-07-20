@@ -129,7 +129,8 @@ func (n NodeImpl) Stop() chan struct{} {
 }
 
 func (n *NodeImpl) resetElectionTimeout() {
-	randomElectionTimeOut := time.Duration(RandInt(n.MaxRandomDuration+n.MinRandomDuration, n.MaxRandomDuration*2)) * time.Millisecond
+	randomElectionTimeOut := time.Duration(RandInt(n.MinRandomDuration, n.MaxRandomDuration)) * time.Millisecond
+	randomElectionTimeOut *= 5
 	n.log().Info().Interface("seconds", randomElectionTimeOut.Seconds()).Msg("resetElectionTimeout")
 	if n.ElectionTimeOut == nil {
 		n.ElectionTimeOut = time.NewTimer(randomElectionTimeOut)

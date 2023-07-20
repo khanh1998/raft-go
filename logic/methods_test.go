@@ -79,6 +79,7 @@ func Test_nodeImpl_AppendEntries(t *testing.T) {
 			n: NodeImpl{
 				CurrentTerm:       5,
 				logger:            &log.Logger,
+				DB:                persistance.NewPersistenceMock(),
 				MinRandomDuration: 1000,
 				MaxRandomDuration: 10000,
 			},
@@ -96,6 +97,7 @@ func Test_nodeImpl_AppendEntries(t *testing.T) {
 			n: NodeImpl{
 				CurrentTerm:       2,
 				Logs:              []Log{{Term: 1}, {Term: 1}},
+				DB:                persistance.NewPersistenceMock(),
 				logger:            &log.Logger,
 				MinRandomDuration: 1000,
 				MaxRandomDuration: 10000,
@@ -107,7 +109,7 @@ func Test_nodeImpl_AppendEntries(t *testing.T) {
 			},
 			out: AppendEntriesOutput{
 				Success: false,
-				Term:    2,
+				Term:    3,
 				Message: MsgPreviousLogTermsAreNotMatched,
 			},
 		},
@@ -117,6 +119,7 @@ func Test_nodeImpl_AppendEntries(t *testing.T) {
 				CurrentTerm:       2,
 				Logs:              []Log{},
 				logger:            &log.Logger,
+				DB:                persistance.NewPersistenceMock(),
 				MinRandomDuration: 1000,
 				MaxRandomDuration: 10000,
 			},
@@ -127,7 +130,7 @@ func Test_nodeImpl_AppendEntries(t *testing.T) {
 			},
 			out: AppendEntriesOutput{
 				Success: false,
-				Term:    2,
+				Term:    3,
 				Message: MsgTheResponderHasNoLog,
 			},
 		},
@@ -137,6 +140,7 @@ func Test_nodeImpl_AppendEntries(t *testing.T) {
 				CurrentTerm:       2,
 				Logs:              []Log{{Term: 1}},
 				logger:            &log.Logger,
+				DB:                persistance.NewPersistenceMock(),
 				MinRandomDuration: 1000,
 				MaxRandomDuration: 10000,
 			},
@@ -147,7 +151,7 @@ func Test_nodeImpl_AppendEntries(t *testing.T) {
 			},
 			out: AppendEntriesOutput{
 				Success: false,
-				Term:    2,
+				Term:    3,
 				Message: MsgTheResponderHasFewerLogThanRequester,
 			},
 		},
@@ -270,6 +274,7 @@ func Test_nodeImpl_AppendEntries(t *testing.T) {
 				logger:            &log.Logger,
 				MinRandomDuration: 1000,
 				MaxRandomDuration: 10000,
+				StateMachine:      NewStateMachine(),
 			},
 			in: AppendEntriesInput{
 				Term:         3,
