@@ -18,6 +18,10 @@ func (s StateMachine) Get(key string) (exist bool, val int64) {
 	return false, 0
 }
 
+func (s *StateMachine) Reset() {
+	s.data = map[string]int64{}
+}
+
 func (s *StateMachine) Put(entry Entry) {
 	if val, ok := s.data[entry.Key]; ok {
 		newVal := val

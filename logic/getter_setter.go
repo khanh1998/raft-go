@@ -19,6 +19,12 @@ func (n *NodeImpl) DeleteLogFrom(index int) error {
 	realIndex := int(index - 1)
 	n.Logs = n.Logs[:realIndex]
 
+	// these two numbers will be calculated again later.
+	n.LastApplied = 0
+	n.CommitIndex = 0
+	// clear all data in state machine, so logs can be applied from beggining later.
+	n.StateMachine.Reset()
+
 	return nil
 }
 
