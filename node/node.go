@@ -12,4 +12,5 @@ func NewNode() {
 	brain := logic.NodeImpl{}
 	rpcProxy := rpc_proxy.NewRPCImpl([]rpc_proxy.PeerRPCProxyConnectInfo{}, 1, "")
 	rpcProxy.SetBrain(&brain)
+	brain.SetRpcProxy(&rpcProxy)
 }

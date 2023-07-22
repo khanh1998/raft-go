@@ -1,6 +1,9 @@
 package logic
 
-import "fmt"
+import (
+	"fmt"
+	"khanh/raft-go/common"
+)
 
 var (
 	MsgRequesterTermIsOutDated              = "the node sent the request is out dated"
@@ -18,7 +21,7 @@ func (n *NodeImpl) Ping(name string, message *string) (err error) {
 }
 
 // AppendEntries Invoked by leader to replicate log entries (§5.3); also used as heartbeat (§5.2).
-func (n *NodeImpl) AppendEntries(input *AppendEntriesInput, output *AppendEntriesOutput) (err error) {
+func (n *NodeImpl) AppendEntries(input *common.AppendEntriesInput, output *common.AppendEntriesOutput) (err error) {
 	n.log().Info().
 		Interface("ID", n.ID).
 		Interface("req", input).
@@ -56,7 +59,7 @@ func (n *NodeImpl) AppendEntries(input *AppendEntriesInput, output *AppendEntrie
 
 	// 1. Reply false if term < currentTerm (§5.1)
 	if input.Term < n.CurrentTerm {
-		*output = AppendEntriesOutput{Term: n.CurrentTerm, Success: false, Message: MsgRequesterTermIsOutDated}
+		*output = common.AppendEntriesOutput{Term: n.CurrentTerm, Success: false, Message: MsgRequesterTermIsOutDated}
 
 		return nil
 	}
@@ -67,16 +70,16 @@ func (n *NodeImpl) AppendEntries(input *AppendEntriesInput, output *AppendEntrie
 		logItem, err := n.GetLog(input.PrevLogIndex)
 		switch err {
 		case ErrLogIsEmtpy:
-			*output = AppendEntriesOutput{Term: n.CurrentTerm, Success: false, Message: MsgTheResponderHasNoLog}
+			*output = common.AppendEntriesOutput{Term: n.CurrentTerm, Success: false, Message: MsgTheResponderHasNoLog}
 
 			return nil
 		case ErrIndexOutOfRange:
-			*output = AppendEntriesOutput{Term: n.CurrentTerm, Success: false, Message: MsgTheResponderHasFewerLogThanRequester}
+			*output = common.AppendEntriesOutput{Term: n.CurrentTerm, Success: false, Message: MsgTheResponderHasFewerLogThanRequester}
 
 			return nil
 		case nil:
 			if logItem.Term != input.PrevLogTerm {
-				*output = AppendEntriesOutput{Term: n.CurrentTerm, Success: false, Message: MsgPreviousLogTermsAreNotMatched}
+				*output = common.AppendEntriesOutput{Term: n.CurrentTerm, Success: false, Message: MsgPreviousLogTermsAreNotMatched}
 
 				return nil
 			}
@@ -87,7 +90,7 @@ func (n *NodeImpl) AppendEntries(input *AppendEntriesInput, output *AppendEntrie
 		if err == nil {
 			if logItem.Term != input.Term {
 				n.DeleteLogFrom(input.PrevLogIndex + 1)
-				*output = AppendEntriesOutput{Term: n.CurrentTerm, Success: false, Message: MsgCurrentLogTermsAreNotMatched}
+				*output = common.AppendEntriesOutput{Term: n.CurrentTerm, Success: false, Message: MsgCurrentLogTermsAreNotMatched}
 
 				return nil
 			}
@@ -109,13 +112,13 @@ func (n *NodeImpl) AppendEntries(input *AppendEntriesInput, output *AppendEntrie
 
 	n.applyLog()
 
-	*output = AppendEntriesOutput{Term: n.CurrentTerm, Success: true, Message: ""}
+	*output = common.AppendEntriesOutput{Term: n.CurrentTerm, Success: true, Message: ""}
 
 	return nil
 }
 
 // Invoked by candidates to gather votes (§5.2).
-func (n *NodeImpl) RequestVote(input *RequestVoteInput, output *RequestVoteOutput) (err error) {
+func (n *NodeImpl) RequestVote(input *common.RequestVoteInput, output *common.RequestVoteOutput) (err error) {
 	n.log().Info().
 		Interface("ID", n.ID).
 		Interface("req", input).
@@ -141,7 +144,7 @@ func (n *NodeImpl) RequestVote(input *RequestVoteInput, output *RequestVoteOutpu
 
 	// 1. Reply false if term < currentTerm (§5.1)
 	if input.Term < n.CurrentTerm {
-		*output = RequestVoteOutput{Term: n.CurrentTerm, VoteGranted: false, Message: MsgRequesterTermIsOutDated}
+		*output = common.RequestVoteOutput{Term: n.CurrentTerm, VoteGranted: false, Message: MsgRequesterTermIsOutDated}
 
 		return nil
 	}
@@ -151,16 +154,16 @@ func (n *NodeImpl) RequestVote(input *RequestVoteInput, output *RequestVoteOutpu
 		if n.isLogUpToDate(input.LastLogIndex, input.LastLogTerm) {
 			n.SetVotedFor(input.CandidateID)
 
-			*output = RequestVoteOutput{Term: n.CurrentTerm, VoteGranted: true, Message: ""}
+			*output = common.RequestVoteOutput{Term: n.CurrentTerm, VoteGranted: true, Message: ""}
 
 			return nil
 		} else {
-			*output = RequestVoteOutput{Term: n.CurrentTerm, VoteGranted: false, Message: MsgTheRequesterLogsAreOutOfDate}
+			*output = common.RequestVoteOutput{Term: n.CurrentTerm, VoteGranted: false, Message: MsgTheRequesterLogsAreOutOfDate}
 
 			return nil
 		}
 	} else {
-		*output = RequestVoteOutput{Term: n.CurrentTerm, VoteGranted: false, Message: MsgTheResponderAlreadyMakeAVote}
+		*output = common.RequestVoteOutput{Term: n.CurrentTerm, VoteGranted: false, Message: MsgTheResponderAlreadyMakeAVote}
 
 		return nil
 	}

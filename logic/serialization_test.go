@@ -1,6 +1,7 @@
 package logic
 
 import (
+	"khanh/raft-go/common"
 	"reflect"
 	"testing"
 )
@@ -9,7 +10,7 @@ func Test_nodeImpl_Serialize(t *testing.T) {
 	type fields struct {
 		CurrentTerm int
 		VotedFor    int
-		Logs        []Log
+		Logs        []common.Log
 	}
 	tests := []struct {
 		name   string
@@ -20,7 +21,7 @@ func Test_nodeImpl_Serialize(t *testing.T) {
 			fields: fields{
 				CurrentTerm: 3,
 				VotedFor:    0,
-				Logs:        []Log{},
+				Logs:        []common.Log{},
 			},
 			want: map[string]string{
 				"current_term": "3",
@@ -32,7 +33,7 @@ func Test_nodeImpl_Serialize(t *testing.T) {
 			fields: fields{
 				CurrentTerm: 3,
 				VotedFor:    1,
-				Logs:        []Log{{1, []Entry{{"x", 1, Divide}}}, {2, []Entry{{"x", 1, Multiply}, {"y", 3, Plus}}}},
+				Logs:        []common.Log{{1, []common.Entry{{"x", 1, common.Divide}}}, {2, []common.Entry{{"x", 1, common.Multiply}, {"y", 3, common.Plus}}}},
 			},
 			want: map[string]string{
 				"current_term": "3",
@@ -61,7 +62,7 @@ func Test_nodeImpl_Deserialize(t *testing.T) {
 	type fields struct {
 		CurrentTerm int
 		VotedFor    int
-		Logs        []Log
+		Logs        []common.Log
 	}
 	type args struct {
 		data map[string]string
@@ -76,7 +77,7 @@ func Test_nodeImpl_Deserialize(t *testing.T) {
 			want: fields{
 				CurrentTerm: 1,
 				VotedFor:    3,
-				Logs:        []Log{},
+				Logs:        []common.Log{},
 			},
 			args: args{map[string]string{
 				"current_term": "1",
@@ -89,7 +90,7 @@ func Test_nodeImpl_Deserialize(t *testing.T) {
 			want: fields{
 				CurrentTerm: 1,
 				VotedFor:    3,
-				Logs:        []Log{{1, []Entry{{"x", 1, Divide}}}, {2, []Entry{{"x", 1, Multiply}, {"y", 3, Plus}}}}},
+				Logs:        []common.Log{{1, []common.Entry{{"x", 1, common.Divide}}}, {2, []common.Entry{{"x", 1, common.Multiply}, {"y", 3, common.Plus}}}}},
 			args: args{map[string]string{
 				"current_term": "1",
 				"voted_for":    "3",

@@ -18,6 +18,10 @@ func (s StateMachine) Get(key string) (exist bool, val int64) {
 	return false, 0
 }
 
+func (s *StateMachine) GetData() map[string]int64 {
+	return s.data
+}
+
 func (s *StateMachine) Reset() {
 	s.data = map[string]int64{}
 }

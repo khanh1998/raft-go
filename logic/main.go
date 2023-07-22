@@ -11,7 +11,7 @@ import (
 )
 
 type ClientRequest struct {
-	Data []Entry `json:"data"`
+	Data []common.Entry `json:"data"`
 }
 
 type ServerState string
@@ -33,7 +33,7 @@ type NodeImpl struct {
 	Peers             []*rpc.Client
 	State             ServerState
 	ID                int
-	StateMachine      StateMachine
+	StateMachine      common.StateMachine
 	ElectionTimeOut   *time.Timer
 	HeartBeatTimeOut  *time.Timer
 	ClientRequests    chan ClientRequest
@@ -41,11 +41,12 @@ type NodeImpl struct {
 	Quorum            int
 	MinRandomDuration int64
 	MaxRandomDuration int64
+	RpcProxy          RPCProxy
 	// Persistent state on all servers:
 	// Updated on stable storage before responding to RPCs
-	CurrentTerm int   // latest term server has seen (initialized to 0 on first boot, increases monotonically)
-	VotedFor    int   // candidateId that received vote in current term (or null if none)
-	Logs        []Log // log entries; each entry contains command for state machine, and term when entry was received by leader (first index is 1)
+	CurrentTerm int          // latest term server has seen (initialized to 0 on first boot, increases monotonically)
+	VotedFor    int          // candidateId that received vote in current term (or null if none)
+	Logs        []common.Log // log entries; each entry contains command for state machine, and term when entry was received by leader (first index is 1)
 
 	// Volatile state on all servers:
 	CommitIndex int // index of highest log entry known to be committed (initialized to 0, increases monotonically)
@@ -63,12 +64,6 @@ type RPCProxy interface {
 	SendPing(peerId int, timeout *time.Duration) (err error)
 }
 
-type Node interface {
-	RequestVote(input *RequestVoteInput, output *RequestVoteOutput) (err error)
-	AppendEntries(input *AppendEntriesInput, output *AppendEntriesOutput) (err error)
-	Stop() chan struct{}
-}
-
 type NewNodeParams struct {
 	ID                int
 	PeerRpcURLs       []string
@@ -80,7 +75,7 @@ type NewNodeParams struct {
 	Log               *zerolog.Logger
 }
 
-func NewNode(params NewNodeParams) (Node, error) {
+func NewNode(params NewNodeParams) (*NodeImpl, error) {
 	n := &NodeImpl{
 		ID:             params.ID,
 		State:          StateFollower,
@@ -89,7 +84,7 @@ func NewNode(params NewNodeParams) (Node, error) {
 		DB:             persistance.NewPersistence(params.DataFileName),
 		ClientRequests: make(chan ClientRequest),
 		stop:           make(chan struct{}),
-		StateMachine:   NewStateMachine(),
+		StateMachine:   common.NewStateMachine(),
 
 		MinRandomDuration: params.MinRandomDuration,
 		MaxRandomDuration: params.MaxRandomDuration,
@@ -116,6 +111,10 @@ func NewNode(params NewNodeParams) (Node, error) {
 
 	go n.loop()
 	return n, nil
+}
+
+func (n *NodeImpl) SetRpcProxy(rpc RPCProxy) {
+	n.RpcProxy = rpc
 }
 
 func (n *NodeImpl) log() *zerolog.Logger {
@@ -154,34 +153,4 @@ func (n *NodeImpl) resetHeartBeatTimeout() {
 	} else {
 		n.HeartBeatTimeOut.Reset(randomHeartBeatTimeout)
 	}
-}
-
-type AppendEntriesInput struct {
-	Term         int   // leader’s term
-	LeaderID     int   // so follower can redirect clients
-	PrevLogIndex int   // index of log entry immediately preceding new ones
-	PrevLogTerm  int   // term of prevLogIndex entry
-	Entries      []Log // log entries to store (empty for heartbeat; may send more than one for efficiency)
-	LeaderCommit int   // leader’s commitIndex
-}
-
-type AppendEntriesOutput struct {
-	Term    int    // currentTerm, for leader to update itself
-	Success bool   // true if follower contained entry matching prevLogIndex and prevLogTerm
-	Message string // for debuging purpose
-	NodeID  int    // id of the responder
-}
-
-type RequestVoteInput struct {
-	Term         int // candidate’s term
-	CandidateID  int // candidate requesting vote
-	LastLogIndex int // index of candidate’s last log entry (§5.4)
-	LastLogTerm  int // term of candidate’s last log entry (§5.4)
-}
-
-type RequestVoteOutput struct {
-	Term        int    // currentTerm, for candidate to update itself
-	VoteGranted bool   // true means candidate received vote
-	Message     string // for debuging purpose
-	NodeID      int    // id of the responder
 }

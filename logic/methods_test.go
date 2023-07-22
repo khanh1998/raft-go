@@ -2,6 +2,7 @@ package logic
 
 import (
 	"fmt"
+	"khanh/raft-go/common"
 	"khanh/raft-go/persistance"
 	"testing"
 
@@ -13,47 +14,47 @@ func Test_nodeImpl_RequestVote(t *testing.T) {
 	type TestCase struct {
 		name string
 		n    NodeImpl
-		in   RequestVoteInput
-		out  RequestVoteOutput
+		in   common.RequestVoteInput
+		out  common.RequestVoteOutput
 	}
 
 	testCases := []TestCase{
 		{
 			name: "1. Reply false if term < currentTerm (§5.1)",
 			n:    NodeImpl{CurrentTerm: 3, logger: &log.Logger},
-			in:   RequestVoteInput{Term: 2},
-			out:  RequestVoteOutput{Term: 3, VoteGranted: false, Message: MsgRequesterTermIsOutDated},
+			in:   common.RequestVoteInput{Term: 2},
+			out:  common.RequestVoteOutput{Term: 3, VoteGranted: false, Message: MsgRequesterTermIsOutDated},
 		},
 		{
 			name: "2. If votedFor is null or candidateId, and candidate’s log is at least as up-to-date as receiver’s log, grant vote (§5.2, §5.4)",
 			n:    NodeImpl{CurrentTerm: 3, VotedFor: 4, DB: persistance.NewPersistenceMock(), logger: &log.Logger},
-			in:   RequestVoteInput{Term: 4},
-			out:  RequestVoteOutput{Term: 3, VoteGranted: false, Message: MsgTheResponderAlreadyMakeAVote},
+			in:   common.RequestVoteInput{Term: 4},
+			out:  common.RequestVoteOutput{Term: 3, VoteGranted: false, Message: MsgTheResponderAlreadyMakeAVote},
 		},
 		{
 			name: "2. If votedFor is null or candidateId, and candidate’s log is at least as up-to-date as receiver’s log, grant vote (§5.2, §5.4)",
-			n:    NodeImpl{CurrentTerm: 3, VotedFor: 0, Logs: []Log{{Term: 1}, {Term: 2}, {Term: 3}}, DB: persistance.NewPersistenceMock(), logger: &log.Logger},
-			in:   RequestVoteInput{Term: 4, LastLogIndex: 4, LastLogTerm: 2},
-			out:  RequestVoteOutput{Term: 3, VoteGranted: false, Message: MsgTheRequesterLogsAreOutOfDate},
+			n:    NodeImpl{CurrentTerm: 3, VotedFor: 0, Logs: []common.Log{{Term: 1}, {Term: 2}, {Term: 3}}, DB: persistance.NewPersistenceMock(), logger: &log.Logger},
+			in:   common.RequestVoteInput{Term: 4, LastLogIndex: 4, LastLogTerm: 2},
+			out:  common.RequestVoteOutput{Term: 3, VoteGranted: false, Message: MsgTheRequesterLogsAreOutOfDate},
 		},
 		{
 			name: "2. If votedFor is null or candidateId, and candidate’s log is at least as up-to-date as receiver’s log, grant vote (§5.2, §5.4)",
 			n: NodeImpl{
 				CurrentTerm:       3,
 				VotedFor:          0,
-				Logs:              []Log{{Term: 1}, {Term: 2}, {Term: 3}},
+				Logs:              []common.Log{{Term: 1}, {Term: 2}, {Term: 3}},
 				DB:                persistance.NewPersistenceMock(),
 				logger:            &log.Logger,
 				MaxRandomDuration: 10000,
 				MinRandomDuration: 5000,
 			},
-			in:  RequestVoteInput{Term: 4, LastLogIndex: 4, LastLogTerm: 3},
-			out: RequestVoteOutput{Term: 3, VoteGranted: true, Message: ""},
+			in:  common.RequestVoteInput{Term: 4, LastLogIndex: 4, LastLogTerm: 3},
+			out: common.RequestVoteOutput{Term: 3, VoteGranted: true, Message: ""},
 		},
 	}
 
 	for index, testCase := range testCases {
-		var out RequestVoteOutput
+		var out common.RequestVoteOutput
 		testCase.n.RequestVote(&testCase.in, &out)
 		log.Info().Int("index", index).Msg("test case RequestVoteOutput")
 		assert.Equal(t, testCase.out, out, fmt.Sprintf("test case: #%d", index))
@@ -68,8 +69,8 @@ func Test_nodeImpl_AppendEntries(t *testing.T) {
 	type TestCase struct {
 		name    string
 		n       NodeImpl
-		in      AppendEntriesInput
-		out     AppendEntriesOutput
+		in      common.AppendEntriesInput
+		out     common.AppendEntriesOutput
 		persist TestCasePersist
 	}
 
@@ -83,10 +84,10 @@ func Test_nodeImpl_AppendEntries(t *testing.T) {
 				MinRandomDuration: 1000,
 				MaxRandomDuration: 10000,
 			},
-			in: AppendEntriesInput{
+			in: common.AppendEntriesInput{
 				Term: 4,
 			},
-			out: AppendEntriesOutput{
+			out: common.AppendEntriesOutput{
 				Success: false,
 				Term:    5,
 				Message: MsgRequesterTermIsOutDated,
@@ -96,18 +97,18 @@ func Test_nodeImpl_AppendEntries(t *testing.T) {
 			name: "2. Reply false if log doesn’t contain an entry at prevLogIndex whose term matches prevLogTerm (§5.3)",
 			n: NodeImpl{
 				CurrentTerm:       2,
-				Logs:              []Log{{Term: 1}, {Term: 1}},
+				Logs:              []common.Log{{Term: 1}, {Term: 1}},
 				DB:                persistance.NewPersistenceMock(),
 				logger:            &log.Logger,
 				MinRandomDuration: 1000,
 				MaxRandomDuration: 10000,
 			},
-			in: AppendEntriesInput{
+			in: common.AppendEntriesInput{
 				Term:         3,
 				PrevLogIndex: 2,
 				PrevLogTerm:  2,
 			},
-			out: AppendEntriesOutput{
+			out: common.AppendEntriesOutput{
 				Success: false,
 				Term:    3,
 				Message: MsgPreviousLogTermsAreNotMatched,
@@ -117,18 +118,18 @@ func Test_nodeImpl_AppendEntries(t *testing.T) {
 			name: "2. Reply false if log doesn’t contain an entry at prevLogIndex whose term matches prevLogTerm (§5.3)",
 			n: NodeImpl{
 				CurrentTerm:       2,
-				Logs:              []Log{},
+				Logs:              []common.Log{},
 				logger:            &log.Logger,
 				DB:                persistance.NewPersistenceMock(),
 				MinRandomDuration: 1000,
 				MaxRandomDuration: 10000,
 			},
-			in: AppendEntriesInput{
+			in: common.AppendEntriesInput{
 				Term:         3,
 				PrevLogIndex: 2,
 				PrevLogTerm:  2,
 			},
-			out: AppendEntriesOutput{
+			out: common.AppendEntriesOutput{
 				Success: false,
 				Term:    3,
 				Message: MsgTheResponderHasNoLog,
@@ -138,18 +139,18 @@ func Test_nodeImpl_AppendEntries(t *testing.T) {
 			name: "2. Reply false if log doesn’t contain an entry at prevLogIndex whose term matches prevLogTerm (§5.3)",
 			n: NodeImpl{
 				CurrentTerm:       2,
-				Logs:              []Log{{Term: 1}},
+				Logs:              []common.Log{{Term: 1}},
 				logger:            &log.Logger,
 				DB:                persistance.NewPersistenceMock(),
 				MinRandomDuration: 1000,
 				MaxRandomDuration: 10000,
 			},
-			in: AppendEntriesInput{
+			in: common.AppendEntriesInput{
 				Term:         3,
 				PrevLogIndex: 2,
 				PrevLogTerm:  2,
 			},
-			out: AppendEntriesOutput{
+			out: common.AppendEntriesOutput{
 				Success: false,
 				Term:    3,
 				Message: MsgTheResponderHasFewerLogThanRequester,
@@ -160,15 +161,15 @@ func Test_nodeImpl_AppendEntries(t *testing.T) {
 			n: NodeImpl{
 				VotedFor:    5,
 				CurrentTerm: 3,
-				Logs: []Log{
-					{Term: 1, Values: []Entry{
-						{Key: "x", Value: 5, Opcode: Overwrite}},
+				Logs: []common.Log{
+					{Term: 1, Values: []common.Entry{
+						{Key: "x", Value: 5, Opcode: common.Overwrite}},
 					},
-					{Term: 2, Values: []Entry{
-						{Key: "x", Value: 5, Opcode: Overwrite}},
+					{Term: 2, Values: []common.Entry{
+						{Key: "x", Value: 5, Opcode: common.Overwrite}},
 					},
-					{Term: 2, Values: []Entry{
-						{Key: "x", Value: 5, Opcode: Overwrite}},
+					{Term: 2, Values: []common.Entry{
+						{Key: "x", Value: 5, Opcode: common.Overwrite}},
 					},
 				},
 				DB:                persistance.NewPersistenceMock(),
@@ -176,12 +177,12 @@ func Test_nodeImpl_AppendEntries(t *testing.T) {
 				MinRandomDuration: 1000,
 				MaxRandomDuration: 10000,
 			},
-			in: AppendEntriesInput{
+			in: common.AppendEntriesInput{
 				Term:         3,
 				PrevLogIndex: 2,
 				PrevLogTerm:  2,
 			},
-			out: AppendEntriesOutput{
+			out: common.AppendEntriesOutput{
 				Success: false,
 				Term:    3,
 				Message: MsgCurrentLogTermsAreNotMatched,
@@ -193,26 +194,26 @@ func Test_nodeImpl_AppendEntries(t *testing.T) {
 			n: NodeImpl{
 				VotedFor:          5,
 				CurrentTerm:       3,
-				Logs:              []Log{},
+				Logs:              []common.Log{},
 				DB:                persistance.NewPersistenceMock(),
 				logger:            &log.Logger,
 				MinRandomDuration: 1000,
 				MaxRandomDuration: 10000,
 			},
-			in: AppendEntriesInput{
+			in: common.AppendEntriesInput{
 				Term:         3,
 				PrevLogIndex: 0,
 				PrevLogTerm:  0,
-				Entries: []Log{
+				Entries: []common.Log{
 					{
 						Term: 1, //
-						Values: []Entry{
-							{Key: "z", Value: 3, Opcode: Overwrite},
+						Values: []common.Entry{
+							{Key: "z", Value: 3, Opcode: common.Overwrite},
 						},
 					},
 				},
 			},
-			out: AppendEntriesOutput{
+			out: common.AppendEntriesOutput{
 				Success: true,
 				Term:    3,
 				Message: "",
@@ -224,12 +225,12 @@ func Test_nodeImpl_AppendEntries(t *testing.T) {
 			n: NodeImpl{
 				VotedFor:    5,
 				CurrentTerm: 3,
-				Logs: []Log{
-					{Term: 1, Values: []Entry{
-						{Key: "x", Value: 5, Opcode: Overwrite}},
+				Logs: []common.Log{
+					{Term: 1, Values: []common.Entry{
+						{Key: "x", Value: 5, Opcode: common.Overwrite}},
 					},
-					{Term: 2, Values: []Entry{
-						{Key: "y", Value: 5, Opcode: Overwrite}},
+					{Term: 2, Values: []common.Entry{
+						{Key: "y", Value: 5, Opcode: common.Overwrite}},
 					},
 				},
 				DB:                persistance.NewPersistenceMock(),
@@ -237,20 +238,20 @@ func Test_nodeImpl_AppendEntries(t *testing.T) {
 				MinRandomDuration: 1000,
 				MaxRandomDuration: 10000,
 			},
-			in: AppendEntriesInput{
+			in: common.AppendEntriesInput{
 				Term:         3,
 				PrevLogIndex: 2,
 				PrevLogTerm:  2,
-				Entries: []Log{
+				Entries: []common.Log{
 					{
 						Term: 1,
-						Values: []Entry{
-							{Key: "z", Value: 3, Opcode: Overwrite},
+						Values: []common.Entry{
+							{Key: "z", Value: 3, Opcode: common.Overwrite},
 						},
 					},
 				},
 			},
-			out: AppendEntriesOutput{
+			out: common.AppendEntriesOutput{
 				Success: true,
 				Term:    3,
 				Message: "",
@@ -262,27 +263,27 @@ func Test_nodeImpl_AppendEntries(t *testing.T) {
 			n: NodeImpl{
 				VotedFor:    5,
 				CurrentTerm: 3,
-				Logs: []Log{
-					{Term: 1, Values: []Entry{
-						{Key: "x", Value: 5, Opcode: Overwrite}},
+				Logs: []common.Log{
+					{Term: 1, Values: []common.Entry{
+						{Key: "x", Value: 5, Opcode: common.Overwrite}},
 					},
-					{Term: 2, Values: []Entry{
-						{Key: "y", Value: 5, Opcode: Overwrite}},
+					{Term: 2, Values: []common.Entry{
+						{Key: "y", Value: 5, Opcode: common.Overwrite}},
 					},
 				},
 				DB:                persistance.NewPersistenceMock(),
 				logger:            &log.Logger,
 				MinRandomDuration: 1000,
 				MaxRandomDuration: 10000,
-				StateMachine:      NewStateMachine(),
+				StateMachine:      common.NewStateMachine(),
 			},
-			in: AppendEntriesInput{
+			in: common.AppendEntriesInput{
 				Term:         3,
 				PrevLogIndex: 2,
 				PrevLogTerm:  2,
 				LeaderCommit: 6,
 			},
-			out: AppendEntriesOutput{
+			out: common.AppendEntriesOutput{
 				Success: true,
 				Term:    3,
 				Message: "",
@@ -293,19 +294,19 @@ func Test_nodeImpl_AppendEntries(t *testing.T) {
 			n: NodeImpl{
 				VotedFor:          1,
 				CurrentTerm:       1,
-				Logs:              []Log{},
+				Logs:              []common.Log{},
 				DB:                persistance.NewPersistenceMock(),
 				logger:            &log.Logger,
 				MinRandomDuration: 1000,
 				MaxRandomDuration: 10000,
 			},
-			in: AppendEntriesInput{
+			in: common.AppendEntriesInput{
 				Term:         1,
 				PrevLogIndex: 0,
 				PrevLogTerm:  0,
 				LeaderCommit: 1,
 			},
-			out: AppendEntriesOutput{
+			out: common.AppendEntriesOutput{
 				Success: true,
 				Term:    1,
 				Message: "",
@@ -315,7 +316,7 @@ func Test_nodeImpl_AppendEntries(t *testing.T) {
 
 	for index, testCase := range testCases {
 		log.Info().Int("index", index).Msg("test case AppendEntriesOutput")
-		var out AppendEntriesOutput
+		var out common.AppendEntriesOutput
 		testCase.n.AppendEntries(&testCase.in, &out)
 		assert.Equal(t, testCase.out, out, fmt.Sprintf("%d test case: %s", index, testCase.name))
 

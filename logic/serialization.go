@@ -3,6 +3,7 @@ package logic
 import (
 	"errors"
 	"fmt"
+	"khanh/raft-go/common"
 	"khanh/raft-go/persistance"
 	"strconv"
 	"time"
@@ -49,12 +50,12 @@ func (n *NodeImpl) Deserialize(data map[string]string) error {
 		return err
 	}
 
-	n.Logs = []Log{}
+	n.Logs = []common.Log{}
 	for i := 0; i < int(logCount); i++ {
 		key := fmt.Sprintf("log_%d", i)
 
 		if value, ok := data[key]; ok {
-			logItem, err := NewLogFromString(value)
+			logItem, err := common.NewLogFromString(value)
 			if err != nil {
 				n.log().Err(err).Msg("can not create log from string")
 			}

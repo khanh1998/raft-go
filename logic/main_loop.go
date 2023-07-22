@@ -1,5 +1,7 @@
 package logic
 
+import "khanh/raft-go/common"
+
 func (n *NodeImpl) loop() {
 	n.log().Info().Msg("Raft main loop is started")
 	for {
@@ -14,7 +16,7 @@ func (n *NodeImpl) loop() {
 				// respond after entry applied to state machine (§5.3)
 
 				if n.State == StateLeader {
-					n.AppendLog(Log{
+					n.AppendLog(common.Log{
 						Term:   n.CurrentTerm,
 						Values: req.Data,
 					})

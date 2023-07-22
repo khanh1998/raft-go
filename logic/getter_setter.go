@@ -1,5 +1,7 @@
 package logic
 
+import "khanh/raft-go/common"
+
 func (n *NodeImpl) DeleteLogFrom(index int) error {
 	defer func() {
 		data := n.Serialize(true, true, "DeleteLogFrom")
@@ -28,7 +30,7 @@ func (n *NodeImpl) DeleteLogFrom(index int) error {
 	return nil
 }
 
-func (n *NodeImpl) AppendLogs(logItems []Log) {
+func (n *NodeImpl) AppendLogs(logItems []common.Log) {
 	defer func() {
 		data := n.Serialize(true, true, "AppendLogs")
 		if err := n.DB.AppendLog(data); err != nil {
@@ -39,7 +41,7 @@ func (n *NodeImpl) AppendLogs(logItems []Log) {
 	n.Logs = append(n.Logs, logItems...)
 }
 
-func (n *NodeImpl) AppendLog(logItem Log) {
+func (n *NodeImpl) AppendLog(logItem common.Log) {
 	defer func() {
 		data := n.Serialize(true, true, "AppendLog")
 		if err := n.DB.AppendLog(data); err != nil {
@@ -50,13 +52,13 @@ func (n *NodeImpl) AppendLog(logItem Log) {
 	n.Logs = append(n.Logs, logItem)
 }
 
-func (n NodeImpl) GetLog(index int) (Log, error) {
+func (n NodeImpl) GetLog(index int) (common.Log, error) {
 	if len(n.Logs) == 0 {
-		return Log{}, ErrLogIsEmtpy
+		return common.Log{}, ErrLogIsEmtpy
 	}
 
 	if index > len(n.Logs) || index <= 0 {
-		return Log{}, ErrIndexOutOfRange
+		return common.Log{}, ErrIndexOutOfRange
 	}
 
 	realIndex := index - 1

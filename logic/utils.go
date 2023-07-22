@@ -57,7 +57,7 @@ func (n *NodeImpl) isLogUpToDate(lastLogIndex int, lastLogTerm int) bool {
 // apply log[lastApplied] to state machine (§5.3)
 func (n *NodeImpl) applyLog() {
 	n.log().Info().
-		Interface("state_machine", n.StateMachine.data).
+		Interface("state_machine", n.StateMachine.GetData()).
 		Interface("logs", n.Logs).
 		Msg("applyLog: before")
 
@@ -75,7 +75,7 @@ func (n *NodeImpl) applyLog() {
 	}
 
 	n.log().Info().
-		Interface("state_machine", n.StateMachine.data).
+		Interface("state_machine", n.StateMachine.GetData()).
 		Interface("logs", n.Logs).
 		Msg("applyLog: after")
 }

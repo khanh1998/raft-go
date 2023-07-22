@@ -2,6 +2,7 @@ package logic
 
 import (
 	"errors"
+	"khanh/raft-go/common"
 	"sync"
 	"time"
 )
@@ -35,14 +36,14 @@ func (n *NodeImpl) BroadCastRequestVote() {
 		n.SetVotedFor(n.ID)
 
 		lastLogIndex, lastLogTerm := n.lastLogInfo()
-		input := RequestVoteInput{
+		input := common.RequestVoteInput{
 			Term:         n.CurrentTerm,
 			CandidateID:  n.ID,
 			LastLogIndex: lastLogIndex,
 			LastLogTerm:  lastLogTerm,
 		}
 
-		responses := make([]*RequestVoteOutput, len(n.PeerURLs))
+		responses := make([]*common.RequestVoteOutput, len(n.PeerURLs))
 		voteGrantedCount := 1 // voted for itself first
 		maxTerm := n.CurrentTerm
 		maxTermID := -1
@@ -52,7 +53,7 @@ func (n *NodeImpl) BroadCastRequestVote() {
 		for peerIdx := range n.Peers {
 			count.Add(1)
 			go func(peerID int) {
-				output := &RequestVoteOutput{}
+				output := &common.RequestVoteOutput{}
 				err := n.CallWithTimeout(peerID, "NodeImpl.RequestVote", input, output, 5*time.Second)
 				if err != nil {
 					n.log().Err(err).Msg("Client invocation error: ")
@@ -110,7 +111,7 @@ func (n *NodeImpl) BroadcastAppendEntries() {
 		successCount := 0
 		maxTerm := n.CurrentTerm
 		maxTermID := -1
-		responses := make([]*AppendEntriesOutput, len(n.PeerURLs))
+		responses := make([]*common.AppendEntriesOutput, len(n.PeerURLs))
 
 		// If last log index ≥ nextIndex for a follower: send AppendEntries RPC with log entries starting at nextIndex
 		// • If successful: update nextIndex and matchIndex for
@@ -123,7 +124,7 @@ func (n *NodeImpl) BroadcastAppendEntries() {
 			count.Add(1)
 			go func(peerIndex int) {
 				nextIdx := n.NextIndex[peerIndex]
-				input := AppendEntriesInput{
+				input := common.AppendEntriesInput{
 					Term:         n.CurrentTerm,
 					LeaderID:     n.ID,
 					LeaderCommit: n.CommitIndex,
@@ -140,10 +141,10 @@ func (n *NodeImpl) BroadcastAppendEntries() {
 
 				logItem, err := n.GetLog(nextIdx)
 				if err == nil {
-					input.Entries = []Log{logItem}
+					input.Entries = []common.Log{logItem}
 				}
 
-				output := &AppendEntriesOutput{}
+				output := &common.AppendEntriesOutput{}
 				if err := n.CallWithTimeout(peerIndex, "NodeImpl.AppendEntries", input, output, 5*time.Second); err != nil {
 					n.log().Err(err).Msg("BroadcastAppendEntries: ")
 				} else {
