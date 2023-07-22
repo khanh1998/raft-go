@@ -1,6 +1,7 @@
 package logic
 
 import (
+	"khanh/raft-go/common"
 	"khanh/raft-go/persistance"
 	"math"
 	"net/rpc"
@@ -54,6 +55,12 @@ type NodeImpl struct {
 	// Reinitialized after election
 	NextIndex  []int // for each server, index of the next log entry to send to that server (initialized to leader last log index + 1)
 	MatchIndex []int // for each server, index of highest log entry known to be replicated on server (initialized to 0, increases monotonically)
+}
+
+type RPCProxy interface {
+	SendAppendEntries(peerId int, timeout *time.Duration, input common.AppendEntriesInput) (output common.AppendEntriesOutput, err error)
+	SendRequestVote(peerId int, timeout *time.Duration, input common.RequestVoteInput) (output common.RequestVoteOutput, err error)
+	SendPing(peerId int, timeout *time.Duration) (err error)
 }
 
 type Node interface {
