@@ -1,26 +1,10 @@
 package logic
 
 import (
-	"errors"
 	"khanh/raft-go/common"
 	"sync"
 	"time"
 )
-
-func (n *NodeImpl) CallWithTimeout(clientIdx int, serviceMethod string, args any, reply any, timeout time.Duration) error {
-	call := n.Peers[clientIdx].Go(serviceMethod, args, reply, nil)
-	select {
-	case <-time.After(timeout):
-		return errors.New("RPC timeout")
-	case resp := <-call.Done:
-		if resp != nil && resp.Error != nil {
-			n.Reconnect(clientIdx)
-			return resp.Error
-		}
-	}
-
-	return nil
-}
 
 func (n *NodeImpl) BroadCastRequestVote() {
 	if n.State == StateFollower {
@@ -50,16 +34,17 @@ func (n *NodeImpl) BroadCastRequestVote() {
 
 		var count sync.WaitGroup
 
-		for peerIdx := range n.Peers {
+		timeout := 5 * time.Second
+
+		for peerIdx := range n.PeerURLs {
 			count.Add(1)
 			go func(peerID int) {
-				output := &common.RequestVoteOutput{}
-				err := n.CallWithTimeout(peerID, "NodeImpl.RequestVote", input, output, 5*time.Second)
+				output, err := n.RpcProxy.SendRequestVote(peerID, &timeout, input)
 				if err != nil {
 					n.log().Err(err).Msg("Client invocation error: ")
 				} else {
 					n.log().Info().Interface("response", output).Msg("Received response")
-					responses[peerID] = output
+					responses[peerID] = &output
 
 					if output.Term > n.CurrentTerm && output.VoteGranted {
 						n.log().Fatal().Interface("output", output).Msg("inconsistent response")
@@ -120,7 +105,7 @@ func (n *NodeImpl) BroadcastAppendEntries() {
 		//   decrement nextIndex and retry (§5.3)
 
 		var count sync.WaitGroup
-		for peerID := range n.Peers {
+		for peerID := range n.PeerURLs {
 			count.Add(1)
 			go func(peerIndex int) {
 				nextIdx := n.NextIndex[peerIndex]
@@ -144,22 +129,24 @@ func (n *NodeImpl) BroadcastAppendEntries() {
 					input.Entries = []common.Log{logItem}
 				}
 
-				output := &common.AppendEntriesOutput{}
-				if err := n.CallWithTimeout(peerIndex, "NodeImpl.AppendEntries", input, output, 5*time.Second); err != nil {
+				timeout := 5 * time.Second
+
+				output, err := n.RpcProxy.SendAppendEntries(peerIndex, &timeout, input)
+				if err != nil {
 					n.log().Err(err).Msg("BroadcastAppendEntries: ")
 				} else {
-					responses[peerIndex] = output
+					responses[peerIndex] = &output
 
 					if output.Success && output.Term > n.CurrentTerm {
 						n.log().Fatal().Interface("response", output).Msg("inconsistent response")
 					} else if output.Success {
 						successCount += 1
-						n.MatchIndex[peerIndex] = min(n.NextIndex[peerIndex], len(n.Logs))
+						n.MatchIndex[peerIndex] = common.Min(n.NextIndex[peerIndex], len(n.Logs))
 
-						n.NextIndex[peerIndex] = min(n.NextIndex[peerIndex]+1, len(n.Logs)+1)
+						n.NextIndex[peerIndex] = common.Min(n.NextIndex[peerIndex]+1, len(n.Logs)+1)
 					} else {
 						if output.Term <= n.CurrentTerm {
-							n.NextIndex[peerIndex] = max(0, n.NextIndex[peerIndex]-1)
+							n.NextIndex[peerIndex] = common.Max(0, n.NextIndex[peerIndex]-1)
 						} else {
 							// the appendEntries request is failed,
 							// because current leader is outdated

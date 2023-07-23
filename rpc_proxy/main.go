@@ -41,13 +41,19 @@ func (r RPCProxyImpl) log() *zerolog.Logger {
 	return &l
 }
 
-func NewRPCImpl(params []PeerRPCProxyConnectInfo, hostID int, hostURL string) RPCProxyImpl {
-	r := RPCProxyImpl{hostID: hostID, hostURL: hostURL}
+type NewRPCImplParams struct {
+	Peers   []PeerRPCProxyConnectInfo
+	HostID  int
+	HostURL string
+}
 
-	r.initRPCProxy(hostURL)
-	r.ConnectToPeers(params)
+func NewRPCImpl(params NewRPCImplParams) *RPCProxyImpl {
+	r := RPCProxyImpl{hostID: params.HostID, hostURL: params.HostURL}
 
-	return r
+	r.initRPCProxy(params.HostURL)
+	r.ConnectToPeers(params.Peers)
+
+	return &r
 }
 
 func (r *RPCProxyImpl) SetBrain(brain RaftBrain) {

@@ -1,6 +1,7 @@
 package logic
 
 import (
+	"errors"
 	"fmt"
 	"khanh/raft-go/common"
 )
@@ -14,6 +15,21 @@ var (
 	MsgTheResponderAlreadyMakeAVote         = "the responder already made a vote"
 	MsgTheRequesterLogsAreOutOfDate         = "the requestor logs are out of date"
 )
+
+func (n *NodeImpl) ServeClientRequest(req common.ClientRequest) error {
+	if n.State == StateLeader {
+		n.AppendLog(common.Log{
+			Term:   n.CurrentTerm,
+			Values: req.Data,
+		})
+
+		return nil
+	} else {
+		n.log().Info().Msg("follower can not process client request for now")
+
+		return errors.New("not a leader")
+	}
+}
 
 func (n *NodeImpl) Ping(name string, message *string) (err error) {
 	*message = fmt.Sprintf("Hello %s from %v", name, n.ID)
@@ -107,7 +123,7 @@ func (n *NodeImpl) AppendEntries(input *common.AppendEntriesInput, output *commo
 
 	// 5. If leaderCommit > commitIndex, set commitIndex = min(leaderCommit, index of last new entry)
 	if input.LeaderCommit > n.CommitIndex {
-		n.CommitIndex = min(input.LeaderCommit, len(n.Logs))
+		n.CommitIndex = common.Min(input.LeaderCommit, len(n.Logs))
 	}
 
 	n.applyLog()

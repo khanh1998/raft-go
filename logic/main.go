@@ -4,15 +4,10 @@ import (
 	"khanh/raft-go/common"
 	"khanh/raft-go/persistance"
 	"math"
-	"net/rpc"
 	"time"
 
 	"github.com/rs/zerolog"
 )
-
-type ClientRequest struct {
-	Data []common.Entry `json:"data"`
-}
 
 type ServerState string
 
@@ -30,13 +25,11 @@ type NodeImpl struct {
 	logger            *zerolog.Logger
 	DB                persistance.Persistence
 	PeerURLs          []string
-	Peers             []*rpc.Client
 	State             ServerState
 	ID                int
 	StateMachine      common.StateMachine
 	ElectionTimeOut   *time.Timer
 	HeartBeatTimeOut  *time.Timer
-	ClientRequests    chan ClientRequest
 	stop              chan struct{}
 	Quorum            int
 	MinRandomDuration int64
@@ -77,14 +70,13 @@ type NewNodeParams struct {
 
 func NewNode(params NewNodeParams) (*NodeImpl, error) {
 	n := &NodeImpl{
-		ID:             params.ID,
-		State:          StateFollower,
-		VotedFor:       0,
-		Quorum:         int(math.Ceil(float64(len(params.PeerRpcURLs)) / 2.0)),
-		DB:             persistance.NewPersistence(params.DataFileName),
-		ClientRequests: make(chan ClientRequest),
-		stop:           make(chan struct{}),
-		StateMachine:   common.NewStateMachine(),
+		ID:           params.ID,
+		State:        StateFollower,
+		VotedFor:     0,
+		Quorum:       int(math.Ceil(float64(len(params.PeerRpcURLs)) / 2.0)),
+		DB:           persistance.NewPersistence(params.DataFileName),
+		stop:         make(chan struct{}),
+		StateMachine: common.NewStateMachine(),
 
 		MinRandomDuration: params.MinRandomDuration,
 		MaxRandomDuration: params.MaxRandomDuration,
@@ -92,8 +84,8 @@ func NewNode(params NewNodeParams) (*NodeImpl, error) {
 		PeerURLs:          params.PeerRpcURLs,
 	}
 
-	n.initRPC(params.RpcHostURL)
-	n.initApi(params.RestApiHostURL)
+	// n.initRPC(params.RpcHostURL)
+	// n.initApi(params.RestApiHostURL)
 
 	err := n.Rehydrate()
 	if err != nil {
@@ -107,14 +99,10 @@ func NewNode(params NewNodeParams) (*NodeImpl, error) {
 		n.MatchIndex = append(n.MatchIndex, 0)
 	}
 
-	n.ConnectToPeers()
+	// n.ConnectToPeers()
 
 	go n.loop()
 	return n, nil
-}
-
-func (n *NodeImpl) SetRpcProxy(rpc RPCProxy) {
-	n.RpcProxy = rpc
 }
 
 func (n *NodeImpl) log() *zerolog.Logger {
@@ -135,7 +123,7 @@ func (n NodeImpl) Stop() chan struct{} {
 }
 
 func (n *NodeImpl) resetElectionTimeout() {
-	randomElectionTimeOut := time.Duration(RandInt(n.MinRandomDuration, n.MaxRandomDuration)) * time.Millisecond
+	randomElectionTimeOut := time.Duration(common.RandInt(n.MinRandomDuration, n.MaxRandomDuration)) * time.Millisecond
 	randomElectionTimeOut *= 5
 	n.log().Info().Interface("seconds", randomElectionTimeOut.Seconds()).Msg("resetElectionTimeout")
 	if n.ElectionTimeOut == nil {
@@ -146,7 +134,7 @@ func (n *NodeImpl) resetElectionTimeout() {
 }
 
 func (n *NodeImpl) resetHeartBeatTimeout() {
-	randomHeartBeatTimeout := time.Duration(RandInt(n.MinRandomDuration, n.MaxRandomDuration)) * time.Millisecond
+	randomHeartBeatTimeout := time.Duration(common.RandInt(n.MinRandomDuration, n.MaxRandomDuration)) * time.Millisecond
 	n.log().Info().Interface("seconds", randomHeartBeatTimeout.Seconds()).Msg("resetHeartBeatTimeout")
 	if n.HeartBeatTimeOut == nil {
 		n.HeartBeatTimeOut = time.NewTimer(randomHeartBeatTimeout)

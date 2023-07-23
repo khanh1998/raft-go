@@ -29,3 +29,7 @@ type RequestVoteOutput struct {
 	Message     string // for debuging purpose
 	NodeID      int    // id of the responder
 }
+
+type ClientRequest struct {
+	Data []Entry `json:"data"`
+}

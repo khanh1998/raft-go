@@ -87,3 +87,56 @@ func (n *NodeImpl) SetVotedFor(nodeID int) {
 
 	n.VotedFor = nodeID
 }
+
+func (n *NodeImpl) SetRpcProxy(rpc RPCProxy) {
+	n.RpcProxy = rpc
+}
+
+func (n *NodeImpl) isLogUpToDate(lastLogIndex int, lastLogTerm int) bool {
+	index, term := n.lastLogInfo()
+	if lastLogTerm > term {
+		return true
+	} else if lastLogTerm == term && lastLogIndex >= index {
+		return true
+	} else {
+		return false
+	}
+}
+
+// All servers: If commitIndex > lastApplied: increment lastApplied,
+// apply log[lastApplied] to state machine (§5.3)
+func (n *NodeImpl) applyLog() {
+	n.log().Info().
+		Interface("state_machine", n.StateMachine.GetData()).
+		Interface("logs", n.Logs).
+		Msg("applyLog: before")
+
+	for n.CommitIndex > n.LastApplied {
+		n.LastApplied += 1
+
+		log, err := n.GetLog(n.LastApplied)
+		if err != nil {
+			break
+		}
+
+		for _, val := range log.Values {
+			n.StateMachine.Put(val)
+		}
+	}
+
+	n.log().Info().
+		Interface("state_machine", n.StateMachine.GetData()).
+		Interface("logs", n.Logs).
+		Msg("applyLog: after")
+}
+
+func (n *NodeImpl) lastLogInfo() (index, term int) {
+	if len(n.Logs) > 0 {
+		index = len(n.Logs) - 1
+		term = n.Logs[index].Term
+
+		return index + 1, term
+	}
+
+	return 0, -1
+}
