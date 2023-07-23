@@ -12,20 +12,26 @@ type Node struct {
 }
 
 type NewNodeParams struct {
-	Brain     logic.NewNodeParams
+	Brain     logic.NewRaftBrainParams
 	RPCProxy  rpc_proxy.NewRPCImplParams
 	HTTPProxy http_proxy.NewHttpProxyParams
 }
 
 func NewNode(params NewNodeParams) {
-	brain, err := logic.NewNode(params.Brain)
+	brain, err := logic.NewRaftBrain(params.Brain)
 	if err != nil {
 		log.Fatal().Msg(err.Error())
 	}
 
 	rpcProxy := rpc_proxy.NewRPCImpl(params.RPCProxy)
 	httpProxy := http_proxy.NewHttpProxy(params.HTTPProxy)
+
 	rpcProxy.SetBrain(brain)
-	brain.SetRpcProxy(rpcProxy)
 	httpProxy.SetBrain(brain)
+	brain.SetRpcProxy(rpcProxy)
+
+	rpcProxy.ConnectToPeers(params.RPCProxy.Peers)
+	httpProxy.Start()
+
+	brain.Start()
 }

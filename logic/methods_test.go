@@ -13,7 +13,7 @@ import (
 func Test_nodeImpl_RequestVote(t *testing.T) {
 	type TestCase struct {
 		name string
-		n    NodeImpl
+		n    RaftBrainImpl
 		in   common.RequestVoteInput
 		out  common.RequestVoteOutput
 	}
@@ -21,25 +21,25 @@ func Test_nodeImpl_RequestVote(t *testing.T) {
 	testCases := []TestCase{
 		{
 			name: "1. Reply false if term < currentTerm (§5.1)",
-			n:    NodeImpl{CurrentTerm: 3, logger: &log.Logger},
+			n:    RaftBrainImpl{CurrentTerm: 3, logger: &log.Logger},
 			in:   common.RequestVoteInput{Term: 2},
 			out:  common.RequestVoteOutput{Term: 3, VoteGranted: false, Message: MsgRequesterTermIsOutDated},
 		},
 		{
 			name: "2. If votedFor is null or candidateId, and candidate’s log is at least as up-to-date as receiver’s log, grant vote (§5.2, §5.4)",
-			n:    NodeImpl{CurrentTerm: 3, VotedFor: 4, DB: persistance.NewPersistenceMock(), logger: &log.Logger},
+			n:    RaftBrainImpl{CurrentTerm: 3, VotedFor: 4, DB: persistance.NewPersistenceMock(), logger: &log.Logger},
 			in:   common.RequestVoteInput{Term: 4},
 			out:  common.RequestVoteOutput{Term: 3, VoteGranted: false, Message: MsgTheResponderAlreadyMakeAVote},
 		},
 		{
 			name: "2. If votedFor is null or candidateId, and candidate’s log is at least as up-to-date as receiver’s log, grant vote (§5.2, §5.4)",
-			n:    NodeImpl{CurrentTerm: 3, VotedFor: 0, Logs: []common.Log{{Term: 1}, {Term: 2}, {Term: 3}}, DB: persistance.NewPersistenceMock(), logger: &log.Logger},
+			n:    RaftBrainImpl{CurrentTerm: 3, VotedFor: 0, Logs: []common.Log{{Term: 1}, {Term: 2}, {Term: 3}}, DB: persistance.NewPersistenceMock(), logger: &log.Logger},
 			in:   common.RequestVoteInput{Term: 4, LastLogIndex: 4, LastLogTerm: 2},
 			out:  common.RequestVoteOutput{Term: 3, VoteGranted: false, Message: MsgTheRequesterLogsAreOutOfDate},
 		},
 		{
 			name: "2. If votedFor is null or candidateId, and candidate’s log is at least as up-to-date as receiver’s log, grant vote (§5.2, §5.4)",
-			n: NodeImpl{
+			n: RaftBrainImpl{
 				CurrentTerm:       3,
 				VotedFor:          0,
 				Logs:              []common.Log{{Term: 1}, {Term: 2}, {Term: 3}},
@@ -68,7 +68,7 @@ func Test_nodeImpl_AppendEntries(t *testing.T) {
 
 	type TestCase struct {
 		name    string
-		n       NodeImpl
+		n       RaftBrainImpl
 		in      common.AppendEntriesInput
 		out     common.AppendEntriesOutput
 		persist TestCasePersist
@@ -77,7 +77,7 @@ func Test_nodeImpl_AppendEntries(t *testing.T) {
 	testCases := []TestCase{
 		{
 			name: "1. Reply false if term < currentTerm (§5.1)",
-			n: NodeImpl{
+			n: RaftBrainImpl{
 				CurrentTerm:       5,
 				logger:            &log.Logger,
 				DB:                persistance.NewPersistenceMock(),
@@ -95,7 +95,7 @@ func Test_nodeImpl_AppendEntries(t *testing.T) {
 		},
 		{
 			name: "2. Reply false if log doesn’t contain an entry at prevLogIndex whose term matches prevLogTerm (§5.3)",
-			n: NodeImpl{
+			n: RaftBrainImpl{
 				CurrentTerm:       2,
 				Logs:              []common.Log{{Term: 1}, {Term: 1}},
 				DB:                persistance.NewPersistenceMock(),
@@ -116,7 +116,7 @@ func Test_nodeImpl_AppendEntries(t *testing.T) {
 		},
 		{
 			name: "2. Reply false if log doesn’t contain an entry at prevLogIndex whose term matches prevLogTerm (§5.3)",
-			n: NodeImpl{
+			n: RaftBrainImpl{
 				CurrentTerm:       2,
 				Logs:              []common.Log{},
 				logger:            &log.Logger,
@@ -137,7 +137,7 @@ func Test_nodeImpl_AppendEntries(t *testing.T) {
 		},
 		{
 			name: "2. Reply false if log doesn’t contain an entry at prevLogIndex whose term matches prevLogTerm (§5.3)",
-			n: NodeImpl{
+			n: RaftBrainImpl{
 				CurrentTerm:       2,
 				Logs:              []common.Log{{Term: 1}},
 				logger:            &log.Logger,
@@ -158,7 +158,7 @@ func Test_nodeImpl_AppendEntries(t *testing.T) {
 		},
 		{
 			name: "3. If an existing entry conflicts with a new one (same index but different terms), delete the existing entry and all that follow it (§5.3)",
-			n: NodeImpl{
+			n: RaftBrainImpl{
 				VotedFor:    5,
 				CurrentTerm: 3,
 				Logs: []common.Log{
@@ -191,7 +191,7 @@ func Test_nodeImpl_AppendEntries(t *testing.T) {
 		},
 		{
 			name: "4. Append any new entries not already in the log",
-			n: NodeImpl{
+			n: RaftBrainImpl{
 				VotedFor:          5,
 				CurrentTerm:       3,
 				Logs:              []common.Log{},
@@ -222,7 +222,7 @@ func Test_nodeImpl_AppendEntries(t *testing.T) {
 		},
 		{
 			name: "4. Append any new entries not already in the log",
-			n: NodeImpl{
+			n: RaftBrainImpl{
 				VotedFor:    5,
 				CurrentTerm: 3,
 				Logs: []common.Log{
@@ -260,7 +260,7 @@ func Test_nodeImpl_AppendEntries(t *testing.T) {
 		},
 		{
 			name: "5. If leaderCommit > commitIndex, set commitIndex = min(leaderCommit, index of last new entry)",
-			n: NodeImpl{
+			n: RaftBrainImpl{
 				VotedFor:    5,
 				CurrentTerm: 3,
 				Logs: []common.Log{
@@ -291,7 +291,7 @@ func Test_nodeImpl_AppendEntries(t *testing.T) {
 		},
 		{
 			name: "5. If leaderCommit > commitIndex, set commitIndex = min(leaderCommit, index of last new entry)",
-			n: NodeImpl{
+			n: RaftBrainImpl{
 				VotedFor:          1,
 				CurrentTerm:       1,
 				Logs:              []common.Log{},
@@ -321,7 +321,7 @@ func Test_nodeImpl_AppendEntries(t *testing.T) {
 		assert.Equal(t, testCase.out, out, fmt.Sprintf("%d test case: %s", index, testCase.name))
 
 		if testCase.persist.do {
-			n2 := NodeImpl{
+			n2 := RaftBrainImpl{
 				DB:                testCase.n.DB,
 				logger:            &log.Logger,
 				MinRandomDuration: 1000,

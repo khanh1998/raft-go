@@ -6,7 +6,7 @@ import (
 	"time"
 )
 
-func (n *NodeImpl) BroadCastRequestVote() {
+func (n *RaftBrainImpl) BroadCastRequestVote() {
 	if n.State == StateFollower {
 		// On conversion to candidate, start election:
 		// Increment currentTerm
@@ -27,7 +27,7 @@ func (n *NodeImpl) BroadCastRequestVote() {
 			LastLogTerm:  lastLogTerm,
 		}
 
-		responses := make([]*common.RequestVoteOutput, len(n.PeerURLs))
+		responses := make(map[int]*common.RequestVoteOutput, len(n.Peers))
 		voteGrantedCount := 1 // voted for itself first
 		maxTerm := n.CurrentTerm
 		maxTermID := -1
@@ -36,7 +36,7 @@ func (n *NodeImpl) BroadCastRequestVote() {
 
 		timeout := 5 * time.Second
 
-		for peerIdx := range n.PeerURLs {
+		for _, peer := range n.Peers {
 			count.Add(1)
 			go func(peerID int) {
 				output, err := n.RpcProxy.SendRequestVote(peerID, &timeout, input)
@@ -57,7 +57,7 @@ func (n *NodeImpl) BroadCastRequestVote() {
 				}
 
 				count.Done()
-			}(peerIdx)
+			}(peer.ID)
 		}
 
 		count.Wait()
@@ -88,7 +88,7 @@ func (n *NodeImpl) BroadCastRequestVote() {
 	}
 }
 
-func (n *NodeImpl) BroadcastAppendEntries() {
+func (n *RaftBrainImpl) BroadcastAppendEntries() {
 	if n.State == StateLeader {
 		n.resetHeartBeatTimeout()
 		n.log().Info().Msg("BroadcastAppendEntries")
@@ -96,7 +96,7 @@ func (n *NodeImpl) BroadcastAppendEntries() {
 		successCount := 0
 		maxTerm := n.CurrentTerm
 		maxTermID := -1
-		responses := make([]*common.AppendEntriesOutput, len(n.PeerURLs))
+		responses := make(map[int]*common.AppendEntriesOutput, len(n.Peers))
 
 		// If last log index ≥ nextIndex for a follower: send AppendEntries RPC with log entries starting at nextIndex
 		// • If successful: update nextIndex and matchIndex for
@@ -105,10 +105,10 @@ func (n *NodeImpl) BroadcastAppendEntries() {
 		//   decrement nextIndex and retry (§5.3)
 
 		var count sync.WaitGroup
-		for peerID := range n.PeerURLs {
+		for _, peer := range n.Peers {
 			count.Add(1)
-			go func(peerIndex int) {
-				nextIdx := n.NextIndex[peerIndex]
+			go func(peerID int) {
+				nextIdx := n.NextIndex[peerID]
 				input := common.AppendEntriesInput{
 					Term:         n.CurrentTerm,
 					LeaderID:     n.ID,
@@ -131,22 +131,22 @@ func (n *NodeImpl) BroadcastAppendEntries() {
 
 				timeout := 5 * time.Second
 
-				output, err := n.RpcProxy.SendAppendEntries(peerIndex, &timeout, input)
+				output, err := n.RpcProxy.SendAppendEntries(peerID, &timeout, input)
 				if err != nil {
 					n.log().Err(err).Msg("BroadcastAppendEntries: ")
 				} else {
-					responses[peerIndex] = &output
+					responses[peerID] = &output
 
 					if output.Success && output.Term > n.CurrentTerm {
 						n.log().Fatal().Interface("response", output).Msg("inconsistent response")
 					} else if output.Success {
 						successCount += 1
-						n.MatchIndex[peerIndex] = common.Min(n.NextIndex[peerIndex], len(n.Logs))
+						n.MatchIndex[peerID] = common.Min(n.NextIndex[peerID], len(n.Logs))
 
-						n.NextIndex[peerIndex] = common.Min(n.NextIndex[peerIndex]+1, len(n.Logs)+1)
+						n.NextIndex[peerID] = common.Min(n.NextIndex[peerID]+1, len(n.Logs)+1)
 					} else {
 						if output.Term <= n.CurrentTerm {
-							n.NextIndex[peerIndex] = common.Max(0, n.NextIndex[peerIndex]-1)
+							n.NextIndex[peerID] = common.Max(0, n.NextIndex[peerID]-1)
 						} else {
 							// the appendEntries request is failed,
 							// because current leader is outdated
@@ -157,7 +157,7 @@ func (n *NodeImpl) BroadcastAppendEntries() {
 				}
 
 				count.Done()
-			}(peerID)
+			}(peer.ID)
 		}
 		count.Wait()
 

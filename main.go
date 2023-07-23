@@ -2,8 +2,13 @@ package main
 
 import (
 	"flag"
+	"khanh/raft-go/http_proxy"
 	"khanh/raft-go/logic"
+	"khanh/raft-go/node"
+	"khanh/raft-go/rpc_proxy"
 	"os"
+	"os/signal"
+	"syscall"
 	"time"
 
 	"github.com/rs/zerolog"
@@ -20,46 +25,121 @@ func main() {
 
 	id := flag.Int("id", 0, "")
 	flag.Parse()
-
-	paramList := []logic.NewNodeParams{
+	params := []node.NewNodeParams{
 		{
-			ID:                1,
-			PeerRpcURLs:       []string{":1235", ":1236"},
-			RpcHostURL:        ":1234",
-			RestApiHostURL:    "localhost:8080",
-			DataFileName:      "log.1.dat",
-			MinRandomDuration: 5000,
-			MaxRandomDuration: 10000,
-			Log:               &log,
+			Brain: logic.NewRaftBrainParams{
+				ID:                1,
+				DataFileName:      "log.1.dat",
+				MinRandomDuration: 5000,
+				MaxRandomDuration: 10000,
+				Log:               &log,
+				Peers: []logic.PeerInfo{
+					{
+						ID:  2,
+						URL: ":1235",
+					},
+					{
+						ID:  3,
+						URL: ":1236",
+					},
+				},
+			},
+			RPCProxy: rpc_proxy.NewRPCImplParams{
+				Peers: []rpc_proxy.PeerRPCProxyConnectInfo{
+					{
+						ID:  2,
+						URL: ":1235",
+					},
+					{
+						ID:  3,
+						URL: ":1236",
+					},
+				},
+				HostID:  1,
+				HostURL: ":1234",
+			},
+			HTTPProxy: http_proxy.NewHttpProxyParams{
+				URL: "localhost:8080",
+			},
 		},
 		{
-			ID:                2,
-			PeerRpcURLs:       []string{":1234", ":1236"},
-			RpcHostURL:        ":1235",
-			RestApiHostURL:    "localhost:8081",
-			DataFileName:      "log.2.dat",
-			MinRandomDuration: 5000,
-			MaxRandomDuration: 10000,
-			Log:               &log,
+			Brain: logic.NewRaftBrainParams{
+				ID:                2,
+				DataFileName:      "log.2.dat",
+				MinRandomDuration: 5000,
+				MaxRandomDuration: 10000,
+				Log:               &log,
+				Peers: []logic.PeerInfo{
+					{
+						ID:  1,
+						URL: ":1234",
+					},
+					{
+						ID:  3,
+						URL: ":1236",
+					},
+				},
+			},
+			RPCProxy: rpc_proxy.NewRPCImplParams{
+				Peers: []rpc_proxy.PeerRPCProxyConnectInfo{
+					{
+						ID:  1,
+						URL: ":1234",
+					},
+					{
+						ID:  3,
+						URL: ":1236",
+					},
+				},
+				HostID:  2,
+				HostURL: ":1235",
+			},
+			HTTPProxy: http_proxy.NewHttpProxyParams{
+				URL: "localhost:8081",
+			},
 		},
 		{
-			ID:                3,
-			PeerRpcURLs:       []string{":1234", ":1235"},
-			RpcHostURL:        ":1236",
-			RestApiHostURL:    "localhost:8082",
-			DataFileName:      "log.3.dat",
-			MinRandomDuration: 5000,
-			MaxRandomDuration: 10000,
-			Log:               &log,
+			Brain: logic.NewRaftBrainParams{
+				ID:                3,
+				DataFileName:      "log.3.dat",
+				MinRandomDuration: 5000,
+				MaxRandomDuration: 10000,
+				Log:               &log,
+				Peers: []logic.PeerInfo{
+					{
+						ID:  1,
+						URL: ":1234",
+					},
+					{
+						ID:  2,
+						URL: ":1235",
+					},
+				},
+			},
+			RPCProxy: rpc_proxy.NewRPCImplParams{
+				Peers: []rpc_proxy.PeerRPCProxyConnectInfo{
+					{
+						ID:  1,
+						URL: ":1234",
+					},
+					{
+						ID:  2,
+						URL: ":1235",
+					},
+				},
+				HostID:  3,
+				HostURL: ":1236",
+			},
+			HTTPProxy: http_proxy.NewHttpProxyParams{
+				URL: "localhost:8082",
+			},
 		},
 	}
+	signChan := make(chan os.Signal, 1)
 
-	node, err := logic.NewNode(paramList[*id])
-	if err != nil {
-		log.Err(err).Msg("can not create new node")
-	}
+	node.NewNode(params[*id])
 
-	log.Info().Msgf("node %d is created", paramList[*id].ID)
-
-	<-node.Stop()
+	signal.Notify(signChan, os.Interrupt, syscall.SIGTERM)
+	<-signChan
+	log.Info().Msg("Shut down")
 }

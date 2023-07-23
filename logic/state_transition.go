@@ -1,23 +1,24 @@
 package logic
 
-func (n *NodeImpl) ToCandidate() {
+func (n *RaftBrainImpl) ToCandidate() {
 	n.log().Info().Msg("to candidate")
 	n.State = StateCandidate
 }
 
-func (n *NodeImpl) ToLeader() {
+func (n *RaftBrainImpl) ToLeader() {
 	n.log().Info().Msg("to leader")
 	n.State = StateLeader
 
-	n.NextIndex = make([]int, len(n.PeerURLs))
-	n.MatchIndex = make([]int, len(n.PeerURLs))
-	for i := 0; i < len(n.PeerURLs); i++ {
-		n.NextIndex[i] = len(n.Logs) + 1
-		n.MatchIndex[i] = 0
+	n.NextIndex = make(map[int]int)
+	n.MatchIndex = make(map[int]int)
+
+	for _, peer := range n.Peers {
+		n.NextIndex[peer.ID] = len(n.Logs) + 1
+		n.MatchIndex[peer.ID] = 0
 	}
 }
 
-func (n *NodeImpl) ToFollower() {
+func (n *RaftBrainImpl) ToFollower() {
 	n.log().Info().Msg("to follower")
 	n.State = StateFollower
 }

@@ -46,7 +46,7 @@ func Test_nodeImpl_Serialize(t *testing.T) {
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			n := NodeImpl{
+			n := RaftBrainImpl{
 				CurrentTerm: tt.fields.CurrentTerm,
 				VotedFor:    tt.fields.VotedFor,
 				Logs:        tt.fields.Logs,
@@ -103,7 +103,7 @@ func Test_nodeImpl_Deserialize(t *testing.T) {
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			n := &NodeImpl{}
+			n := &RaftBrainImpl{}
 			if err := n.Deserialize(tt.args.data); (err != nil) != tt.wantErr {
 				t.Errorf("nodeImpl.Deserialize() error = %v, wantErr %v", err, tt.wantErr)
 			}

@@ -9,7 +9,7 @@ import (
 	"time"
 )
 
-func (n NodeImpl) Serialize(delimiter bool, createdAt bool, source string) map[string]string {
+func (n RaftBrainImpl) Serialize(delimiter bool, createdAt bool, source string) map[string]string {
 	data := make(map[string]string)
 	if delimiter {
 		data["a"] = "---------------------------------------------"
@@ -31,7 +31,7 @@ func (n NodeImpl) Serialize(delimiter bool, createdAt bool, source string) map[s
 	return data
 }
 
-func (n *NodeImpl) Deserialize(data map[string]string) error {
+func (n *RaftBrainImpl) Deserialize(data map[string]string) error {
 	currentTerm, err := strconv.ParseInt(data["current_term"], 10, 32)
 	if err != nil {
 		return err
@@ -69,7 +69,7 @@ func (n *NodeImpl) Deserialize(data map[string]string) error {
 	return nil
 }
 
-func (n *NodeImpl) GetPersistanceKeyList() ([]string, error) {
+func (n *RaftBrainImpl) GetPersistanceKeyList() ([]string, error) {
 	data, err := n.DB.ReadNewestLog([]string{"log_count"})
 	if err != nil {
 		return nil, err
@@ -94,7 +94,7 @@ func (n *NodeImpl) GetPersistanceKeyList() ([]string, error) {
 	return keys, nil
 }
 
-func (n *NodeImpl) Rehydrate() error {
+func (n *RaftBrainImpl) Rehydrate() error {
 	n.log().Info().Msg("started to rehydrate")
 	keys, err := n.GetPersistanceKeyList()
 	if err != nil {

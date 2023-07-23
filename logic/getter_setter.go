@@ -2,7 +2,7 @@ package logic
 
 import "khanh/raft-go/common"
 
-func (n *NodeImpl) DeleteLogFrom(index int) error {
+func (n *RaftBrainImpl) DeleteLogFrom(index int) error {
 	defer func() {
 		data := n.Serialize(true, true, "DeleteLogFrom")
 		if err := n.DB.AppendLog(data); err != nil {
@@ -30,7 +30,7 @@ func (n *NodeImpl) DeleteLogFrom(index int) error {
 	return nil
 }
 
-func (n *NodeImpl) AppendLogs(logItems []common.Log) {
+func (n *RaftBrainImpl) AppendLogs(logItems []common.Log) {
 	defer func() {
 		data := n.Serialize(true, true, "AppendLogs")
 		if err := n.DB.AppendLog(data); err != nil {
@@ -41,7 +41,7 @@ func (n *NodeImpl) AppendLogs(logItems []common.Log) {
 	n.Logs = append(n.Logs, logItems...)
 }
 
-func (n *NodeImpl) AppendLog(logItem common.Log) {
+func (n *RaftBrainImpl) AppendLog(logItem common.Log) {
 	defer func() {
 		data := n.Serialize(true, true, "AppendLog")
 		if err := n.DB.AppendLog(data); err != nil {
@@ -52,7 +52,7 @@ func (n *NodeImpl) AppendLog(logItem common.Log) {
 	n.Logs = append(n.Logs, logItem)
 }
 
-func (n NodeImpl) GetLog(index int) (common.Log, error) {
+func (n RaftBrainImpl) GetLog(index int) (common.Log, error) {
 	if len(n.Logs) == 0 {
 		return common.Log{}, ErrLogIsEmtpy
 	}
@@ -66,7 +66,7 @@ func (n NodeImpl) GetLog(index int) (common.Log, error) {
 	return n.Logs[realIndex], nil
 }
 
-func (n *NodeImpl) SetCurrentTerm(term int) {
+func (n *RaftBrainImpl) SetCurrentTerm(term int) {
 	defer func() {
 		data := n.Serialize(true, true, "SetCurrentTerm")
 		if err := n.DB.AppendLog(data); err != nil {
@@ -77,7 +77,7 @@ func (n *NodeImpl) SetCurrentTerm(term int) {
 	n.CurrentTerm = term
 }
 
-func (n *NodeImpl) SetVotedFor(nodeID int) {
+func (n *RaftBrainImpl) SetVotedFor(nodeID int) {
 	defer func() {
 		data := n.Serialize(true, true, "SetVotedFor")
 		if err := n.DB.AppendLog(data); err != nil {
@@ -88,11 +88,11 @@ func (n *NodeImpl) SetVotedFor(nodeID int) {
 	n.VotedFor = nodeID
 }
 
-func (n *NodeImpl) SetRpcProxy(rpc RPCProxy) {
+func (n *RaftBrainImpl) SetRpcProxy(rpc RPCProxy) {
 	n.RpcProxy = rpc
 }
 
-func (n *NodeImpl) isLogUpToDate(lastLogIndex int, lastLogTerm int) bool {
+func (n *RaftBrainImpl) isLogUpToDate(lastLogIndex int, lastLogTerm int) bool {
 	index, term := n.lastLogInfo()
 	if lastLogTerm > term {
 		return true
@@ -105,7 +105,7 @@ func (n *NodeImpl) isLogUpToDate(lastLogIndex int, lastLogTerm int) bool {
 
 // All servers: If commitIndex > lastApplied: increment lastApplied,
 // apply log[lastApplied] to state machine (§5.3)
-func (n *NodeImpl) applyLog() {
+func (n *RaftBrainImpl) applyLog() {
 	n.log().Info().
 		Interface("state_machine", n.StateMachine.GetData()).
 		Interface("logs", n.Logs).
@@ -130,7 +130,7 @@ func (n *NodeImpl) applyLog() {
 		Msg("applyLog: after")
 }
 
-func (n *NodeImpl) lastLogInfo() (index, term int) {
+func (n *RaftBrainImpl) lastLogInfo() (index, term int) {
 	if len(n.Logs) > 0 {
 		index = len(n.Logs) - 1
 		term = n.Logs[index].Term

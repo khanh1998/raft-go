@@ -1,6 +1,6 @@
 package logic
 
-func (n *NodeImpl) loop() {
+func (n *RaftBrainImpl) loop() {
 	n.log().Info().Msg("Raft main loop is started")
 	for {
 		select {

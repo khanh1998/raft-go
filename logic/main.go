@@ -9,23 +9,23 @@ import (
 	"github.com/rs/zerolog"
 )
 
-type ServerState string
+type RaftState string
 
 const (
-	StateFollower  ServerState = "follower"
-	StateCandidate ServerState = "candidate"
-	StateLeader    ServerState = "leader"
+	StateFollower  RaftState = "follower"
+	StateCandidate RaftState = "candidate"
+	StateLeader    RaftState = "leader"
 )
 
-func (s ServerState) String() string {
+func (s RaftState) String() string {
 	return string(s)
 }
 
-type NodeImpl struct {
+type RaftBrainImpl struct {
 	logger            *zerolog.Logger
 	DB                persistance.Persistence
-	PeerURLs          []string
-	State             ServerState
+	Peers             []PeerInfo
+	State             RaftState
 	ID                int
 	StateMachine      common.StateMachine
 	ElectionTimeOut   *time.Timer
@@ -47,8 +47,8 @@ type NodeImpl struct {
 
 	// Volatile state on leaders:
 	// Reinitialized after election
-	NextIndex  []int // for each server, index of the next log entry to send to that server (initialized to leader last log index + 1)
-	MatchIndex []int // for each server, index of highest log entry known to be replicated on server (initialized to 0, increases monotonically)
+	NextIndex  map[int]int // for each server, index of the next log entry to send to that server (initialized to leader last log index + 1)
+	MatchIndex map[int]int // for each server, index of highest log entry known to be replicated on server (initialized to 0, increases monotonically)
 }
 
 type RPCProxy interface {
@@ -57,23 +57,26 @@ type RPCProxy interface {
 	SendPing(peerId int, timeout *time.Duration) (err error)
 }
 
-type NewNodeParams struct {
+type PeerInfo struct {
+	ID  int
+	URL string
+}
+
+type NewRaftBrainParams struct {
 	ID                int
-	PeerRpcURLs       []string
-	RpcHostURL        string
-	RestApiHostURL    string
+	Peers             []PeerInfo
 	DataFileName      string
 	MinRandomDuration int64
 	MaxRandomDuration int64
 	Log               *zerolog.Logger
 }
 
-func NewNode(params NewNodeParams) (*NodeImpl, error) {
-	n := &NodeImpl{
+func NewRaftBrain(params NewRaftBrainParams) (*RaftBrainImpl, error) {
+	n := &RaftBrainImpl{
 		ID:           params.ID,
 		State:        StateFollower,
 		VotedFor:     0,
-		Quorum:       int(math.Ceil(float64(len(params.PeerRpcURLs)) / 2.0)),
+		Quorum:       int(math.Ceil(float64(len(params.Peers)) / 2.0)),
 		DB:           persistance.NewPersistence(params.DataFileName),
 		stop:         make(chan struct{}),
 		StateMachine: common.NewStateMachine(),
@@ -81,11 +84,10 @@ func NewNode(params NewNodeParams) (*NodeImpl, error) {
 		MinRandomDuration: params.MinRandomDuration,
 		MaxRandomDuration: params.MaxRandomDuration,
 		logger:            params.Log,
-		PeerURLs:          params.PeerRpcURLs,
+		Peers:             params.Peers,
+		NextIndex:         make(map[int]int),
+		MatchIndex:        make(map[int]int),
 	}
-
-	// n.initRPC(params.RpcHostURL)
-	// n.initApi(params.RestApiHostURL)
 
 	err := n.Rehydrate()
 	if err != nil {
@@ -94,18 +96,22 @@ func NewNode(params NewNodeParams) (*NodeImpl, error) {
 
 	n.applyLog()
 
-	for i := 0; i < len(params.PeerRpcURLs); i++ {
-		n.NextIndex = append(n.NextIndex, len(n.Logs)+1)
-		n.MatchIndex = append(n.MatchIndex, 0)
+	for _, peer := range n.Peers {
+		n.NextIndex[peer.ID] = len(n.Logs) + 1
+		n.MatchIndex[peer.ID] = 0
 	}
 
-	// n.ConnectToPeers()
-
-	go n.loop()
 	return n, nil
 }
 
-func (n *NodeImpl) log() *zerolog.Logger {
+func (n *RaftBrainImpl) Start() {
+	n.resetElectionTimeout()
+	n.resetHeartBeatTimeout()
+
+	go n.loop()
+}
+
+func (n *RaftBrainImpl) log() *zerolog.Logger {
 	sub := n.logger.With().
 		Str("state", n.State.String()).
 		Int("voted for", n.VotedFor).
@@ -118,13 +124,13 @@ func (n *NodeImpl) log() *zerolog.Logger {
 	return &sub
 }
 
-func (n NodeImpl) Stop() chan struct{} {
+func (n RaftBrainImpl) Stop() chan struct{} {
 	return n.stop
 }
 
-func (n *NodeImpl) resetElectionTimeout() {
+func (n *RaftBrainImpl) resetElectionTimeout() {
 	randomElectionTimeOut := time.Duration(common.RandInt(n.MinRandomDuration, n.MaxRandomDuration)) * time.Millisecond
-	randomElectionTimeOut *= 5
+	randomElectionTimeOut *= 2
 	n.log().Info().Interface("seconds", randomElectionTimeOut.Seconds()).Msg("resetElectionTimeout")
 	if n.ElectionTimeOut == nil {
 		n.ElectionTimeOut = time.NewTimer(randomElectionTimeOut)
@@ -133,7 +139,7 @@ func (n *NodeImpl) resetElectionTimeout() {
 	}
 }
 
-func (n *NodeImpl) resetHeartBeatTimeout() {
+func (n *RaftBrainImpl) resetHeartBeatTimeout() {
 	randomHeartBeatTimeout := time.Duration(common.RandInt(n.MinRandomDuration, n.MaxRandomDuration)) * time.Millisecond
 	n.log().Info().Interface("seconds", randomHeartBeatTimeout.Seconds()).Msg("resetHeartBeatTimeout")
 	if n.HeartBeatTimeOut == nil {

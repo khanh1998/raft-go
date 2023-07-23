@@ -2,7 +2,6 @@ package logic
 
 import (
 	"errors"
-	"fmt"
 	"khanh/raft-go/common"
 )
 
@@ -16,7 +15,7 @@ var (
 	MsgTheRequesterLogsAreOutOfDate         = "the requestor logs are out of date"
 )
 
-func (n *NodeImpl) ServeClientRequest(req common.ClientRequest) error {
+func (n *RaftBrainImpl) ServeClientRequest(req common.ClientRequest) error {
 	if n.State == StateLeader {
 		n.AppendLog(common.Log{
 			Term:   n.CurrentTerm,
@@ -31,13 +30,8 @@ func (n *NodeImpl) ServeClientRequest(req common.ClientRequest) error {
 	}
 }
 
-func (n *NodeImpl) Ping(name string, message *string) (err error) {
-	*message = fmt.Sprintf("Hello %s from %v", name, n.ID)
-	return nil
-}
-
 // AppendEntries Invoked by leader to replicate log entries (§5.3); also used as heartbeat (§5.2).
-func (n *NodeImpl) AppendEntries(input *common.AppendEntriesInput, output *common.AppendEntriesOutput) (err error) {
+func (n *RaftBrainImpl) AppendEntries(input *common.AppendEntriesInput, output *common.AppendEntriesOutput) (err error) {
 	n.log().Info().
 		Interface("ID", n.ID).
 		Interface("req", input).
@@ -134,7 +128,7 @@ func (n *NodeImpl) AppendEntries(input *common.AppendEntriesInput, output *commo
 }
 
 // Invoked by candidates to gather votes (§5.2).
-func (n *NodeImpl) RequestVote(input *common.RequestVoteInput, output *common.RequestVoteOutput) (err error) {
+func (n *RaftBrainImpl) RequestVote(input *common.RequestVoteInput, output *common.RequestVoteOutput) (err error) {
 	n.log().Info().
 		Interface("ID", n.ID).
 		Interface("req", input).

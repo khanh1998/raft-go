@@ -13,6 +13,7 @@ type RaftBrain interface {
 
 type HttpProxy struct {
 	brain RaftBrain
+	host  string
 }
 
 type NewHttpProxyParams struct {
@@ -20,8 +21,7 @@ type NewHttpProxyParams struct {
 }
 
 func NewHttpProxy(params NewHttpProxyParams) *HttpProxy {
-	h := HttpProxy{}
-	h.initApi(params.URL)
+	h := HttpProxy{host: params.URL}
 
 	return &h
 }
@@ -30,7 +30,7 @@ func (h *HttpProxy) SetBrain(brain RaftBrain) {
 	h.brain = brain
 }
 
-func (h HttpProxy) initApi(url string) {
+func (h HttpProxy) Start() {
 	gin.SetMode(gin.ReleaseMode)
 	r := gin.New()
 	r.POST("/data", func(c *gin.Context) {
@@ -48,6 +48,6 @@ func (h HttpProxy) initApi(url string) {
 	})
 
 	go func() {
-		r.Run(url)
+		r.Run(h.host)
 	}()
 }

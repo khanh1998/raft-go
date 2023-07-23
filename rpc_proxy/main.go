@@ -51,7 +51,7 @@ func NewRPCImpl(params NewRPCImplParams) *RPCProxyImpl {
 	r := RPCProxyImpl{hostID: params.HostID, hostURL: params.HostURL}
 
 	r.initRPCProxy(params.HostURL)
-	r.ConnectToPeers(params.Peers)
+	// r.ConnectToPeers(params.Peers)
 
 	return &r
 }
@@ -65,27 +65,30 @@ func (r *RPCProxyImpl) ConnectToPeers(params []PeerRPCProxyConnectInfo) {
 
 	var count sync.WaitGroup
 
-	for _, param := range params {
+	for _, peer := range params {
 		count.Add(1)
-		go func(url string, index int) {
+		go func(peerURL string, peerID int) {
 			for i := 0; i < 5; i++ {
-				r.log().Info().Msgf("dialing %s", url)
-				client, err := rpc.Dial("tcp", url)
+				r.log().Info().Msgf("dialing %s", peerURL)
+				client, err := rpc.Dial("tcp", peerURL)
 				if err != nil {
 					time.Sleep(3 * time.Second)
 					r.log().Err(err).Msg("Client connection error: ")
 					continue
 				} else {
-					r.log().Info().Msgf("connect to %s successfully", url)
-					r.peers[index] = PeerRPCProxy{
+					r.log().Info().Msgf("connect to %s successfully", peerURL)
+					r.peers[peerID] = PeerRPCProxy{
 						conn: client,
-						url:  url,
+						url:  peerURL,
 					}
 
 					var message string
-					err = client.Call("NodeImpl.Ping", fmt.Sprintf("Node %v", r.hostID), &message)
+
+					timeout := 5 * time.Second
+
+					err := r.SendPing(peerID, &timeout)
 					if err != nil {
-						log.Err(err).Str("url", url).Msg("cannot ping")
+						log.Err(err).Str("url", peerURL).Msg("cannot ping")
 					} else {
 						log.Info().Msg(message)
 					}
@@ -95,7 +98,7 @@ func (r *RPCProxyImpl) ConnectToPeers(params []PeerRPCProxyConnectInfo) {
 
 			}
 			count.Done()
-		}(param.URL, param.ID)
+		}(peer.URL, peer.ID)
 	}
 
 	count.Wait()
