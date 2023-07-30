@@ -25,7 +25,7 @@ func (n *RaftBrainImpl) DeleteLogFrom(index int) error {
 	n.LastApplied = 0
 	n.CommitIndex = 0
 	// clear all data in state machine, so logs can be applied from beggining later.
-	n.StateMachine.Reset()
+	n.StateMachine = common.NewKeyValueStateMachine()
 
 	return nil
 }
@@ -106,11 +106,6 @@ func (n *RaftBrainImpl) isLogUpToDate(lastLogIndex int, lastLogTerm int) bool {
 // All servers: If commitIndex > lastApplied: increment lastApplied,
 // apply log[lastApplied] to state machine (§5.3)
 func (n *RaftBrainImpl) applyLog() {
-	n.log().Info().
-		Interface("state_machine", n.StateMachine.GetData()).
-		Interface("logs", n.Logs).
-		Msg("applyLog: before")
-
 	for n.CommitIndex > n.LastApplied {
 		n.LastApplied += 1
 
@@ -119,15 +114,8 @@ func (n *RaftBrainImpl) applyLog() {
 			break
 		}
 
-		for _, val := range log.Values {
-			n.StateMachine.Put(val)
-		}
+		n.StateMachine.Process(log.Command)
 	}
-
-	n.log().Info().
-		Interface("state_machine", n.StateMachine.GetData()).
-		Interface("logs", n.Logs).
-		Msg("applyLog: after")
 }
 
 func (n *RaftBrainImpl) lastLogInfo() (index, term int) {

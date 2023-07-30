@@ -1,6 +1,7 @@
 package http_proxy
 
 import (
+	"errors"
 	"khanh/raft-go/common"
 	"net/http"
 
@@ -8,7 +9,9 @@ import (
 )
 
 type RaftBrain interface {
-	ServeClientRequest(req common.ClientRequest) error
+	ClientRequest(input *common.ClientQueryInput, output *common.ClientQueryOutput) (err error)
+	RegisterClient(input *common.RegisterClientInput, output *common.RegisterClientOutput) (err error)
+	ClientQuery(input *common.ClientQueryInput, output *common.ClientQueryOutput) (err error)
 }
 
 type HttpProxy struct {
@@ -34,12 +37,15 @@ func (h HttpProxy) Start() {
 	gin.SetMode(gin.ReleaseMode)
 	r := gin.New()
 	r.POST("/data", func(c *gin.Context) {
-		var request common.ClientRequest
+		var request common.ClientRequestInput
 		if err := c.BindJSON(&request); err != nil {
 			return
 		}
 
-		err := h.brain.ServeClientRequest(request)
+		// TODO: 	add option so that client can send a synchronize request
+		// TODO:	 	solution when client connected to a follower
+		// err := h.brain.ServeClientRequest(request)
+		err := errors.New("")
 		if err != nil {
 			c.IndentedJSON(http.StatusInternalServerError, err)
 		} else {

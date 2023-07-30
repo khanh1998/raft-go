@@ -33,14 +33,17 @@ func Test_nodeImpl_Serialize(t *testing.T) {
 			fields: fields{
 				CurrentTerm: 3,
 				VotedFor:    1,
-				Logs:        []common.Log{{1, []common.Entry{{"x", 1, common.Divide}}}, {2, []common.Entry{{"x", 1, common.Multiply}, {"y", 3, common.Plus}}}},
+				Logs: []common.Log{
+					{Term: 1, Command: "set x 1"},
+					{Term: 2, Command: "set y 3"},
+				},
 			},
 			want: map[string]string{
 				"current_term": "3",
 				"voted_for":    "1",
 				"log_count":    "2",
-				"log_0":        "1|x,1,div;",
-				"log_1":        "2|x,1,mul;y,3,plus;",
+				"log_0":        "1|set x 1",
+				"log_1":        "2|set y 3",
 			},
 		},
 	}
@@ -79,25 +82,33 @@ func Test_nodeImpl_Deserialize(t *testing.T) {
 				VotedFor:    3,
 				Logs:        []common.Log{},
 			},
-			args: args{map[string]string{
-				"current_term": "1",
-				"voted_for":    "3",
-				"log_count":    "0",
-			}},
+			args: args{
+				data: map[string]string{
+					"current_term": "1",
+					"voted_for":    "3",
+					"log_count":    "0",
+				},
+			},
 			wantErr: false,
 		},
 		{
 			want: fields{
 				CurrentTerm: 1,
 				VotedFor:    3,
-				Logs:        []common.Log{{1, []common.Entry{{"x", 1, common.Divide}}}, {2, []common.Entry{{"x", 1, common.Multiply}, {"y", 3, common.Plus}}}}},
-			args: args{map[string]string{
-				"current_term": "1",
-				"voted_for":    "3",
-				"log_count":    "2",
-				"log_0":        "1|x,1,div;",
-				"log_1":        "2|x,1,mul;y,3,plus;",
-			}},
+				Logs: []common.Log{
+					{Term: 1, Command: "set x 1"},
+					{Term: 2, Command: "set y 3"},
+				},
+			},
+			args: args{
+				data: map[string]string{
+					"current_term": "1",
+					"voted_for":    "3",
+					"log_count":    "2",
+					"log_0":        "1|set x 1",
+					"log_1":        "2|set y 3",
+				},
+			},
 			wantErr: false,
 		},
 	}

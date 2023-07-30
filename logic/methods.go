@@ -15,11 +15,11 @@ var (
 	MsgTheRequesterLogsAreOutOfDate         = "the requestor logs are out of date"
 )
 
-func (n *RaftBrainImpl) ServeClientRequest(req common.ClientRequest) error {
+func (n *RaftBrainImpl) ServeClientRequest(req common.ClientRequestInput) error {
 	if n.State == StateLeader {
 		n.AppendLog(common.Log{
-			Term:   n.CurrentTerm,
-			Values: req.Data,
+			Term:    n.CurrentTerm,
+			Command: req.Command,
 		})
 
 		return nil

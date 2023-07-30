@@ -22,15 +22,15 @@ func (s RaftState) String() string {
 }
 
 type RaftBrainImpl struct {
+	// TODO: add mutex
 	logger            *zerolog.Logger
 	DB                persistance.Persistence
 	Peers             []PeerInfo
 	State             RaftState
 	ID                int
-	StateMachine      common.StateMachine
+	StateMachine      SimpleStateMachine
 	ElectionTimeOut   *time.Timer
 	HeartBeatTimeOut  *time.Timer
-	stop              chan struct{}
 	Quorum            int
 	MinRandomDuration int64
 	MaxRandomDuration int64
@@ -49,6 +49,10 @@ type RaftBrainImpl struct {
 	// Reinitialized after election
 	NextIndex  map[int]int // for each server, index of the next log entry to send to that server (initialized to leader last log index + 1)
 	MatchIndex map[int]int // for each server, index of highest log entry known to be replicated on server (initialized to 0, increases monotonically)
+}
+
+type SimpleStateMachine interface {
+	Process(command any) (result any, err error)
 }
 
 type RPCProxy interface {
@@ -78,8 +82,7 @@ func NewRaftBrain(params NewRaftBrainParams) (*RaftBrainImpl, error) {
 		VotedFor:     0,
 		Quorum:       int(math.Ceil(float64(len(params.Peers)) / 2.0)),
 		DB:           persistance.NewPersistence(params.DataFileName),
-		stop:         make(chan struct{}),
-		StateMachine: common.NewStateMachine(),
+		StateMachine: common.NewKeyValueStateMachine(),
 
 		MinRandomDuration: params.MinRandomDuration,
 		MaxRandomDuration: params.MaxRandomDuration,
@@ -122,10 +125,6 @@ func (n *RaftBrainImpl) log() *zerolog.Logger {
 		Interface("matchIndex", n.MatchIndex).
 		Logger()
 	return &sub
-}
-
-func (n RaftBrainImpl) Stop() chan struct{} {
-	return n.stop
 }
 
 func (n *RaftBrainImpl) resetElectionTimeout() {

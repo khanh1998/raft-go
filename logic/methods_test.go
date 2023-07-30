@@ -162,15 +162,9 @@ func Test_nodeImpl_AppendEntries(t *testing.T) {
 				VotedFor:    5,
 				CurrentTerm: 3,
 				Logs: []common.Log{
-					{Term: 1, Values: []common.Entry{
-						{Key: "x", Value: 5, Opcode: common.Overwrite}},
-					},
-					{Term: 2, Values: []common.Entry{
-						{Key: "x", Value: 5, Opcode: common.Overwrite}},
-					},
-					{Term: 2, Values: []common.Entry{
-						{Key: "x", Value: 5, Opcode: common.Overwrite}},
-					},
+					{Term: 1, Command: "set x 5"},
+					{Term: 2, Command: "set x 5"},
+					{Term: 2, Command: "set x 5"},
 				},
 				DB:                persistance.NewPersistenceMock(),
 				logger:            &log.Logger,
@@ -205,12 +199,7 @@ func Test_nodeImpl_AppendEntries(t *testing.T) {
 				PrevLogIndex: 0,
 				PrevLogTerm:  0,
 				Entries: []common.Log{
-					{
-						Term: 1, //
-						Values: []common.Entry{
-							{Key: "z", Value: 3, Opcode: common.Overwrite},
-						},
-					},
+					{Term: 1, Command: "set z 3"},
 				},
 			},
 			out: common.AppendEntriesOutput{
@@ -226,12 +215,8 @@ func Test_nodeImpl_AppendEntries(t *testing.T) {
 				VotedFor:    5,
 				CurrentTerm: 3,
 				Logs: []common.Log{
-					{Term: 1, Values: []common.Entry{
-						{Key: "x", Value: 5, Opcode: common.Overwrite}},
-					},
-					{Term: 2, Values: []common.Entry{
-						{Key: "y", Value: 5, Opcode: common.Overwrite}},
-					},
+					{Term: 1, Command: "set x 5"},
+					{Term: 2, Command: "set y 5"},
 				},
 				DB:                persistance.NewPersistenceMock(),
 				logger:            &log.Logger,
@@ -243,12 +228,7 @@ func Test_nodeImpl_AppendEntries(t *testing.T) {
 				PrevLogIndex: 2,
 				PrevLogTerm:  2,
 				Entries: []common.Log{
-					{
-						Term: 1,
-						Values: []common.Entry{
-							{Key: "z", Value: 3, Opcode: common.Overwrite},
-						},
-					},
+					{Term: 1, Command: "set z 3"},
 				},
 			},
 			out: common.AppendEntriesOutput{
@@ -264,18 +244,14 @@ func Test_nodeImpl_AppendEntries(t *testing.T) {
 				VotedFor:    5,
 				CurrentTerm: 3,
 				Logs: []common.Log{
-					{Term: 1, Values: []common.Entry{
-						{Key: "x", Value: 5, Opcode: common.Overwrite}},
-					},
-					{Term: 2, Values: []common.Entry{
-						{Key: "y", Value: 5, Opcode: common.Overwrite}},
-					},
+					{Term: 1, Command: "set x 5"},
+					{Term: 2, Command: "set y 5"},
 				},
 				DB:                persistance.NewPersistenceMock(),
 				logger:            &log.Logger,
 				MinRandomDuration: 1000,
 				MaxRandomDuration: 10000,
-				StateMachine:      common.NewStateMachine(),
+				StateMachine:      common.NewKeyValueStateMachine(),
 			},
 			in: common.AppendEntriesInput{
 				Term:         3,

@@ -14,9 +14,9 @@ func Test_nodeImpl_DeleteFrom(t *testing.T) {
 	assert.ErrorIs(t, err, ErrLogIsEmtpy)
 
 	data := []common.Log{
-		{Term: 1, Values: []common.Entry{{Key: "", Value: 1, Opcode: common.Divide}}},
-		{Term: 2, Values: []common.Entry{{Key: "", Value: 2, Opcode: common.Divide}}},
-		{Term: 3, Values: []common.Entry{{Key: "", Value: 3, Opcode: common.Divide}}},
+		{Term: 1, Command: "set x 1"},
+		{Term: 2, Command: "set x 2"},
+		{Term: 3, Command: "set x 3"},
 	}
 
 	n = RaftBrainImpl{Logs: make([]common.Log, 3), DB: persistance.NewPersistenceMock()}
