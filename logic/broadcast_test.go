@@ -18,7 +18,7 @@ func TestRaftBrainImpl_BroadCastRequestVote(t *testing.T) {
 	type fields struct {
 		logger            *zerolog.Logger
 		DB                persistance.Persistence
-		Peers             []PeerInfo
+		Peers             []common.PeerInfo
 		State             RaftState
 		ID                int
 		StateMachine      SimpleStateMachine
@@ -45,7 +45,7 @@ func TestRaftBrainImpl_BroadCastRequestVote(t *testing.T) {
 			fields: fields{
 				logger:            &zerolog.Logger{},
 				DB:                persistance.NewPersistenceMock(),
-				Peers:             []PeerInfo{{ID: 2, URL: ""}},
+				Peers:             []common.PeerInfo{{ID: 2, URL: ""}},
 				State:             StateCandidate,
 				ID:                1,
 				StateMachine:      common.NewKeyValueStateMachine(),

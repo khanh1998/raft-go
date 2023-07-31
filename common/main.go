@@ -29,3 +29,8 @@ type RequestVoteOutput struct {
 	Message     string // for debuging purpose
 	NodeID      int    // id of the responder
 }
+
+type PeerInfo struct {
+	ID  int
+	URL string
+}

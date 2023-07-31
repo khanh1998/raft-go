@@ -25,7 +25,7 @@ type RaftBrainImpl struct {
 	// TODO: add mutex
 	logger            *zerolog.Logger
 	DB                persistance.Persistence
-	Peers             []PeerInfo
+	Peers             []common.PeerInfo
 	State             RaftState
 	ID                int
 	StateMachine      SimpleStateMachine
@@ -68,7 +68,7 @@ type PeerInfo struct {
 
 type NewRaftBrainParams struct {
 	ID                int
-	Peers             []PeerInfo
+	Peers             []common.PeerInfo
 	DataFileName      string
 	MinRandomDuration int64
 	MaxRandomDuration int64
@@ -100,8 +100,10 @@ func NewRaftBrain(params NewRaftBrainParams) (*RaftBrainImpl, error) {
 	n.applyLog()
 
 	for _, peer := range n.Peers {
-		n.NextIndex[peer.ID] = len(n.Logs) + 1
-		n.MatchIndex[peer.ID] = 0
+		if peer.ID != n.ID {
+			n.NextIndex[peer.ID] = len(n.Logs) + 1
+			n.MatchIndex[peer.ID] = 0
+		}
 	}
 
 	return n, nil

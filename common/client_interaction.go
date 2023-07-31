@@ -5,7 +5,8 @@ import "net/url"
 type ClientRequestStatus string
 
 const (
-	StatusOK ClientRequestStatus = "OK"
+	StatusOK    ClientRequestStatus = "OK"
+	StatusNotOK ClientRequestStatus = "Not OK"
 
 	NotLeader      string = "NOT_LEADER"
 	SessionExpired string = "SESSION_EXPIRED"

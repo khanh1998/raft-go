@@ -42,7 +42,7 @@ func (r RPCProxyImpl) log() *zerolog.Logger {
 }
 
 type NewRPCImplParams struct {
-	Peers   []PeerRPCProxyConnectInfo
+	Peers   []common.PeerInfo
 	HostID  int
 	HostURL string
 }
@@ -60,12 +60,16 @@ func (r *RPCProxyImpl) SetBrain(brain RaftBrain) {
 	r.brain = brain
 }
 
-func (r *RPCProxyImpl) ConnectToPeers(params []PeerRPCProxyConnectInfo) {
+func (r *RPCProxyImpl) ConnectToPeers(params []common.PeerInfo) {
 	r.peers = make(map[int]PeerRPCProxy)
 
 	var count sync.WaitGroup
 
 	for _, peer := range params {
+		if peer.ID == r.hostID {
+			continue
+		}
+
 		count.Add(1)
 		go func(peerURL string, peerID int) {
 			for i := 0; i < 5; i++ {

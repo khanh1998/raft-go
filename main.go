@@ -2,6 +2,7 @@ package main
 
 import (
 	"flag"
+	"khanh/raft-go/common"
 	"khanh/raft-go/http_proxy"
 	"khanh/raft-go/logic"
 	"khanh/raft-go/node"
@@ -23,6 +24,21 @@ func main() {
 
 	// Output: 2006-01-02T15:04:05Z07:00 | INFO  | ***Hello World**** foo:BAR
 
+	peers := []common.PeerInfo{
+		{
+			ID:  1,
+			URL: ":1234",
+		},
+		{
+			ID:  2,
+			URL: ":1235",
+		},
+		{
+			ID:  3,
+			URL: ":1236",
+		},
+	}
+
 	id := flag.Int("id", 0, "")
 	flag.Parse()
 	params := []node.NewNodeParams{
@@ -33,28 +49,10 @@ func main() {
 				MinRandomDuration: 5000,
 				MaxRandomDuration: 10000,
 				Log:               &log,
-				Peers: []logic.PeerInfo{
-					{
-						ID:  2,
-						URL: ":1235",
-					},
-					{
-						ID:  3,
-						URL: ":1236",
-					},
-				},
+				Peers:             peers,
 			},
 			RPCProxy: rpc_proxy.NewRPCImplParams{
-				Peers: []rpc_proxy.PeerRPCProxyConnectInfo{
-					{
-						ID:  2,
-						URL: ":1235",
-					},
-					{
-						ID:  3,
-						URL: ":1236",
-					},
-				},
+				Peers:   peers,
 				HostID:  1,
 				HostURL: ":1234",
 			},
@@ -69,28 +67,10 @@ func main() {
 				MinRandomDuration: 5000,
 				MaxRandomDuration: 10000,
 				Log:               &log,
-				Peers: []logic.PeerInfo{
-					{
-						ID:  1,
-						URL: ":1234",
-					},
-					{
-						ID:  3,
-						URL: ":1236",
-					},
-				},
+				Peers:             peers,
 			},
 			RPCProxy: rpc_proxy.NewRPCImplParams{
-				Peers: []rpc_proxy.PeerRPCProxyConnectInfo{
-					{
-						ID:  1,
-						URL: ":1234",
-					},
-					{
-						ID:  3,
-						URL: ":1236",
-					},
-				},
+				Peers:   peers,
 				HostID:  2,
 				HostURL: ":1235",
 			},
@@ -105,28 +85,10 @@ func main() {
 				MinRandomDuration: 5000,
 				MaxRandomDuration: 10000,
 				Log:               &log,
-				Peers: []logic.PeerInfo{
-					{
-						ID:  1,
-						URL: ":1234",
-					},
-					{
-						ID:  2,
-						URL: ":1235",
-					},
-				},
+				Peers:             peers,
 			},
 			RPCProxy: rpc_proxy.NewRPCImplParams{
-				Peers: []rpc_proxy.PeerRPCProxyConnectInfo{
-					{
-						ID:  1,
-						URL: ":1234",
-					},
-					{
-						ID:  2,
-						URL: ":1235",
-					},
-				},
+				Peers:   peers,
 				HostID:  3,
 				HostURL: ":1236",
 			},
