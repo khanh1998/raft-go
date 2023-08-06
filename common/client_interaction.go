@@ -1,7 +1,5 @@
 package common
 
-import "net/url"
-
 type ClientRequestStatus string
 
 const (
@@ -21,14 +19,14 @@ type ClientRequestInput struct {
 type ClientRequestOutput struct {
 	Status     ClientRequestStatus `json:"status"`
 	Response   any                 `json:"response"`
-	LeaderHint url.URL             `json:"leader_hint"`
+	LeaderHint string              `json:"leader_hint"`
 }
 
 type RegisterClientInput struct{}
 type RegisterClientOutput struct {
 	Status     ClientRequestStatus `json:"status"`
 	ClientID   int                 `json:"client_id"`
-	LeaderHint url.URL             `json:"leader_hint"`
+	LeaderHint string              `json:"leader_hint"`
 }
 
 type ClientQueryInput struct {
@@ -38,5 +36,5 @@ type ClientQueryInput struct {
 type ClientQueryOutput struct {
 	Status     ClientRequestStatus `json:"status"`
 	Response   any                 `json:"response"`
-	LeaderHint url.URL             `json:"leader_hint"`
+	LeaderHint string              `json:"leader_hint"`
 }

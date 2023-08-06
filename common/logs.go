@@ -9,14 +9,17 @@ import (
 
 // TODO: track the log status by ID
 type Log struct {
-	Term    int
-	Command any
+	Term        int
+	ClientID    int
+	SequenceNum int
+	Command     any
 }
 
 func (l Log) ToString() string {
 	return fmt.Sprintf("%d|%s", l.Term, l.Command)
 }
 
+// TODO: fix this
 func NewLogFromString(s string) (Log, error) {
 	tokens := strings.Split(s, "|")
 	if len(tokens) != 2 {
@@ -30,5 +33,5 @@ func NewLogFromString(s string) (Log, error) {
 
 	command := tokens[1]
 
-	return Log{int(term), command}, nil
+	return Log{Term: int(term), Command: command}, nil
 }

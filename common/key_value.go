@@ -14,22 +14,70 @@ var (
 	ErrNotEnoughParameters = errors.New("not enough parameters")
 )
 
+type ClientEntry struct {
+	LastSequenceNum int
+	LastResponse    any
+}
+
 type KeyValueStateMachine struct {
-	data map[string]string
+	data  map[string]string
+	cache map[int]ClientEntry
 }
 
 func NewKeyValueStateMachine() *KeyValueStateMachine {
-	return &KeyValueStateMachine{data: make(map[string]string)}
+	return &KeyValueStateMachine{
+		data:  make(map[string]string),
+		cache: make(map[int]ClientEntry),
+	}
 }
 
-func (k KeyValueStateMachine) Process(commandIn any) (result any, err error) {
-	command, ok := commandIn.(string)
+func (k KeyValueStateMachine) setCache(clientID int, sequenceNum int, response any) *ClientEntry {
+	if clientID > 0 && sequenceNum >= 0 {
+		data := ClientEntry{
+			LastSequenceNum: sequenceNum,
+			LastResponse:    response,
+		}
+
+		k.cache[clientID] = data
+
+		return &data
+	}
+	return nil
+}
+
+var (
+	ErrorSessionExpired = errors.New("session expired: no record of session can be found")
+)
+
+func (k KeyValueStateMachine) Process(clientID int, sequenceNum int, commandIn any, logIndex int) (result any, err error) {
+	client, ok := k.cache[clientID]
 	if !ok {
-		return "", ErrKeyMustBeString
+		return nil, errors.New("session expired")
+	}
+
+	defer func() {
+		k.setCache(clientID, sequenceNum, result)
+	}()
+
+	if sequenceNum > 0 && sequenceNum < client.LastSequenceNum {
+		return nil, errors.New("old command")
+	}
+
+	if sequenceNum > 0 && sequenceNum == client.LastSequenceNum {
+		return client.LastResponse, nil
+	}
+
+	command, clientExist := commandIn.(string)
+	if !clientExist {
+		return nil, ErrKeyMustBeString
 	}
 
 	if len(command) == 0 {
-		return "", ErrCommandIsEmpty
+		return nil, ErrCommandIsEmpty
+	}
+
+	if strings.EqualFold(command, NoOperation) {
+		return nil, nil
 	}
 
 	tokens := strings.Split(command, " ")
@@ -38,7 +86,7 @@ func (k KeyValueStateMachine) Process(commandIn any) (result any, err error) {
 	switch cmd {
 	case "get":
 		if len(tokens) < 2 {
-			return "", ErrNotEnoughParameters
+			return nil, ErrNotEnoughParameters
 		}
 
 		key := tokens[1]
@@ -46,16 +94,21 @@ func (k KeyValueStateMachine) Process(commandIn any) (result any, err error) {
 		return k.get(key)
 	case "set":
 		if len(tokens) < 3 {
-			return "", ErrNotEnoughParameters
+			return nil, ErrNotEnoughParameters
 		}
 
 		key := tokens[1]
 		value := tokens[2]
 
 		return k.set(key, value)
+	case "register":
+		clientID = logIndex
+		sequenceNum = 0
+		result = nil
+		k.cache[clientID] = ClientEntry{} // register
 	}
 
-	return "", ErrUnsupportedCommand
+	return nil, ErrUnsupportedCommand
 }
 
 func (k KeyValueStateMachine) get(key string) (value string, err error) {

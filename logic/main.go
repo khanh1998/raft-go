@@ -1,9 +1,11 @@
 package logic
 
 import (
+	"fmt"
 	"khanh/raft-go/common"
 	"khanh/raft-go/persistance"
 	"math"
+	"sync"
 	"time"
 
 	"github.com/rs/zerolog"
@@ -21,7 +23,10 @@ func (s RaftState) String() string {
 	return string(s)
 }
 
+type SessionManager interface{}
+
 type RaftBrainImpl struct {
+	lock sync.RWMutex
 	// TODO: add mutex
 	logger            *zerolog.Logger
 	DB                persistance.Persistence
@@ -35,6 +40,8 @@ type RaftBrainImpl struct {
 	MinRandomDuration int64
 	MaxRandomDuration int64
 	RpcProxy          RPCProxy
+	Session           SessionManager
+	ARM               AsyncResponseManager
 	// Persistent state on all servers:
 	// Updated on stable storage before responding to RPCs
 	CurrentTerm int          // latest term server has seen (initialized to 0 on first boot, increases monotonically)
@@ -51,8 +58,111 @@ type RaftBrainImpl struct {
 	MatchIndex map[int]int // for each server, index of highest log entry known to be replicated on server (initialized to 0, increases monotonically)
 }
 
+type AsyncResponseItem struct {
+	msg       chan any
+	createdAt time.Time
+}
+
+type AsyncResponseIndex struct {
+	LogIndex int
+}
+
+type AsyncResponseManager struct {
+	m    map[AsyncResponseIndex]AsyncResponseItem // client id -> response
+	size int
+	l    sync.Mutex
+}
+
+func NewAsyncResponseManager(size int) AsyncResponseManager {
+	return AsyncResponseManager{m: map[AsyncResponseIndex]AsyncResponseItem{}, size: size}
+}
+
+func (a *AsyncResponseManager) GetAndDeleteResponse(logIndex int) (any, error) {
+	a.l.Lock()
+	defer a.l.Unlock()
+
+	index := AsyncResponseIndex{logIndex}
+
+	_, ok := a.m[index]
+	if !ok {
+		return nil, fmt.Errorf("there are no cached respose for log index: %d", logIndex)
+	}
+
+	defer delete(a.m, index)
+
+	return a.m[index], nil
+}
+
+func (a *AsyncResponseManager) Register(logIndex int) error {
+	a.l.Lock()
+	defer a.l.Unlock()
+
+	index := AsyncResponseIndex{logIndex}
+
+	_, ok := a.m[index]
+	if ok {
+		return fmt.Errorf("already registered log index: %d", logIndex)
+	}
+
+	a.m[index] = AsyncResponseItem{
+		msg:       make(chan any),
+		createdAt: time.Now(),
+	}
+
+	return nil
+}
+
+func (a *AsyncResponseManager) PutResponse(logIndex int, msg any, resErr error) error {
+	a.l.Lock()
+	defer a.l.Unlock()
+
+	index := AsyncResponseIndex{logIndex}
+
+	_, ok := a.m[index]
+	if !ok {
+		// return fmt.Errorf("register log index: %d first", logIndex)
+		return nil
+	}
+
+	select {
+	case a.m[index].msg <- msg:
+	default:
+		return fmt.Errorf("channel log index: %d is not empty", logIndex)
+	}
+
+	return nil
+}
+
+// blocking call
+func (a *AsyncResponseManager) TakeResponse(logIndex int, timeout time.Duration) (any, error) {
+	a.l.Lock()
+	defer a.l.Unlock()
+
+	index := AsyncResponseIndex{logIndex}
+
+	item, ok := a.m[index]
+	if !ok {
+		return nil, fmt.Errorf("register log index: %d first", logIndex)
+	}
+
+	select {
+	case res := <-item.msg:
+		close(item.msg)
+		delete(a.m, index)
+		return res, nil
+	case <-time.After(timeout):
+		return nil, fmt.Errorf("timeout error: can't get messsage")
+	}
+}
+
+type LogAppliedEvent struct {
+	SequenceNum int
+	Response    any
+	Err         error
+}
+
 type SimpleStateMachine interface {
-	Process(command any) (result any, err error)
+	Process(clientID int, sequenceNum int, commandIn any, logIndex int) (result any, err error)
 }
 
 type RPCProxy interface {
@@ -83,6 +193,7 @@ func NewRaftBrain(params NewRaftBrainParams) (*RaftBrainImpl, error) {
 		Quorum:       int(math.Ceil(float64(len(params.Peers)) / 2.0)),
 		DB:           persistance.NewPersistence(params.DataFileName),
 		StateMachine: common.NewKeyValueStateMachine(),
+		ARM:          NewAsyncResponseManager(100),
 
 		MinRandomDuration: params.MinRandomDuration,
 		MaxRandomDuration: params.MaxRandomDuration,

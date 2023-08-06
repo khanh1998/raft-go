@@ -1,5 +1,7 @@
 package common
 
+const NoOperation = "NO-OP"
+
 type AppendEntriesInput struct {
 	Term         int   // leader’s term
 	LeaderID     int   // so follower can redirect clients
