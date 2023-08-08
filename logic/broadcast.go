@@ -27,8 +27,8 @@ func (n *RaftBrainImpl) BroadCastRequestVote() {
 			LastLogTerm:  lastLogTerm,
 		}
 
-		responses := make(map[int]*common.RequestVoteOutput, len(n.Peers))
-		voteGrantedCount := 1 // voted for itself first
+		responses := make(map[int]*common.RequestVoteOutput, len(n.Peers)) // TODO: data race
+		voteGrantedCount := 1                                              // TODO: data race// voted for itself first
 		maxTerm := n.CurrentTerm
 		maxTermID := -1
 
@@ -93,10 +93,10 @@ func (n *RaftBrainImpl) BroadcastAppendEntries() {
 		n.resetHeartBeatTimeout()
 		n.log().Info().Msg("BroadcastAppendEntries")
 
-		successCount := 0
+		successCount := 0 // TODO: data race
 		maxTerm := n.CurrentTerm
 		maxTermID := -1
-		responses := make(map[int]*common.AppendEntriesOutput, len(n.Peers))
+		m := sync.Map{}
 
 		// If last log index ≥ nextIndex for a follower: send AppendEntries RPC with log entries starting at nextIndex
 		// • If successful: update nextIndex and matchIndex for
@@ -135,7 +135,7 @@ func (n *RaftBrainImpl) BroadcastAppendEntries() {
 				if err != nil {
 					n.log().Err(err).Msg("BroadcastAppendEntries: ")
 				} else {
-					responses[peerID] = &output
+					m.Store(peerID, &output)
 
 					if output.Success && output.Term > n.CurrentTerm {
 						n.log().Fatal().Interface("response", output).Msg("inconsistent response")
@@ -160,6 +160,14 @@ func (n *RaftBrainImpl) BroadcastAppendEntries() {
 			}(peer.ID)
 		}
 		count.Wait()
+
+		responses := make(map[int]*common.AppendEntriesOutput, len(n.Peers))
+		for _, item := range n.Peers {
+			r, ok := m.Load(item.ID)
+			if ok {
+				responses[item.ID] = r.(*common.AppendEntriesOutput)
+			}
+		}
 
 		n.log().Info().
 			Int("ID", n.ID).

@@ -96,6 +96,7 @@ func (h HttpProxy) Start() {
 
 	h.clientRequest(r)
 	h.registerClient(r)
+	h.clientQuery(r)
 
 	go func() {
 		r.Run(h.host)

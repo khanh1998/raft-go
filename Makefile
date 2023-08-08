@@ -1,8 +1,11 @@
 node1:
+	# go run -race main.go -id=0
 	go run main.go -id=0
 node2:
+	# go run -race main.go -id=1
 	go run main.go -id=1
 node3:
+	# go run -race main.go -id=2
 	go run main.go -id=2
 clear:
 	rm -f log.1.dat

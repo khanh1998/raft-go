@@ -1,11 +1,11 @@
 package logic
 
-import "khanh/raft-go/common"
+import (
+	"khanh/raft-go/common"
+	"time"
+)
 
 func (n *RaftBrainImpl) DeleteLogFrom(index int) error {
-	n.lock.Lock()
-	defer n.lock.Unlock()
-
 	defer func() {
 		data := n.Serialize(true, true, "DeleteLogFrom")
 		if err := n.DB.AppendLog(data); err != nil {
@@ -52,15 +52,15 @@ func (n *RaftBrainImpl) AppendLog(logItem common.Log) int {
 		}
 	}()
 
-	n.lock.Lock()
 	n.Logs = append(n.Logs, logItem)
 	index := len(n.Logs)
-	n.lock.Unlock()
+
+	n.log().Info().Interface("log", logItem).Msg("AppendLog")
 
 	return index
 }
 
-func (n RaftBrainImpl) GetLog(index int) (common.Log, error) {
+func (n *RaftBrainImpl) GetLog(index int) (common.Log, error) {
 	if len(n.Logs) == 0 {
 		return common.Log{}, ErrLogIsEmtpy
 	}
@@ -125,9 +125,13 @@ func (n *RaftBrainImpl) applyLog() {
 		res, err := n.StateMachine.Process(log.ClientID, log.SequenceNum, log.Command, n.LastApplied)
 
 		if n.State == StateLeader {
-			err = n.ARM.PutResponse(n.LastApplied, res, err)
+			err = n.ARM.PutResponse(n.LastApplied, res, err, 30*time.Second)
 			if err != nil {
-				n.log().Err(err).Msg("ApplyLog")
+				n.log().Err(err).Msg("ApplyLog_PutResponse")
+			} else {
+				n.log().Info().
+					Interface("log", log).
+					Msg("applyLog_PutResponse")
 			}
 		}
 	}

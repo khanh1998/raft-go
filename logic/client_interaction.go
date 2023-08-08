@@ -33,11 +33,11 @@ func (r *RaftBrainImpl) ClientRequest(input *common.ClientRequestInput, output *
 	}
 
 	index := r.AppendLog(common.Log{
-		Term:    r.CurrentTerm,
-		Command: input.Command,
+		Term:        r.CurrentTerm,
+		Command:     input.Command,
+		ClientID:    input.ClientID,
+		SequenceNum: input.SequenceNum,
 	})
-
-	r.BroadcastAppendEntries()
 
 	var status common.ClientRequestStatus = common.StatusOK
 	var response any = nil
@@ -46,11 +46,11 @@ func (r *RaftBrainImpl) ClientRequest(input *common.ClientRequestInput, output *
 		r.log().Err(err).Msg("ClientRequest_Register")
 	}
 
-	response, err = r.ARM.TakeResponse(index, 60*time.Second)
+	response, err = r.ARM.TakeResponse(index, 30*time.Second)
 	if err != nil {
 		status = common.StatusNotOK
 
-		if err == common.ErrorSessionExpired {
+		if errors.Is(err, common.ErrorSessionExpired) {
 			response = common.SessionExpired
 		}
 
@@ -84,16 +84,16 @@ func (r *RaftBrainImpl) RegisterClient(input *common.RegisterClientInput, output
 		Command:     "register",
 	})
 
-	r.BroadcastAppendEntries()
-
 	var status common.ClientRequestStatus = common.StatusOK
 
 	if err := r.ARM.Register(index); err != nil {
 		r.log().Err(err).Msg("RegisterClient_Register")
 	}
 
-	_, err = r.ARM.TakeResponse(index, 60*time.Second)
+	_, err = r.ARM.TakeResponse(index, 30*time.Second)
 	if err != nil {
+		r.log().Err(err).Msg("RegisterClient_TakeResponse")
+
 		status = common.StatusNotOK
 	}
 
@@ -110,13 +110,16 @@ func (r *RaftBrainImpl) ClientQuery(input *common.ClientQueryInput, output *comm
 	defer func() {
 		if err != nil {
 			output.Status = common.StatusNotOK
+			output.Response = err.Error()
 		}
 	}()
+
 	if r.State != StateLeader {
 		leaderUrl := r.getLeaderUrl()
 
 		*output = common.ClientQueryOutput{
 			Status:     common.StatusNotOK,
+			Response:   common.NotLeader,
 			LeaderHint: leaderUrl,
 		}
 
@@ -143,7 +146,7 @@ func (r *RaftBrainImpl) ClientQuery(input *common.ClientQueryInput, output *comm
 
 	realIndex := r.CommitIndex
 
-	r.BroadcastAppendEntries() // heartbeat only
+	r.BroadcastAppendEntries() // TODO: heartbeat only
 
 	ok = false
 	for i := 0; i < 100; i++ {

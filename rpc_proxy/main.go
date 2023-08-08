@@ -25,7 +25,7 @@ type PeerRPCProxy struct {
 }
 
 type RPCProxyImpl struct {
-	peers   map[int]PeerRPCProxy
+	peers   map[int]PeerRPCProxy // TODO: data race
 	hostID  int
 	hostURL string
 	brain   RaftBrain

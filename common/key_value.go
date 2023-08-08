@@ -3,15 +3,19 @@ package common
 import (
 	"errors"
 	"strings"
+
+	"github.com/rs/zerolog/log"
 )
 
 var (
-	ErrKeyDoesNotExist     = errors.New("key does not exist")
-	ErrKeyMustBeString     = errors.New("key must be string")
-	ErrValueMustBeString   = errors.New("value must be string")
-	ErrCommandIsEmpty      = errors.New("command is empty")
-	ErrUnsupportedCommand  = errors.New("command is unsupported")
-	ErrNotEnoughParameters = errors.New("not enough parameters")
+	ErrKeyDoesNotExist        = errors.New("key does not exist")
+	ErrKeyMustBeString        = errors.New("key must be string")
+	ErrValueMustBeString      = errors.New("value must be string")
+	ErrCommandIsEmpty         = errors.New("command is empty")
+	ErrUnsupportedCommand     = errors.New("command is unsupported")
+	ErrNotEnoughParameters    = errors.New("not enough parameters")
+	ErrorSessionExpired       = errors.New("session expired: no record of session can be found")
+	ErrorSequenceNumProcessed = errors.New("sequence number already processed")
 )
 
 type ClientEntry struct {
@@ -45,22 +49,29 @@ func (k KeyValueStateMachine) setCache(clientID int, sequenceNum int, response a
 	return nil
 }
 
-var (
-	ErrorSessionExpired = errors.New("session expired: no record of session can be found")
-)
-
 func (k KeyValueStateMachine) Process(clientID int, sequenceNum int, commandIn any, logIndex int) (result any, err error) {
 	client, ok := k.cache[clientID]
-	if !ok {
-		return nil, errors.New("session expired")
+	if clientID > 0 && !ok {
+		return nil, ErrorSessionExpired
 	}
 
 	defer func() {
 		k.setCache(clientID, sequenceNum, result)
+
+		log.Info().
+			Int("client id", clientID).
+			Int("sequence num", sequenceNum).
+			Interface("command", commandIn).
+			Int("log index", logIndex).
+			Msg("Process")
+		log.Info().
+			Interface("data", k.data).
+			Interface("cache", k.cache).
+			Msg("Process")
 	}()
 
 	if sequenceNum > 0 && sequenceNum < client.LastSequenceNum {
-		return nil, errors.New("old command")
+		return nil, ErrorSequenceNumProcessed
 	}
 
 	if sequenceNum > 0 && sequenceNum == client.LastSequenceNum {
@@ -106,6 +117,8 @@ func (k KeyValueStateMachine) Process(clientID int, sequenceNum int, commandIn a
 		sequenceNum = 0
 		result = nil
 		k.cache[clientID] = ClientEntry{} // register
+
+		return nil, nil
 	}
 
 	return nil, ErrUnsupportedCommand

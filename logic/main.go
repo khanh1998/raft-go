@@ -9,6 +9,7 @@ import (
 	"time"
 
 	"github.com/rs/zerolog"
+	"github.com/rs/zerolog/log"
 )
 
 type RaftState string
@@ -26,7 +27,6 @@ func (s RaftState) String() string {
 type SessionManager interface{}
 
 type RaftBrainImpl struct {
-	lock sync.RWMutex
 	// TODO: add mutex
 	logger            *zerolog.Logger
 	DB                persistance.Persistence
@@ -54,12 +54,16 @@ type RaftBrainImpl struct {
 
 	// Volatile state on leaders:
 	// Reinitialized after election
-	NextIndex  map[int]int // for each server, index of the next log entry to send to that server (initialized to leader last log index + 1)
-	MatchIndex map[int]int // for each server, index of highest log entry known to be replicated on server (initialized to 0, increases monotonically)
+	NextIndex  map[int]int // for each server, index of the next log entry to send to that server (initialized to leader last log index + 1) // TODO: data race
+	MatchIndex map[int]int // for each server, index of highest log entry known to be replicated on server (initialized to 0, increases monotonically) // TODO: data race
 }
 
 type AsyncResponseItem struct {
-	msg       chan any
+	Response any
+	Err      error
+}
+type AsyncResponse struct {
+	msg       chan AsyncResponseItem
 	createdAt time.Time
 }
 
@@ -68,29 +72,13 @@ type AsyncResponseIndex struct {
 }
 
 type AsyncResponseManager struct {
-	m    map[AsyncResponseIndex]AsyncResponseItem // client id -> response
+	m    map[AsyncResponseIndex]AsyncResponse // client id -> response
 	size int
 	l    sync.Mutex
 }
 
 func NewAsyncResponseManager(size int) AsyncResponseManager {
-	return AsyncResponseManager{m: map[AsyncResponseIndex]AsyncResponseItem{}, size: size}
-}
-
-func (a *AsyncResponseManager) GetAndDeleteResponse(logIndex int) (any, error) {
-	a.l.Lock()
-	defer a.l.Unlock()
-
-	index := AsyncResponseIndex{logIndex}
-
-	_, ok := a.m[index]
-	if !ok {
-		return nil, fmt.Errorf("there are no cached respose for log index: %d", logIndex)
-	}
-
-	defer delete(a.m, index)
-
-	return a.m[index], nil
+	return AsyncResponseManager{m: map[AsyncResponseIndex]AsyncResponse{}, size: size}
 }
 
 func (a *AsyncResponseManager) Register(logIndex int) error {
@@ -104,29 +92,32 @@ func (a *AsyncResponseManager) Register(logIndex int) error {
 		return fmt.Errorf("already registered log index: %d", logIndex)
 	}
 
-	a.m[index] = AsyncResponseItem{
-		msg:       make(chan any),
+	a.m[index] = AsyncResponse{
+		msg:       make(chan AsyncResponseItem, 1),
 		createdAt: time.Now(),
 	}
+
+	log.Info().
+		Interface("data", a.m[index]).
+		Interface("index", logIndex).
+		Interface("capacity", cap(a.m[index].msg)).
+		Msg("Register")
 
 	return nil
 }
 
-func (a *AsyncResponseManager) PutResponse(logIndex int, msg any, resErr error) error {
-	a.l.Lock()
-	defer a.l.Unlock()
-
+func (a *AsyncResponseManager) PutResponse(logIndex int, msg any, resErr error, timeout time.Duration) error {
 	index := AsyncResponseIndex{logIndex}
 
 	_, ok := a.m[index]
 	if !ok {
-		// return fmt.Errorf("register log index: %d first", logIndex)
-		return nil
+		return fmt.Errorf("register log index: %d first", logIndex)
 	}
 
 	select {
-	case a.m[index].msg <- msg:
-	default:
+	case a.m[index].msg <- AsyncResponseItem{Response: msg, Err: resErr}:
+		log.Info().Int("log index", logIndex).Interface("msg", msg).Interface("err", resErr).Msg("PutResponse")
+	case <-time.After(timeout):
 		return fmt.Errorf("channel log index: %d is not empty", logIndex)
 	}
 
@@ -135,11 +126,7 @@ func (a *AsyncResponseManager) PutResponse(logIndex int, msg any, resErr error) 
 
 // blocking call
 func (a *AsyncResponseManager) TakeResponse(logIndex int, timeout time.Duration) (any, error) {
-	a.l.Lock()
-	defer a.l.Unlock()
-
 	index := AsyncResponseIndex{logIndex}
-
 	item, ok := a.m[index]
 	if !ok {
 		return nil, fmt.Errorf("register log index: %d first", logIndex)
@@ -149,7 +136,7 @@ func (a *AsyncResponseManager) TakeResponse(logIndex int, timeout time.Duration)
 	case res := <-item.msg:
 		close(item.msg)
 		delete(a.m, index)
-		return res, nil
+		return res.Response, res.Err
 	case <-time.After(timeout):
 		return nil, fmt.Errorf("timeout error: can't get messsage")
 	}
