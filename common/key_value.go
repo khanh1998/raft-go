@@ -35,18 +35,15 @@ func NewKeyValueStateMachine() *KeyValueStateMachine {
 	}
 }
 
-func (k KeyValueStateMachine) setCache(clientID int, sequenceNum int, response any) *ClientEntry {
-	if clientID > 0 && sequenceNum >= 0 {
+func (k KeyValueStateMachine) setCache(clientID int, sequenceNum int, response any) {
+	if clientID > 0 && sequenceNum >= 0 { // when client register, clientID > 0 and sequenceNum == 0
 		data := ClientEntry{
 			LastSequenceNum: sequenceNum,
 			LastResponse:    response,
 		}
 
 		k.cache[clientID] = data
-
-		return &data
 	}
-	return nil
 }
 
 func (k KeyValueStateMachine) Process(clientID int, sequenceNum int, commandIn any, logIndex int) (result any, err error) {

@@ -21,6 +21,7 @@ func TestKeyValueStateMachine_Process(t *testing.T) {
 		fields     fields
 		args       args
 		wantResult any
+		wantFields *fields
 		wantErr    bool
 	}{
 		{
@@ -115,6 +116,13 @@ func TestKeyValueStateMachine_Process(t *testing.T) {
 				clientID:    0,
 				sequenceNum: 0,
 			},
+			wantFields: &fields{
+				data: map[string]string{
+					"name": "khanh",
+					"age":  "25",
+				},
+				clients: map[int]ClientEntry{},
+			},
 			wantResult: "25",
 			wantErr:    false,
 		},
@@ -130,6 +138,12 @@ func TestKeyValueStateMachine_Process(t *testing.T) {
 				command:     NoOperation,
 				clientID:    0,
 				sequenceNum: 0,
+			},
+			wantFields: &fields{
+				data: map[string]string{
+					"name": "khanh",
+				},
+				clients: map[int]ClientEntry{},
 			},
 			wantResult: nil,
 			wantErr:    false,
@@ -214,6 +228,34 @@ func TestKeyValueStateMachine_Process(t *testing.T) {
 			wantResult: nil,
 			wantErr:    true,
 		},
+		{
+			name: "register new client",
+			fields: fields{
+				data: map[string]string{
+					"name": "khanh",
+				},
+				clients: map[int]ClientEntry{},
+			},
+			args: args{
+				command:     "register",
+				clientID:    0,
+				sequenceNum: 0,
+				logIndex:    2,
+			},
+			wantFields: &fields{
+				data: map[string]string{
+					"name": "khanh",
+				},
+				clients: map[int]ClientEntry{
+					2: {
+						LastSequenceNum: 0,
+						LastResponse:    nil,
+					},
+				},
+			},
+			wantResult: nil,
+			wantErr:    false,
+		},
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
@@ -228,6 +270,16 @@ func TestKeyValueStateMachine_Process(t *testing.T) {
 			}
 			if gotResult != tt.wantResult {
 				t.Errorf("KeyValueStateMachine.Process() = %v, want %v", gotResult, tt.wantResult)
+			}
+
+			if tt.wantFields != nil {
+				if !reflect.DeepEqual(k.data, tt.wantFields.data) {
+					t.Errorf("KeyValueStateMachine.Process() = %v, want %v", k.data, tt.wantFields.data)
+				}
+
+				if !reflect.DeepEqual(k.cache, tt.wantFields.clients) {
+					t.Errorf("KeyValueStateMachine.Process() = %v, want %v", k.cache, tt.wantFields.clients)
+				}
 			}
 		})
 	}
@@ -247,7 +299,7 @@ func TestKeyValueStateMachine_setCache(t *testing.T) {
 		name   string
 		fields fields
 		args   args
-		want   *ClientEntry
+		want   fields
 	}{
 		{
 			name: "both 0",
@@ -260,7 +312,10 @@ func TestKeyValueStateMachine_setCache(t *testing.T) {
 				sequenceNum: 0,
 				response:    "set name khanh",
 			},
-			want: nil,
+			want: fields{
+				data:  map[string]string{},
+				cache: map[int]ClientEntry{},
+			},
 		},
 		{
 			name: "client 0",
@@ -273,10 +328,13 @@ func TestKeyValueStateMachine_setCache(t *testing.T) {
 				sequenceNum: 1,
 				response:    "set name khanh",
 			},
-			want: nil,
+			want: fields{
+				data:  map[string]string{},
+				cache: map[int]ClientEntry{},
+			},
 		},
 		{
-			name: "sequence 0",
+			name: "register new client: sequence 0",
 			fields: fields{
 				data:  map[string]string{},
 				cache: map[int]ClientEntry{},
@@ -284,9 +342,17 @@ func TestKeyValueStateMachine_setCache(t *testing.T) {
 			args: args{
 				clientID:    1,
 				sequenceNum: 0,
-				response:    "set name khanh",
+				response:    nil,
 			},
-			want: nil,
+			want: fields{
+				data: map[string]string{},
+				cache: map[int]ClientEntry{
+					1: {
+						LastSequenceNum: 0,
+						LastResponse:    nil,
+					},
+				},
+			},
 		},
 		{
 			name: "ok",
@@ -297,11 +363,16 @@ func TestKeyValueStateMachine_setCache(t *testing.T) {
 			args: args{
 				clientID:    1,
 				sequenceNum: 1,
-				response:    "set name khanh",
+				response:    "khanh",
 			},
-			want: &ClientEntry{
-				LastSequenceNum: 1,
-				LastResponse:    "set name khanh",
+			want: fields{
+				data: map[string]string{},
+				cache: map[int]ClientEntry{
+					1: {
+						LastSequenceNum: 1,
+						LastResponse:    "khanh",
+					},
+				},
 			},
 		},
 	}
@@ -311,8 +382,13 @@ func TestKeyValueStateMachine_setCache(t *testing.T) {
 				data:  tt.fields.data,
 				cache: tt.fields.cache,
 			}
-			if got := k.setCache(tt.args.clientID, tt.args.sequenceNum, tt.args.response); !reflect.DeepEqual(got, tt.want) {
-				t.Errorf("KeyValueStateMachine.setCache() = %v, want %v", got, tt.want)
+			k.setCache(tt.args.clientID, tt.args.sequenceNum, tt.args.response)
+			if !reflect.DeepEqual(k.cache, tt.want.cache) {
+				t.Errorf("KeyValueStateMachine.setCache() = %v, want %v", k.cache, tt.want.cache)
+			}
+
+			if !reflect.DeepEqual(k.data, tt.want.data) {
+				t.Errorf("KeyValueStateMachine.setCache() = %v, want %v", k.data, tt.want.data)
 			}
 		})
 	}
