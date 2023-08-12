@@ -260,8 +260,8 @@ func TestKeyValueStateMachine_Process(t *testing.T) {
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
 			k := KeyValueStateMachine{
-				data:  tt.fields.data,
-				cache: tt.fields.clients,
+				data:     tt.fields.data,
+				sessions: tt.fields.clients,
 			}
 			gotResult, err := k.Process(tt.args.clientID, tt.args.sequenceNum, tt.args.command, tt.args.logIndex)
 			if (err != nil) != tt.wantErr {
@@ -277,8 +277,8 @@ func TestKeyValueStateMachine_Process(t *testing.T) {
 					t.Errorf("KeyValueStateMachine.Process() = %v, want %v", k.data, tt.wantFields.data)
 				}
 
-				if !reflect.DeepEqual(k.cache, tt.wantFields.clients) {
-					t.Errorf("KeyValueStateMachine.Process() = %v, want %v", k.cache, tt.wantFields.clients)
+				if !reflect.DeepEqual(k.sessions, tt.wantFields.clients) {
+					t.Errorf("KeyValueStateMachine.Process() = %v, want %v", k.sessions, tt.wantFields.clients)
 				}
 			}
 		})
@@ -379,12 +379,12 @@ func TestKeyValueStateMachine_setCache(t *testing.T) {
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
 			k := KeyValueStateMachine{
-				data:  tt.fields.data,
-				cache: tt.fields.cache,
+				data:     tt.fields.data,
+				sessions: tt.fields.cache,
 			}
-			k.setCache(tt.args.clientID, tt.args.sequenceNum, tt.args.response)
-			if !reflect.DeepEqual(k.cache, tt.want.cache) {
-				t.Errorf("KeyValueStateMachine.setCache() = %v, want %v", k.cache, tt.want.cache)
+			k.setSession(tt.args.clientID, tt.args.sequenceNum, tt.args.response)
+			if !reflect.DeepEqual(k.sessions, tt.want.cache) {
+				t.Errorf("KeyValueStateMachine.setCache() = %v, want %v", k.sessions, tt.want.cache)
 			}
 
 			if !reflect.DeepEqual(k.data, tt.want.data) {

@@ -23,37 +23,39 @@ type ClientEntry struct {
 	LastResponse    any
 }
 
+// TODO: add session timeout mechanism
+// support concurrent request
 type KeyValueStateMachine struct {
-	data  map[string]string
-	cache map[int]ClientEntry
+	data     map[string]string
+	sessions map[int]ClientEntry
 }
 
 func NewKeyValueStateMachine() *KeyValueStateMachine {
 	return &KeyValueStateMachine{
-		data:  make(map[string]string),
-		cache: make(map[int]ClientEntry),
+		data:     make(map[string]string),
+		sessions: make(map[int]ClientEntry),
 	}
 }
 
-func (k KeyValueStateMachine) setCache(clientID int, sequenceNum int, response any) {
+func (k KeyValueStateMachine) setSession(clientID int, sequenceNum int, response any) {
 	if clientID > 0 && sequenceNum >= 0 { // when client register, clientID > 0 and sequenceNum == 0
 		data := ClientEntry{
 			LastSequenceNum: sequenceNum,
 			LastResponse:    response,
 		}
 
-		k.cache[clientID] = data
+		k.sessions[clientID] = data
 	}
 }
 
 func (k KeyValueStateMachine) Process(clientID int, sequenceNum int, commandIn any, logIndex int) (result any, err error) {
-	client, ok := k.cache[clientID]
+	client, ok := k.sessions[clientID]
 	if clientID > 0 && !ok {
 		return nil, ErrorSessionExpired
 	}
 
 	defer func() {
-		k.setCache(clientID, sequenceNum, result)
+		k.setSession(clientID, sequenceNum, result)
 
 		log.Info().
 			Int("client id", clientID).
@@ -63,7 +65,7 @@ func (k KeyValueStateMachine) Process(clientID int, sequenceNum int, commandIn a
 			Msg("Process")
 		log.Info().
 			Interface("data", k.data).
-			Interface("cache", k.cache).
+			Interface("cache", k.sessions).
 			Msg("Process")
 	}()
 
@@ -113,7 +115,7 @@ func (k KeyValueStateMachine) Process(clientID int, sequenceNum int, commandIn a
 		clientID = logIndex
 		sequenceNum = 0
 		result = nil
-		k.cache[clientID] = ClientEntry{} // register
+		k.sessions[clientID] = ClientEntry{} // register
 
 		return nil, nil
 	}
