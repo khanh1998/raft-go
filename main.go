@@ -55,6 +55,7 @@ func main() {
 				Peers:   peers,
 				HostID:  1,
 				HostURL: ":1234",
+				Log:     &log,
 			},
 			HTTPProxy: http_proxy.NewHttpProxyParams{
 				URL: "localhost:8080",
@@ -73,6 +74,7 @@ func main() {
 				Peers:   peers,
 				HostID:  2,
 				HostURL: ":1235",
+				Log:     &log,
 			},
 			HTTPProxy: http_proxy.NewHttpProxyParams{
 				URL: "localhost:8081",
@@ -91,6 +93,7 @@ func main() {
 				Peers:   peers,
 				HostID:  3,
 				HostURL: ":1236",
+				Log:     &log,
 			},
 			HTTPProxy: http_proxy.NewHttpProxyParams{
 				URL: "localhost:8082",
@@ -99,7 +102,17 @@ func main() {
 	}
 	signChan := make(chan os.Signal, 1)
 
-	node.NewNode(params[*id])
+	if id != nil {
+		// multiple processes mode.
+		// each process will carry a single raft instance.
+		node.NewNode(params[*id])
+	} else {
+		// single process mode.
+		// one process carry multiple raft instances.
+		for _, conf := range params {
+			go node.NewNode(conf)
+		}
+	}
 
 	signal.Notify(signChan, os.Interrupt, syscall.SIGTERM)
 	<-signChan

@@ -216,6 +216,7 @@ func (n *RaftBrainImpl) Start() {
 
 func (n *RaftBrainImpl) log() *zerolog.Logger {
 	sub := n.logger.With().
+		Int("RB_ID", n.ID).
 		Str("state", n.State.String()).
 		Int("voted for", n.VotedFor).
 		Int("term", n.CurrentTerm).

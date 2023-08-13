@@ -23,7 +23,11 @@ func NewNode(params NewNodeParams) {
 		log.Fatal().Msg(err.Error())
 	}
 
-	rpcProxy := rpc_proxy.NewRPCImpl(params.RPCProxy)
+	rpcProxy, err := rpc_proxy.NewRPCImpl(params.RPCProxy)
+	if err != nil {
+		log.Fatal().AnErr("err", err).Msg("NewNode")
+	}
+
 	httpProxy := http_proxy.NewHttpProxy(params.HTTPProxy)
 
 	rpcProxy.SetBrain(brain)

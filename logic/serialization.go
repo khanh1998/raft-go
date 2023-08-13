@@ -9,6 +9,7 @@ import (
 	"time"
 )
 
+// TODO: copy lock
 func (n RaftBrainImpl) Serialize(delimiter bool, createdAt bool, source string) map[string]string {
 	data := make(map[string]string)
 	if delimiter {

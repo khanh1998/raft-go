@@ -10,7 +10,6 @@ import (
 	"time"
 
 	"github.com/rs/zerolog"
-	"github.com/rs/zerolog/log"
 )
 
 // the one which actually processes the request and makes all the decisions.
@@ -25,10 +24,12 @@ type PeerRPCProxy struct {
 }
 
 type RPCProxyImpl struct {
-	peers   map[int]PeerRPCProxy // TODO: data race
-	hostID  int
-	hostURL string
-	brain   RaftBrain
+	peers     map[int]PeerRPCProxy // TODO: data race
+	hostID    int
+	hostURL   string
+	brain     RaftBrain
+	rpcServer *rpc.Server
+	Log       *zerolog.Logger
 }
 
 type PeerRPCProxyConnectInfo struct {
@@ -37,7 +38,7 @@ type PeerRPCProxyConnectInfo struct {
 }
 
 func (r RPCProxyImpl) log() *zerolog.Logger {
-	l := log.With().Int("RPC ID", r.hostID).Str("RPC URL", r.hostURL).Logger()
+	l := r.Log.With().Int("RPC_ID", r.hostID).Str("RPC_URL", r.hostURL).Logger()
 	return &l
 }
 
@@ -45,15 +46,19 @@ type NewRPCImplParams struct {
 	Peers   []common.PeerInfo
 	HostID  int
 	HostURL string
+	Log     *zerolog.Logger
 }
 
-func NewRPCImpl(params NewRPCImplParams) *RPCProxyImpl {
-	r := RPCProxyImpl{hostID: params.HostID, hostURL: params.HostURL}
+func NewRPCImpl(params NewRPCImplParams) (*RPCProxyImpl, error) {
+	r := RPCProxyImpl{hostID: params.HostID, hostURL: params.HostURL, Log: params.Log}
 
-	r.initRPCProxy(params.HostURL)
+	err := r.initRPCProxy(params.HostURL)
+	if err != nil {
+		return nil, err
+	}
 	// r.ConnectToPeers(params.Peers)
 
-	return &r
+	return &r, nil
 }
 
 func (r *RPCProxyImpl) SetBrain(brain RaftBrain) {
@@ -73,14 +78,14 @@ func (r *RPCProxyImpl) ConnectToPeers(params []common.PeerInfo) {
 		count.Add(1)
 		go func(peerURL string, peerID int) {
 			for i := 0; i < 5; i++ {
-				r.log().Info().Msgf("dialing %s", peerURL)
+				r.log().Info().Msgf("ConnectToPeers: dialing %s", peerURL)
 				client, err := rpc.Dial("tcp", peerURL)
 				if err != nil {
 					time.Sleep(3 * time.Second)
-					r.log().Err(err).Msg("Client connection error: ")
+					r.log().Err(err).Msg("ConnectToPeers: Client connection error: ")
 					continue
 				} else {
-					r.log().Info().Msgf("connect to %s successfully", peerURL)
+					r.log().Info().Msgf("ConnectToPeers: connect to %s successfully", peerURL)
 					r.peers[peerID] = PeerRPCProxy{
 						conn: client,
 						url:  peerURL,
@@ -92,9 +97,9 @@ func (r *RPCProxyImpl) ConnectToPeers(params []common.PeerInfo) {
 
 					err := r.SendPing(peerID, &timeout)
 					if err != nil {
-						log.Err(err).Str("url", peerURL).Msg("cannot ping")
+						r.log().Err(err).Str("url", peerURL).Msg("ConnectToPeers: cannot ping")
 					} else {
-						log.Info().Msg(message)
+						r.log().Info().Msg(message)
 					}
 
 					break
@@ -108,32 +113,38 @@ func (r *RPCProxyImpl) ConnectToPeers(params []common.PeerInfo) {
 	count.Wait()
 }
 
-func (r *RPCProxyImpl) initRPCProxy(url string) {
-	err := rpc.Register(r)
-	if err != nil {
-		r.log().Fatal().Err(err).Msg("RPC handler: cannot register rpc")
+func (r *RPCProxyImpl) initRPCProxy(url string) error {
+	r.rpcServer = rpc.NewServer()
+	if err := r.rpcServer.RegisterName("RPCProxyImpl", r); err != nil {
+		r.log().Err(err).Msg("initRPCProxy")
+
+		return err
 	}
 
 	listener, err := net.Listen("tcp", url)
 	if err != nil {
-		r.log().Fatal().Err(err).Msg("RPC handler: Listener error")
+		r.log().Fatal().Err(err).Msg("initRPCProxy: Listener error")
+
+		return err
 	}
 
-	r.log().Info().Msg("RPC handler: finished register node")
+	r.log().Info().Msg("initRPCProxy: finished register node")
 
 	go func() {
 		for {
 			conn, err := listener.Accept()
 			if err != nil {
-				r.log().Err(err).Msg("RPC handler: listener error")
+				r.log().Err(err).Msg("initRPCProxy: listener error")
 				continue
 			}
 
-			r.log().Info().Msg("RPC handler: received a request")
+			r.log().Info().Msg("initRPCProxy: received a request")
 
-			go rpc.ServeConn(conn)
+			go r.rpcServer.ServeConn(conn)
 		}
 	}()
+
+	return nil
 }
 
 func (r RPCProxyImpl) Reconnect(peerIdx int) error {
@@ -147,7 +158,7 @@ func (r RPCProxyImpl) Reconnect(peerIdx int) error {
 	var message string
 	err = client.Call("RPCProxyImpl.Ping", fmt.Sprintf("Node %v", r.hostID), &message)
 	if err != nil {
-		r.log().Err(err).Str("url", targetUrl).Msg("Reconnect peer: cannot ping")
+		r.log().Err(err).Str("url", targetUrl).Msg("Reconnect: cannot ping")
 
 		return err
 	} else {
