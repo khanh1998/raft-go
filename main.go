@@ -39,7 +39,7 @@ func main() {
 		},
 	}
 
-	id := flag.Int("id", 0, "")
+	id := flag.Int("id", -1, "")
 	flag.Parse()
 	params := []node.NewNodeParams{
 		{
@@ -102,7 +102,7 @@ func main() {
 	}
 	signChan := make(chan os.Signal, 1)
 
-	if id != nil {
+	if id != nil && *id >= 0 {
 		// multiple processes mode.
 		// each process will carry a single raft instance.
 		node.NewNode(params[*id])

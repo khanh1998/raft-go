@@ -7,8 +7,10 @@ import (
 
 func TestLog_ToString(t *testing.T) {
 	type fields struct {
-		Term    int
-		Command string
+		Term        int
+		Command     string
+		ClientID    int
+		SequenceNum int
 	}
 	tests := []struct {
 		name   string
@@ -18,17 +20,21 @@ func TestLog_ToString(t *testing.T) {
 		{
 			name: "",
 			fields: fields{
-				Term:    1,
-				Command: "set x 100",
+				Term:        1,
+				Command:     "set x 100",
+				ClientID:    5,
+				SequenceNum: 7,
 			},
-			want: "1|set x 100",
+			want: "1|set x 100|5|7",
 		},
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
 			l := Log{
-				Term:    tt.fields.Term,
-				Command: tt.fields.Command,
+				Term:        tt.fields.Term,
+				Command:     tt.fields.Command,
+				ClientID:    tt.fields.ClientID,
+				SequenceNum: tt.fields.SequenceNum,
 			}
 			if got := l.ToString(); got != tt.want {
 				t.Errorf("Log.ToString() = %v, want %v", got, tt.want)
@@ -50,11 +56,13 @@ func TestNewLogFromString(t *testing.T) {
 		{
 			name: "ok",
 			args: args{
-				s: "5|set x 250",
+				s: "5|set x 250|9|10",
 			},
 			want: Log{
-				Term:    5,
-				Command: "set x 250",
+				Term:        5,
+				Command:     "set x 250",
+				ClientID:    9,
+				SequenceNum: 10,
 			},
 			wantErr: false,
 		},
@@ -64,8 +72,10 @@ func TestNewLogFromString(t *testing.T) {
 				s: "hehe|set x 250",
 			},
 			want: Log{
-				Term:    0,
-				Command: nil,
+				Term:        0,
+				Command:     nil,
+				ClientID:    0,
+				SequenceNum: 0,
 			},
 			wantErr: true,
 		},
