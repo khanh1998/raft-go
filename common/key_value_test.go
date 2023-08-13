@@ -112,18 +112,18 @@ func TestKeyValueStateMachine_Process(t *testing.T) {
 				clients: map[int]ClientEntry{},
 			},
 			args: args{
-				command:     "set age 25",
+				command:     "set address ho chi minh city",
 				clientID:    0,
 				sequenceNum: 0,
 			},
 			wantFields: &fields{
 				data: map[string]string{
-					"name": "khanh",
-					"age":  "25",
+					"name":    "khanh",
+					"address": "ho chi minh city",
 				},
 				clients: map[int]ClientEntry{},
 			},
-			wantResult: "25",
+			wantResult: "ho chi minh city",
 			wantErr:    false,
 		},
 		{

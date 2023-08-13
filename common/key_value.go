@@ -108,7 +108,7 @@ func (k KeyValueStateMachine) Process(clientID int, sequenceNum int, commandIn a
 		}
 
 		key := tokens[1]
-		value := tokens[2]
+		value := strings.Join(tokens[2:], " ")
 
 		return k.set(key, value)
 	case "register":
