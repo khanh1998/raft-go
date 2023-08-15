@@ -24,12 +24,15 @@ type PeerRPCProxy struct {
 }
 
 type RPCProxyImpl struct {
-	peers     map[int]PeerRPCProxy // TODO: data race
-	hostID    int
-	hostURL   string
-	brain     RaftBrain
-	rpcServer *rpc.Server
-	Log       *zerolog.Logger
+	peers      map[int]PeerRPCProxy // TODO: data race
+	hostID     int
+	hostURL    string
+	brain      RaftBrain
+	rpcServer  *rpc.Server
+	Log        *zerolog.Logger
+	Stop       chan struct{}
+	Accessible bool
+	listener   net.Listener
 }
 
 type PeerRPCProxyConnectInfo struct {
@@ -113,6 +116,29 @@ func (r *RPCProxyImpl) ConnectToPeers(params []common.PeerInfo) {
 	count.Wait()
 }
 
+func (r *RPCProxyImpl) Disconnect(peerID int) error {
+	peer, ok := r.peers[peerID]
+	if !ok {
+		return ErrPeerIdDoesNotExist
+	}
+
+	if err := peer.conn.Close(); err != nil {
+		return err
+	}
+
+	return nil
+}
+
+func (r *RPCProxyImpl) DisconnectAll() error {
+	for _, peer := range r.peers {
+		if err := peer.conn.Close(); err != nil {
+			r.log().Err(err).Msg("DisconnectAll")
+		}
+	}
+
+	return nil
+}
+
 func (r *RPCProxyImpl) initRPCProxy(url string) error {
 	r.rpcServer = rpc.NewServer()
 	if err := r.rpcServer.RegisterName("RPCProxyImpl", r); err != nil {
@@ -128,11 +154,13 @@ func (r *RPCProxyImpl) initRPCProxy(url string) error {
 		return err
 	}
 
+	r.listener = listener
+
 	r.log().Info().Msg("initRPCProxy: finished register node")
 
 	go func() {
 		for {
-			conn, err := listener.Accept()
+			conn, err := r.listener.Accept()
 			if err != nil {
 				r.log().Err(err).Msg("initRPCProxy: listener error")
 				continue
@@ -145,6 +173,10 @@ func (r *RPCProxyImpl) initRPCProxy(url string) error {
 	}()
 
 	return nil
+}
+
+func (r RPCProxyImpl) StopServer(peerIdx int) error {
+	return r.listener.Close()
 }
 
 func (r RPCProxyImpl) Reconnect(peerIdx int) error {

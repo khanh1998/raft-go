@@ -1,8 +1,10 @@
 package http_proxy
 
 import (
+	"context"
 	"errors"
 	"khanh/raft-go/common"
+	"log"
 	"net/http"
 
 	"github.com/gin-gonic/gin"
@@ -15,8 +17,10 @@ type RaftBrain interface {
 }
 
 type HttpProxy struct {
-	brain RaftBrain
-	host  string
+	brain     RaftBrain
+	host      string
+	Stop      chan struct{}
+	Accessile bool
 }
 
 type NewHttpProxyParams struct {
@@ -35,6 +39,12 @@ func (h *HttpProxy) SetBrain(brain RaftBrain) {
 
 func (h HttpProxy) clientQuery(r *gin.Engine) {
 	r.POST("/query", func(c *gin.Context) {
+		if !h.Accessile {
+			c.Status(http.StatusRequestTimeout)
+
+			return
+		}
+
 		var request common.ClientQueryInput
 		if err := c.BindJSON(&request); err != nil {
 			return
@@ -52,6 +62,11 @@ func (h HttpProxy) clientQuery(r *gin.Engine) {
 
 func (h HttpProxy) registerClient(r *gin.Engine) {
 	r.POST("/register", func(c *gin.Context) {
+		if !h.Accessile {
+			c.Status(http.StatusRequestTimeout)
+
+			return
+		}
 		var request common.RegisterClientInput
 		if err := c.BindJSON(&request); err != nil {
 			return
@@ -70,6 +85,11 @@ func (h HttpProxy) registerClient(r *gin.Engine) {
 
 func (h HttpProxy) clientRequest(r *gin.Engine) {
 	r.POST("/command", func(c *gin.Context) {
+		if !h.Accessile {
+			c.Status(http.StatusRequestTimeout)
+
+			return
+		}
 		var request common.ClientRequestInput
 		if err := c.BindJSON(&request); err != nil {
 			return
@@ -98,7 +118,17 @@ func (h HttpProxy) Start() {
 	h.registerClient(r)
 	h.clientQuery(r)
 
+	httpServer := &http.Server{
+		Addr:    h.host,
+		Handler: r,
+	}
+
 	go func() {
-		r.Run(h.host)
+		if err := httpServer.ListenAndServe(); err != nil {
+			log.Fatal(err)
+		}
 	}()
+
+	<-h.Stop
+	httpServer.Shutdown(context.Background())
 }

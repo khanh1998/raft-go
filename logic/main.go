@@ -42,6 +42,7 @@ type RaftBrainImpl struct {
 	RpcProxy          RPCProxy
 	Session           SessionManager
 	ARM               AsyncResponseManager
+	Stop              chan struct{}
 	// Persistent state on all servers:
 	// Updated on stable storage before responding to RPCs
 	CurrentTerm int          // latest term server has seen (initialized to 0 on first boot, increases monotonically)
