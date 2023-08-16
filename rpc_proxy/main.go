@@ -53,7 +53,7 @@ type NewRPCImplParams struct {
 }
 
 func NewRPCImpl(params NewRPCImplParams) (*RPCProxyImpl, error) {
-	r := RPCProxyImpl{hostID: params.HostID, hostURL: params.HostURL, Log: params.Log}
+	r := RPCProxyImpl{hostID: params.HostID, hostURL: params.HostURL, Log: params.Log, Stop: make(chan struct{}), Accessible: true}
 
 	err := r.initRPCProxy(params.HostURL)
 	if err != nil {
@@ -157,6 +157,12 @@ func (r *RPCProxyImpl) initRPCProxy(url string) error {
 	r.listener = listener
 
 	r.log().Info().Msg("initRPCProxy: finished register node")
+	go func() {
+		for {
+			<-r.Stop
+			r.listener.Close()
+		}
+	}()
 
 	go func() {
 		for {

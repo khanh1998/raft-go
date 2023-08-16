@@ -9,6 +9,7 @@ import (
 	"khanh/raft-go/rpc_proxy"
 	"os"
 	"os/signal"
+	"sync"
 	"syscall"
 	"time"
 
@@ -100,7 +101,8 @@ func main() {
 			},
 		},
 	}
-	signChan := make(chan os.Signal, 1)
+
+	nodes := make([]*node.Node, len(params))
 
 	if id != nil && *id >= 0 {
 		// multiple processes mode.
@@ -109,11 +111,22 @@ func main() {
 	} else {
 		// single process mode.
 		// one process carry multiple raft instances.
-		for _, conf := range params {
-			go node.NewNode(conf)
+		count := sync.WaitGroup{}
+		for id, conf := range params {
+			count.Add(1)
+			go func(id int, conf node.NewNodeParams) {
+				log.Info().Interface("nodes", id).Msg("start")
+				n := node.NewNode(conf)
+				nodes[id] = n
+				count.Done()
+
+				log.Info().Interface("nodes", id).Msg("done")
+			}(id, conf)
 		}
+		count.Wait()
 	}
 
+	signChan := make(chan os.Signal, 1)
 	signal.Notify(signChan, os.Interrupt, syscall.SIGTERM)
 	<-signChan
 	log.Info().Msg("Shut down")

@@ -43,7 +43,7 @@ func NewNode(params NewNodeParams) *Node {
 
 	brain.Start()
 
-	return &Node{brain: brain, rpc: rpcProxy}
+	return &Node{brain: brain, rpc: rpcProxy, http: httpProxy}
 }
 
 type GetStatusResponse struct {

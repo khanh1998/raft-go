@@ -28,7 +28,7 @@ type NewHttpProxyParams struct {
 }
 
 func NewHttpProxy(params NewHttpProxyParams) *HttpProxy {
-	h := HttpProxy{host: params.URL}
+	h := HttpProxy{host: params.URL, Stop: make(chan struct{}), Accessile: true}
 
 	return &h
 }
@@ -129,6 +129,8 @@ func (h HttpProxy) Start() {
 		}
 	}()
 
-	<-h.Stop
-	httpServer.Shutdown(context.Background())
+	go func() {
+		<-h.Stop
+		httpServer.Shutdown(context.Background())
+	}()
 }

@@ -182,6 +182,7 @@ func NewRaftBrain(params NewRaftBrainParams) (*RaftBrainImpl, error) {
 		DB:           persistance.NewPersistence(params.DataFileName),
 		StateMachine: common.NewKeyValueStateMachine(),
 		ARM:          NewAsyncResponseManager(100),
+		Stop:         make(chan struct{}),
 
 		MinRandomDuration: params.MinRandomDuration,
 		MaxRandomDuration: params.MaxRandomDuration,
