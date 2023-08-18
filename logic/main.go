@@ -178,7 +178,6 @@ func NewRaftBrain(params NewRaftBrainParams) (*RaftBrainImpl, error) {
 		ID:           params.ID,
 		State:        StateFollower,
 		VotedFor:     0,
-		Quorum:       int(math.Ceil(float64(len(params.Peers)) / 2.0)),
 		DB:           persistance.NewPersistence(params.DataFileName),
 		StateMachine: common.NewKeyValueStateMachine(),
 		ARM:          NewAsyncResponseManager(100),
@@ -187,7 +186,7 @@ func NewRaftBrain(params NewRaftBrainParams) (*RaftBrainImpl, error) {
 		MinRandomDuration: params.MinRandomDuration,
 		MaxRandomDuration: params.MaxRandomDuration,
 		logger:            params.Log,
-		Peers:             params.Peers,
+		Peers:             []common.PeerInfo{},
 		NextIndex:         make(map[int]int),
 		MatchIndex:        make(map[int]int),
 	}
@@ -198,6 +197,14 @@ func NewRaftBrain(params NewRaftBrainParams) (*RaftBrainImpl, error) {
 	}
 
 	n.applyLog()
+
+	for _, peer := range params.Peers {
+		if peer.ID != n.ID {
+			n.Peers = append(n.Peers, peer)
+		}
+	}
+
+	n.Quorum = int(math.Ceil(float64(len(n.Peers)) / 2.0))
 
 	for _, peer := range n.Peers {
 		if peer.ID != n.ID {
@@ -231,8 +238,7 @@ func (n *RaftBrainImpl) log() *zerolog.Logger {
 }
 
 func (n *RaftBrainImpl) resetElectionTimeout() {
-	randomElectionTimeOut := time.Duration(common.RandInt(n.MinRandomDuration, n.MaxRandomDuration)) * time.Millisecond
-	randomElectionTimeOut *= 2
+	randomElectionTimeOut := time.Duration(common.RandInt(n.MinRandomDuration*5, n.MaxRandomDuration*5)) * time.Millisecond
 	n.log().Info().Interface("seconds", randomElectionTimeOut.Seconds()).Msg("resetElectionTimeout")
 	if n.ElectionTimeOut == nil {
 		n.ElectionTimeOut = time.NewTimer(randomElectionTimeOut)

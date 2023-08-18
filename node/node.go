@@ -9,6 +9,7 @@ import (
 )
 
 type Node struct {
+	ID         int
 	brain      *logic.RaftBrainImpl
 	rpc        *rpc_proxy.RPCProxyImpl
 	http       *http_proxy.HttpProxy
@@ -16,17 +17,20 @@ type Node struct {
 }
 
 type NewNodeParams struct {
+	ID        int
 	Brain     logic.NewRaftBrainParams
 	RPCProxy  rpc_proxy.NewRPCImplParams
 	HTTPProxy http_proxy.NewHttpProxyParams
 }
 
 func NewNode(params NewNodeParams) *Node {
+	params.Brain.ID = params.ID
 	brain, err := logic.NewRaftBrain(params.Brain)
 	if err != nil {
 		log.Fatal().Msg(err.Error())
 	}
 
+	params.RPCProxy.HostID = params.ID
 	rpcProxy, err := rpc_proxy.NewRPCImpl(params.RPCProxy)
 	if err != nil {
 		log.Fatal().AnErr("err", err).Msg("NewNode")
@@ -43,7 +47,7 @@ func NewNode(params NewNodeParams) *Node {
 
 	brain.Start()
 
-	return &Node{brain: brain, rpc: rpcProxy, http: httpProxy}
+	return &Node{ID: params.ID, brain: brain, rpc: rpcProxy, http: httpProxy}
 }
 
 type GetStatusResponse struct {

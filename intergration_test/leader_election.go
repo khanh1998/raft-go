@@ -51,8 +51,8 @@ func (c *Cluster) init(num int) {
 		l.Add(1)
 		go func(i int) {
 			param := node.NewNodeParams{
+				ID: id + 1,
 				Brain: logic.NewRaftBrainParams{
-					ID:                id + i,
 					DataFileName:      fmt.Sprintf("test.log.%d.dat", id+i),
 					MinRandomDuration: 150,
 					MaxRandomDuration: 300,
@@ -61,7 +61,6 @@ func (c *Cluster) init(num int) {
 				},
 				RPCProxy: rpc_proxy.NewRPCImplParams{
 					Peers:   peers,
-					HostID:  id + i,
 					HostURL: fmt.Sprintf(":%d", rpcPort+i),
 					Log:     &log,
 				},
@@ -83,11 +82,21 @@ func (c *Cluster) init(num int) {
 var (
 	ErrMoreThanOneLeader = errors.New("there are more than one leader in the cluster")
 	ErrWrongExpectedTerm = errors.New("wrong expected term")
+	ErrThereIsNoLeader   = errors.New("there is no leader")
 )
 
 func (c *Cluster) DisconnectLeader() error {
 
 	return nil
+}
+
+func (c *Cluster) StopNode(nodeId int) {
+	for _, node := range c.Nodes {
+		if node.ID == nodeId {
+			node.Stop()
+			break
+		}
+	}
 }
 
 func (c *Cluster) HasOneLeader() (node.GetStatusResponse, error) {
@@ -105,6 +114,8 @@ func (c *Cluster) HasOneLeader() (node.GetStatusResponse, error) {
 
 	if leaderCount > 1 {
 		return leaderStatus, ErrMoreThanOneLeader
+	} else if leaderCount == 0 {
+		return leaderStatus, ErrThereIsNoLeader
 	}
 
 	return leaderStatus, nil

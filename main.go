@@ -42,19 +42,19 @@ func main() {
 
 	id := flag.Int("id", -1, "")
 	flag.Parse()
+	minRandom, maxRandom := int64(1000), int64(3000)
 	params := []node.NewNodeParams{
 		{
+			ID: 1,
 			Brain: logic.NewRaftBrainParams{
-				ID:                1,
 				DataFileName:      "log.1.dat",
-				MinRandomDuration: 5000,
-				MaxRandomDuration: 10000,
+				MinRandomDuration: minRandom,
+				MaxRandomDuration: maxRandom,
 				Log:               &log,
 				Peers:             peers,
 			},
 			RPCProxy: rpc_proxy.NewRPCImplParams{
 				Peers:   peers,
-				HostID:  1,
 				HostURL: ":1234",
 				Log:     &log,
 			},
@@ -63,17 +63,16 @@ func main() {
 			},
 		},
 		{
+			ID: 2,
 			Brain: logic.NewRaftBrainParams{
-				ID:                2,
 				DataFileName:      "log.2.dat",
-				MinRandomDuration: 5000,
-				MaxRandomDuration: 10000,
+				MinRandomDuration: minRandom,
+				MaxRandomDuration: maxRandom,
 				Log:               &log,
 				Peers:             peers,
 			},
 			RPCProxy: rpc_proxy.NewRPCImplParams{
 				Peers:   peers,
-				HostID:  2,
 				HostURL: ":1235",
 				Log:     &log,
 			},
@@ -82,17 +81,16 @@ func main() {
 			},
 		},
 		{
+			ID: 3,
 			Brain: logic.NewRaftBrainParams{
-				ID:                3,
 				DataFileName:      "log.3.dat",
-				MinRandomDuration: 5000,
-				MaxRandomDuration: 10000,
+				MinRandomDuration: minRandom,
+				MaxRandomDuration: maxRandom,
 				Log:               &log,
 				Peers:             peers,
 			},
 			RPCProxy: rpc_proxy.NewRPCImplParams{
 				Peers:   peers,
-				HostID:  3,
 				HostURL: ":1236",
 				Log:     &log,
 			},
@@ -124,6 +122,16 @@ func main() {
 			}(id, conf)
 		}
 		count.Wait()
+
+		log.Info().Interface("nodes", nodes).Msg("cluster is created")
+
+		time.Sleep(10 * time.Second)
+
+		for _, n := range nodes {
+			if n.GetStatus().State == logic.StateLeader {
+				n.Stop()
+			}
+		}
 	}
 
 	signChan := make(chan os.Signal, 1)

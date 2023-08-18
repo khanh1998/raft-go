@@ -4,10 +4,10 @@ import (
 	"context"
 	"errors"
 	"khanh/raft-go/common"
-	"log"
 	"net/http"
 
 	"github.com/gin-gonic/gin"
+	"github.com/rs/zerolog/log"
 )
 
 type RaftBrain interface {
@@ -125,7 +125,7 @@ func (h HttpProxy) Start() {
 
 	go func() {
 		if err := httpServer.ListenAndServe(); err != nil {
-			log.Fatal(err)
+			log.Err(err).Msg("HttpProxy Start")
 		}
 	}()
 
