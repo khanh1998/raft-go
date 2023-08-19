@@ -3,7 +3,6 @@ package logic
 import (
 	"fmt"
 	"khanh/raft-go/common"
-	"khanh/raft-go/persistance"
 	"math"
 	"sync"
 	"time"
@@ -29,7 +28,7 @@ type SessionManager interface{}
 type RaftBrainImpl struct {
 	// TODO: add mutex
 	logger            *zerolog.Logger
-	DB                persistance.Persistence
+	DB                Persistence
 	Peers             []common.PeerInfo
 	State             RaftState
 	ID                int
@@ -159,6 +158,11 @@ type RPCProxy interface {
 	SendPing(peerId int, timeout *time.Duration) (err error)
 }
 
+type Persistence interface {
+	AppendLog(data map[string]string) error
+	ReadNewestLog(keys []string) (map[string]string, error)
+}
+
 type PeerInfo struct {
 	ID  int
 	URL string
@@ -171,6 +175,8 @@ type NewRaftBrainParams struct {
 	MinRandomDuration int64
 	MaxRandomDuration int64
 	Log               *zerolog.Logger
+	DB                Persistence
+	StateMachine      SimpleStateMachine
 }
 
 func NewRaftBrain(params NewRaftBrainParams) (*RaftBrainImpl, error) {
@@ -178,8 +184,8 @@ func NewRaftBrain(params NewRaftBrainParams) (*RaftBrainImpl, error) {
 		ID:           params.ID,
 		State:        StateFollower,
 		VotedFor:     0,
-		DB:           persistance.NewPersistence(params.DataFileName),
-		StateMachine: common.NewKeyValueStateMachine(),
+		DB:           params.DB,
+		StateMachine: params.StateMachine,
 		ARM:          NewAsyncResponseManager(100),
 		Stop:         make(chan struct{}),
 

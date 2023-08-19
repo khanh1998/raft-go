@@ -7,6 +7,7 @@ import (
 	"khanh/raft-go/http_proxy"
 	"khanh/raft-go/logic"
 	"khanh/raft-go/node"
+	"khanh/raft-go/persistance"
 	"khanh/raft-go/rpc_proxy"
 	"os"
 	"sync"
@@ -58,6 +59,8 @@ func (c *Cluster) init(num int) {
 					MaxRandomDuration: 300,
 					Log:               &log,
 					Peers:             peers,
+					DB:                persistance.NewPersistenceMock(),
+					StateMachine:      common.NewKeyValueStateMachine(),
 				},
 				RPCProxy: rpc_proxy.NewRPCImplParams{
 					Peers:   peers,

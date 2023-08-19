@@ -17,7 +17,7 @@ func Test_nodeImpl_BroadCastRequestVote(t *testing.T) {
 func TestRaftBrainImpl_BroadCastRequestVote(t *testing.T) {
 	type fields struct {
 		logger            *zerolog.Logger
-		DB                persistance.Persistence
+		DB                Persistence
 		Peers             []common.PeerInfo
 		State             RaftState
 		ID                int

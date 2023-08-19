@@ -9,17 +9,12 @@ import (
 	"strings"
 )
 
-type Persistence interface {
-	AppendLog(data map[string]string) error
-	ReadNewestLog(keys []string) (map[string]string, error)
-}
-
 // this Persistence should be shared among goroutine
 type PersistenceImpl struct {
 	dataFileName string
 }
 
-func NewPersistence(fileName string) Persistence {
+func NewPersistence(fileName string) *PersistenceImpl {
 	return &PersistenceImpl{
 		dataFileName: fileName,
 	}

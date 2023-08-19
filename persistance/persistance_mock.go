@@ -6,7 +6,8 @@ import (
 )
 
 type PersistenceMock interface {
-	Persistence
+	AppendLog(data map[string]string) error
+	ReadNewestLog(keys []string) (map[string]string, error)
 	Data() []string
 	SetData([]string)
 }

@@ -6,6 +6,7 @@ import (
 	"khanh/raft-go/http_proxy"
 	"khanh/raft-go/logic"
 	"khanh/raft-go/node"
+	"khanh/raft-go/persistance"
 	"khanh/raft-go/rpc_proxy"
 	"os"
 	"os/signal"
@@ -52,6 +53,8 @@ func main() {
 				MaxRandomDuration: maxRandom,
 				Log:               &log,
 				Peers:             peers,
+				DB:                persistance.NewPersistence("log.1.dat"),
+				StateMachine:      common.NewKeyValueStateMachine(),
 			},
 			RPCProxy: rpc_proxy.NewRPCImplParams{
 				Peers:   peers,
@@ -70,6 +73,8 @@ func main() {
 				MaxRandomDuration: maxRandom,
 				Log:               &log,
 				Peers:             peers,
+				DB:                persistance.NewPersistence("log.2.dat"),
+				StateMachine:      common.NewKeyValueStateMachine(),
 			},
 			RPCProxy: rpc_proxy.NewRPCImplParams{
 				Peers:   peers,
@@ -88,6 +93,8 @@ func main() {
 				MaxRandomDuration: maxRandom,
 				Log:               &log,
 				Peers:             peers,
+				DB:                persistance.NewPersistence("log.3.dat"),
+				StateMachine:      common.NewKeyValueStateMachine(),
 			},
 			RPCProxy: rpc_proxy.NewRPCImplParams{
 				Peers:   peers,
