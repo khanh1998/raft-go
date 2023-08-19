@@ -59,9 +59,11 @@ func (n *RaftBrainImpl) Deserialize(data map[string]string) error {
 			logItem, err := common.NewLogFromString(value)
 			if err != nil {
 				n.log().Err(err).Msg("can not create log from string")
-			}
 
-			n.Logs = append(n.Logs, logItem)
+				return err
+			} else {
+				n.Logs = append(n.Logs, logItem)
+			}
 		} else {
 			return errors.New("missing value to deserialize value of node")
 		}
@@ -86,6 +88,7 @@ func (n *RaftBrainImpl) GetPersistanceKeyList() ([]string, error) {
 	if err != nil {
 		return nil, err
 	}
+
 	keys := []string{"current_term", "voted_for", "log_count"}
 
 	for i := 0; i < int(logCount); i++ {
@@ -96,7 +99,6 @@ func (n *RaftBrainImpl) GetPersistanceKeyList() ([]string, error) {
 }
 
 func (n *RaftBrainImpl) Rehydrate() error {
-	n.log().Info().Msg("started to rehydrate")
 	keys, err := n.GetPersistanceKeyList()
 	if err != nil {
 		if errors.Is(err, persistance.ErrEmptyData) {

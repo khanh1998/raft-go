@@ -31,12 +31,13 @@ func TestPersistenceMock_ReadNewestLog(t *testing.T) {
 		"country=vietnam\n",
 	})
 
-	data, err := mock.ReadNewestLog([]string{"name", "age"})
+	data, err := mock.ReadNewestLog([]string{"name", "age", "address"})
 	assert.NoError(t, err)
 
 	expectedData := map[string]string{
-		"age":  "25",
-		"name": "khanh",
+		"age":     "25",
+		"name":    "khanh",
+		"address": "",
 	}
 	assert.Equal(t, expectedData, data)
 }

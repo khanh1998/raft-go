@@ -4,6 +4,7 @@ import (
 	"khanh/raft-go/common"
 	"khanh/raft-go/http_proxy"
 	"khanh/raft-go/logic"
+	"khanh/raft-go/persistance"
 	"khanh/raft-go/rpc_proxy"
 	"net/rpc"
 	"testing"
@@ -23,6 +24,8 @@ func TestStop(t *testing.T) {
 			MinRandomDuration: 100,
 			MaxRandomDuration: 200,
 			Log:               &zerolog.Logger{},
+			DB:                persistance.NewPersistenceMock(),
+			StateMachine:      common.NewKeyValueStateMachine(),
 		},
 		RPCProxy: rpc_proxy.NewRPCImplParams{
 			Peers:   peers,

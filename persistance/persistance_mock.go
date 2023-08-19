@@ -51,6 +51,10 @@ func (p *PersistenceMockImpl) AppendLog(data map[string]string) error {
 
 func (p *PersistenceMockImpl) ReadNewestLog(keys []string) (map[string]string, error) {
 	data := make(map[string]string)
+	if len(p.data) == 0 {
+		return data, ErrEmptyData
+	}
+
 	sort.Strings(keys)
 	for _, key := range keys {
 		data[key] = ""

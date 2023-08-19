@@ -42,8 +42,8 @@ func Test_nodeImpl_Serialize(t *testing.T) {
 				"current_term": "3",
 				"voted_for":    "1",
 				"log_count":    "2",
-				"log_0":        "1|set x 1",
-				"log_1":        "2|set y 3",
+				"log_0":        "1|set x 1|0|0",
+				"log_1":        "2|set y 3|0|0",
 			},
 		},
 	}
@@ -96,8 +96,8 @@ func Test_nodeImpl_Deserialize(t *testing.T) {
 				CurrentTerm: 1,
 				VotedFor:    3,
 				Logs: []common.Log{
-					{Term: 1, Command: "set x 1"},
-					{Term: 2, Command: "set y 3"},
+					{Term: 1, Command: "set x 1", ClientID: 3, SequenceNum: 2},
+					{Term: 2, Command: "set y 3", ClientID: 5, SequenceNum: 1},
 				},
 			},
 			args: args{
@@ -105,8 +105,8 @@ func Test_nodeImpl_Deserialize(t *testing.T) {
 					"current_term": "1",
 					"voted_for":    "3",
 					"log_count":    "2",
-					"log_0":        "1|set x 1",
-					"log_1":        "2|set y 3",
+					"log_0":        "1|set x 1|3|2",
+					"log_1":        "2|set y 3|5|1",
 				},
 			},
 			wantErr: false,
