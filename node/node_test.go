@@ -8,6 +8,7 @@ import (
 	"khanh/raft-go/rpc_proxy"
 	"net/rpc"
 	"testing"
+	"time"
 
 	"github.com/rs/zerolog"
 	"github.com/stretchr/testify/assert"
@@ -42,6 +43,8 @@ func TestStop(t *testing.T) {
 	assert.NoError(t, err, "connect to rpc server ok")
 
 	n.Stop()
+
+	time.Sleep(3 * time.Second)
 
 	_, err = rpc.Dial("tcp", ":1234")
 	assert.Error(t, err, "connect to rpc server not ok")
