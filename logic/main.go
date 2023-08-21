@@ -244,7 +244,7 @@ func (n *RaftBrainImpl) log() *zerolog.Logger {
 }
 
 func (n *RaftBrainImpl) resetElectionTimeout() {
-	randomElectionTimeOut := time.Duration(common.RandInt(n.MinRandomDuration*5, n.MaxRandomDuration*5)) * time.Millisecond
+	randomElectionTimeOut := time.Duration(common.RandInt(n.MinRandomDuration*10, n.MaxRandomDuration*10)) * time.Millisecond
 	n.log().Info().Interface("seconds", randomElectionTimeOut.Seconds()).Msg("resetElectionTimeout")
 	if n.ElectionTimeOut == nil {
 		n.ElectionTimeOut = time.NewTimer(randomElectionTimeOut)

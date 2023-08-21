@@ -88,7 +88,7 @@ func (n *RaftBrainImpl) BroadCastRequestVote() {
 	}
 }
 
-func (n *RaftBrainImpl) BroadcastAppendEntries() {
+func (n *RaftBrainImpl) BroadcastAppendEntries() (majorityOK bool) {
 	if n.State == StateLeader {
 		n.resetHeartBeatTimeout()
 		n.log().Info().Msg("BroadcastAppendEntries")
@@ -178,6 +178,7 @@ func (n *RaftBrainImpl) BroadcastAppendEntries() {
 			Msg("BroadcastAppendEntries")
 
 		if successCount >= n.Quorum {
+			majorityOK = true
 			// If there exists an N such that N > commitIndex, a majority
 			// of matchIndex[i] ≥ N, and log[N].term == currentTerm: set commitIndex = N (§5.3, §5.4).
 			for N := len(n.Logs); N > n.CommitIndex; N++ {
@@ -204,13 +205,15 @@ func (n *RaftBrainImpl) BroadcastAppendEntries() {
 			n.SetVotedFor(maxTermID)
 			n.ToFollower()
 		} else {
-			n.SetCurrentTerm(maxTerm)
-			n.SetVotedFor(0)
-			n.ToFollower()
+			// n.SetCurrentTerm(maxTerm)
+			// n.SetVotedFor(0)
+			// n.ToFollower()
 		}
 
 		n.applyLog()
 	} else {
 		// n.log().Info().Msg("BroadcastAppendEntries: not a leader")
 	}
+
+	return
 }

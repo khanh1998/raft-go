@@ -52,15 +52,16 @@ func (c *Cluster) init(num int) {
 		l.Add(1)
 		go func(i int) {
 			param := node.NewNodeParams{
-				ID: id + 1,
+				ID: id + i,
 				Brain: logic.NewRaftBrainParams{
 					DataFileName:      fmt.Sprintf("test.log.%d.dat", id+i),
 					MinRandomDuration: 150,
 					MaxRandomDuration: 300,
 					Log:               &log,
 					Peers:             peers,
-					DB:                persistance.NewPersistenceMock(),
-					StateMachine:      common.NewKeyValueStateMachine(),
+					// DB:                persistance.NewPersistence(fmt.Sprintf("test.log.%d.dat", id+i)),
+					DB:           persistance.NewPersistenceMock(),
+					StateMachine: common.NewKeyValueStateMachine(),
 				},
 				RPCProxy: rpc_proxy.NewRPCImplParams{
 					Peers:   peers,
