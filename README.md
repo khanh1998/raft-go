@@ -1,4 +1,4 @@
-This is a simple key-value database, built on top of [Raft](https://raft.github.io/) consensus algorithm. At the moment, this raft cluster now supports:
+This is a simple distributed key-value database, built on top of [Raft](https://raft.github.io/) consensus algorithm. At the moment, this raft cluster now supports:
 - Leader election
 - Log replication
 - Safety
