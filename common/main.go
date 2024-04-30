@@ -33,6 +33,7 @@ type RequestVoteOutput struct {
 }
 
 type PeerInfo struct {
-	ID  int
-	URL string
+	ID      int
+	RpcUrl  string
+	HttpUrl string
 }

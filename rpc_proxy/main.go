@@ -68,6 +68,20 @@ func (r *RPCProxyImpl) SetBrain(brain RaftBrain) {
 	r.brain = brain
 }
 
+func (r *RPCProxyImpl) ConnectToNewPeer(peerID int, peerURL string, retry int, retryDelay time.Duration) error {
+	return r.ConnectToPeer(peerID, peerURL, retry, retryDelay)
+}
+
+func (r *RPCProxyImpl) AddPeerToStaging(peerID int, peerURL string, retry int, retryDelay time.Duration) error {
+
+	return nil
+}
+
+func (r *RPCProxyImpl) CommitStaging(peerID int, peerURL string, retry int, retryDelay time.Duration) error {
+
+	return nil
+}
+
 func (r *RPCProxyImpl) ConnectToPeer(peerID int, peerURL string, retry int, retryDelay time.Duration) error {
 	if r.peers == nil {
 		r.peers = map[int]PeerRPCProxy{}
@@ -118,7 +132,7 @@ func (r *RPCProxyImpl) ConnectToPeers(params []common.PeerInfo) {
 		go func(peerURL string, peerID int) {
 			r.ConnectToPeer(peerID, peerURL, 5, 3*time.Second)
 			count.Done()
-		}(peer.URL, peer.ID)
+		}(peer.RpcUrl, peer.ID)
 	}
 
 	count.Wait()

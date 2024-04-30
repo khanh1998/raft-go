@@ -27,3 +27,7 @@ func (r RPCProxyMock) SendRequestVote(peerId int, timeout *time.Duration, input 
 func (r RPCProxyMock) SendPing(peerId int, timeout *time.Duration) (err error) {
 	return
 }
+
+func (r RPCProxyMock) ConnectToNewPeer(peerID int, peerURL string, retry int, retryDelay time.Duration) error {
+	return nil
+}

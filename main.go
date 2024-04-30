@@ -28,16 +28,19 @@ func main() {
 
 	peers := []common.PeerInfo{
 		{
-			ID:  1,
-			URL: ":1234",
+			ID:      1,
+			RpcUrl:  "localhost:1234",
+			HttpUrl: "localhost:8080",
 		},
 		{
-			ID:  2,
-			URL: ":1235",
+			ID:      2,
+			RpcUrl:  "localhost:1235",
+			HttpUrl: "localhost:8081",
 		},
 		{
-			ID:  3,
-			URL: ":1236",
+			ID:      3,
+			RpcUrl:  "localhost:1236",
+			HttpUrl: "localhost:8082",
 		},
 	}
 
@@ -58,7 +61,7 @@ func main() {
 			},
 			RPCProxy: rpc_proxy.NewRPCImplParams{
 				Peers:   peers,
-				HostURL: ":1234",
+				HostURL: "localhost:1234",
 				Log:     &log,
 			},
 			HTTPProxy: http_proxy.NewHttpProxyParams{
@@ -78,7 +81,7 @@ func main() {
 			},
 			RPCProxy: rpc_proxy.NewRPCImplParams{
 				Peers:   peers,
-				HostURL: ":1235",
+				HostURL: "localhost:1235",
 				Log:     &log,
 			},
 			HTTPProxy: http_proxy.NewHttpProxyParams{
@@ -98,7 +101,7 @@ func main() {
 			},
 			RPCProxy: rpc_proxy.NewRPCImplParams{
 				Peers:   peers,
-				HostURL: ":1236",
+				HostURL: "localhost:1236",
 				Log:     &log,
 			},
 			HTTPProxy: http_proxy.NewHttpProxyParams{

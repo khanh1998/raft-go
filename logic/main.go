@@ -42,6 +42,7 @@ type RaftBrainImpl struct {
 	Session           SessionManager
 	ARM               AsyncResponseManager
 	Stop              chan struct{}
+	AddServerLock     sync.Mutex
 	// Persistent state on all servers:
 	// Updated on stable storage before responding to RPCs
 	CurrentTerm int          // latest term server has seen (initialized to 0 on first boot, increases monotonically)
@@ -156,6 +157,8 @@ type RPCProxy interface {
 	SendAppendEntries(peerId int, timeout *time.Duration, input common.AppendEntriesInput) (output common.AppendEntriesOutput, err error)
 	SendRequestVote(peerId int, timeout *time.Duration, input common.RequestVoteInput) (output common.RequestVoteOutput, err error)
 	SendPing(peerId int, timeout *time.Duration) (err error)
+
+	ConnectToNewPeer(peerID int, peerURL string, retry int, retryDelay time.Duration) error
 }
 
 type Persistence interface {

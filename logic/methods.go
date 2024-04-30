@@ -1,7 +1,6 @@
 package logic
 
 import (
-	"errors"
 	"khanh/raft-go/common"
 )
 
@@ -14,22 +13,6 @@ var (
 	MsgTheResponderAlreadyMakeAVote         = "the responder already made a vote"
 	MsgTheRequesterLogsAreOutOfDate         = "the requestor logs are out of date"
 )
-
-// TODO: what is this?
-func (n *RaftBrainImpl) ServeClientRequest(req common.ClientRequestInput) error {
-	if n.State == StateLeader {
-		n.AppendLog(common.Log{
-			Term:    n.CurrentTerm,
-			Command: req.Command,
-		})
-
-		return nil
-	} else {
-		n.log().Info().Msg("follower can not process client request for now")
-
-		return errors.New("not a leader")
-	}
-}
 
 // AppendEntries Invoked by leader to replicate log entries (§5.3); also used as heartbeat (§5.2).
 func (n *RaftBrainImpl) AppendEntries(input *common.AppendEntriesInput, output *common.AppendEntriesOutput) (err error) {

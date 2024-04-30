@@ -31,16 +31,20 @@ This API is to create a session for a current client. To read or write data to t
 
 You need to replace the `localhost:8080` with the leader URL you found in step #2.
 ```bash
-curl --location 'localhost:8080/register' \
+curl --location 'localhost:8080/cli' \
 --header 'Content-Type: application/json' \
---data '{}'
+--data '{
+    "client_id": 0,
+    "sequence_num": 0,
+    "command": "register"
+}'
 ```
 
-If you send the request to the leader, and the request is successful, you will receive a response like the one below. `client_id` is the id of your session, you need to include this `client_id` in later requests.
+If you send the request to the leader, and the request is successful, you will receive a response like the one below. `response` is the id of your session, you need to include this session id in later requests.
 ```json
 {
     "status": "OK",
-    "client_id": 2,
+    "response": 2,
     "leader_hint": ""
 }
 ```
@@ -50,8 +54,8 @@ If you send a request to a follower, you most likely received a response which i
 ```json
 {
     "status": "Not OK",
-    "client_id": 0,
-    "leader_hint": ":1236"
+    "response": 0,
+    "leader_hint": "localhost:8080"
 }
 ```
 
@@ -59,15 +63,15 @@ If you send a request to a follower, you most likely received a response which i
 This is a key value database, so you can send a command to the leader to set (or overwrite) the value for a specific key.
 
 - The format of the `command`: [set][a space][key-name][a space][value need to be set]
-- Session ID `client_id`: You got this ID from step #3.1
+- Session ID `client_id`: You got this ID in the `response` from step #3.1
 - Sequence Number `sequence_num`: The purpose of sequence num is to ensure the idempotent of the request, so you can retry it safely.
 After each command you need to increase the sequence num, You need to make sure the sequence num of the later request must be bigger than the former one. 
 In case you want to retry the command, keep the sequence number the same.
 ```bash
-curl --location 'localhost:8082/command' \
+curl --location 'localhost:8080/cli' \
 --header 'Content-Type: application/json' \
 --data '{
-    "client_id":2,
+    "client_id": 2,
     "sequence_num": 1,
     "command": "set name quoc khanh"
 }'
@@ -85,19 +89,23 @@ If you send a request to a follower, you will receive:
 {
     "status": "Not OK",
     "response": "NOT_LEADER",
-    "leader_hint": ":1236"
+    "leader_hint": "localhost:8080"
 }
 ```
 ## 3.3 Query data
 After set the value for the keys in the previous step, you can now query it:
 Query format: [get][a space][key-name]
 ```bash
-curl --location 'localhost:8080/query' \
+curl --location 'localhost:8080/cli' \
 --header 'Content-Type: application/json' \
 --data '{
-    "query": "get name"
+    "client_id": 0,
+    "sequence_num": 0,
+    "command": "get name"
 }'
 ```
+Since we don't need `client_id` and `sequence_num` in this request, so we can set it both as `0`.
+
 If success:
 
 ```json
@@ -114,6 +122,6 @@ Failed:
 {
     "status": "Not OK",
     "response": "NOT_LEADER",
-    "leader_hint": ":1236"
+    "leader_hint": "localhost:8080"
 }
 ```

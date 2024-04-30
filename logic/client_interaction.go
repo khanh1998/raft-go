@@ -6,11 +6,11 @@ import (
 	"time"
 )
 
-func (r *RaftBrainImpl) getLeaderUrl() string {
+func (r *RaftBrainImpl) getLeaderHttpUrl() string {
 	leaderUrl := ""
 	for _, peer := range r.Peers {
 		if peer.ID != r.ID && peer.ID == r.VotedFor {
-			leaderUrl = peer.URL
+			leaderUrl = peer.HttpUrl
 
 			break
 		}
@@ -21,7 +21,7 @@ func (r *RaftBrainImpl) getLeaderUrl() string {
 
 func (r *RaftBrainImpl) ClientRequest(input *common.ClientRequestInput, output *common.ClientRequestOutput) (err error) {
 	if r.State != StateLeader {
-		leaderUrl := r.getLeaderUrl()
+		leaderUrl := r.getLeaderHttpUrl()
 
 		*output = common.ClientRequestOutput{
 			Status:     common.StatusNotOK,
@@ -67,7 +67,7 @@ func (r *RaftBrainImpl) ClientRequest(input *common.ClientRequestInput, output *
 
 func (r *RaftBrainImpl) RegisterClient(input *common.RegisterClientInput, output *common.RegisterClientOutput) (err error) {
 	if r.State != StateLeader {
-		leaderUrl := r.getLeaderUrl()
+		leaderUrl := r.getLeaderHttpUrl()
 
 		*output = common.RegisterClientOutput{
 			Status:     common.StatusNotOK,
@@ -115,7 +115,7 @@ func (r *RaftBrainImpl) ClientQuery(input *common.ClientQueryInput, output *comm
 	}()
 
 	if r.State != StateLeader {
-		leaderUrl := r.getLeaderUrl()
+		leaderUrl := r.getLeaderHttpUrl()
 
 		*output = common.ClientQueryOutput{
 			Status:     common.StatusNotOK,

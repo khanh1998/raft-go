@@ -40,8 +40,8 @@ func (c *Cluster) init(num int) {
 
 	for i := 0; i < num; i++ {
 		peers = append(peers, common.PeerInfo{
-			ID:  id + i,
-			URL: fmt.Sprintf(":%d", rpcPort+i),
+			ID:     id + i,
+			RpcUrl: fmt.Sprintf(":%d", rpcPort+i),
 		})
 	}
 
