@@ -11,7 +11,7 @@ func (r *RaftBrainImpl) AddServer(input common.AddServerInput, output *common.Ad
 	r.AddServerLock.Lock()
 	defer r.AddServerLock.Unlock()
 
-	if r.State != StateLeader {
+	if r.State != common.StateLeader {
 		output = &common.AddServerOutput{
 			Status:     common.StatusNotOK,
 			LeaderHint: r.getLeaderHttpUrl(),

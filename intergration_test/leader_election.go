@@ -14,10 +14,14 @@ import (
 	"time"
 
 	"github.com/rs/zerolog"
+	"github.com/rs/zerolog/log"
 )
 
 type Cluster struct {
-	Nodes []*node.Node
+	Nodes            []*node.Node
+	RpcProxy         RPCProxyImpl
+	log              *zerolog.Logger
+	createNodeParams []node.NewNodeParams
 }
 
 func NewCluster(numNode int) *Cluster {
@@ -28,7 +32,9 @@ func NewCluster(numNode int) *Cluster {
 }
 
 func (c *Cluster) init(num int) {
-	output := zerolog.ConsoleWriter{Out: os.Stdout, TimeFormat: time.RFC3339}
+	zerolog.TimeFieldFormat = time.RFC3339Nano
+
+	output := zerolog.ConsoleWriter{Out: os.Stdout, TimeFormat: time.RFC3339Nano}
 
 	log := zerolog.New(output).With().Timestamp().Logger()
 
@@ -46,6 +52,7 @@ func (c *Cluster) init(num int) {
 	}
 
 	c.Nodes = make([]*node.Node, num)
+	c.createNodeParams = make([]node.NewNodeParams, num)
 
 	l := sync.WaitGroup{}
 	for i := 0; i < num; i++ {
@@ -75,10 +82,19 @@ func (c *Cluster) init(num int) {
 
 			n := node.NewNode(param)
 
+			c.createNodeParams[i] = param
 			c.Nodes[i] = n
 			l.Done()
 		}(i)
 	}
+
+	rpcProxy, err := NewRPCImpl(NewRPCImplParams{Peers: peers, Log: &log})
+	if err != nil {
+		panic(err)
+	}
+
+	c.RpcProxy = *rpcProxy
+	c.log = &log
 
 	l.Wait()
 }
@@ -96,19 +112,56 @@ func (c *Cluster) DisconnectLeader() error {
 
 func (c *Cluster) StopNode(nodeId int) {
 	for _, node := range c.Nodes {
+		if node == nil {
+			continue
+		}
 		if node.ID == nodeId {
 			node.Stop()
+			if err := c.RpcProxy.Disconnect(nodeId); err != nil {
+				log.Err(err).Msg("StopNode")
+			}
+			// c.Nodes[index] = nil
 			break
 		}
 	}
 }
 
-func (c *Cluster) HasOneLeader() (node.GetStatusResponse, error) {
+func (c *Cluster) RestartNode(nodeId int, sleep time.Duration) {
+	for index, n := range c.Nodes {
+		if n == nil {
+			continue
+		}
+		if n.ID == nodeId {
+			c.Nodes[index].Stop()
+			time.AfterFunc(sleep, func() {
+				// new node will read data from log file and recreate the state of the node
+				c.Nodes[index] = node.NewNode(c.createNodeParams[index])
+				c.log.Info().Msgf("new node is replaced %d", nodeId)
+			})
+			break
+		}
+	}
+}
+
+func (c *Cluster) HasOneLeader() (common.GetStatusResponse, error) {
 	leaderCount := 0
-	var leaderStatus node.GetStatusResponse
+	var leaderStatus common.GetStatusResponse
+	timeout := 100 * time.Millisecond
+
 	for _, n := range c.Nodes {
-		status := n.GetStatus()
-		if status.State == logic.StateLeader {
+		if n == nil {
+			continue
+		}
+		status, err := c.RpcProxy.GetInfo(n.ID, &timeout)
+		if err != nil {
+			c.log.Err(err).Msg("HasOneLeader_GetInfo")
+
+			continue
+		}
+
+		c.log.Info().Interface("status", status).Msgf("status node")
+
+		if status.State == common.StateLeader {
 			if leaderCount == 0 {
 				leaderStatus = status
 			}

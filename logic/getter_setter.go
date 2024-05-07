@@ -124,7 +124,7 @@ func (n *RaftBrainImpl) applyLog() {
 
 		res, err := n.StateMachine.Process(log.ClientID, log.SequenceNum, log.Command, n.LastApplied)
 
-		if n.State == StateLeader {
+		if n.State == common.StateLeader {
 			err = n.ARM.PutResponse(n.LastApplied, res, err, 30*time.Second)
 			if err != nil {
 				n.log().Err(err).Msg("ApplyLog_PutResponse")

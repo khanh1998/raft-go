@@ -20,7 +20,7 @@ func (r *RaftBrainImpl) getLeaderHttpUrl() string {
 }
 
 func (r *RaftBrainImpl) ClientRequest(input *common.ClientRequestInput, output *common.ClientRequestOutput) (err error) {
-	if r.State != StateLeader {
+	if r.State != common.StateLeader {
 		leaderUrl := r.getLeaderHttpUrl()
 
 		*output = common.ClientRequestOutput{
@@ -66,7 +66,7 @@ func (r *RaftBrainImpl) ClientRequest(input *common.ClientRequestInput, output *
 }
 
 func (r *RaftBrainImpl) RegisterClient(input *common.RegisterClientInput, output *common.RegisterClientOutput) (err error) {
-	if r.State != StateLeader {
+	if r.State != common.StateLeader {
 		leaderUrl := r.getLeaderHttpUrl()
 
 		*output = common.RegisterClientOutput{
@@ -114,7 +114,7 @@ func (r *RaftBrainImpl) ClientQuery(input *common.ClientQueryInput, output *comm
 		}
 	}()
 
-	if r.State != StateLeader {
+	if r.State != common.StateLeader {
 		leaderUrl := r.getLeaderHttpUrl()
 
 		*output = common.ClientQueryOutput{

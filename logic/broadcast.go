@@ -7,7 +7,7 @@ import (
 )
 
 func (n *RaftBrainImpl) BroadCastRequestVote() {
-	if n.State == StateFollower {
+	if n.State == common.StateFollower {
 		// On conversion to candidate, start election:
 		// Increment currentTerm
 		// Vote for self
@@ -89,7 +89,7 @@ func (n *RaftBrainImpl) BroadCastRequestVote() {
 }
 
 func (n *RaftBrainImpl) BroadcastAppendEntries() (majorityOK bool) {
-	if n.State == StateLeader {
+	if n.State == common.StateLeader {
 		n.resetHeartBeatTimeout()
 		n.log().Info().Msg("BroadcastAppendEntries")
 

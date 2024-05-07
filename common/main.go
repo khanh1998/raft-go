@@ -1,5 +1,7 @@
 package common
 
+import "net/rpc"
+
 const NoOperation = "NO-OP"
 
 type AppendEntriesInput struct {
@@ -36,4 +38,27 @@ type PeerInfo struct {
 	ID      int
 	RpcUrl  string
 	HttpUrl string
+}
+
+type RaftState string
+
+const (
+	StateFollower  RaftState = "follower"
+	StateCandidate RaftState = "candidate"
+	StateLeader    RaftState = "leader"
+)
+
+func (s RaftState) String() string {
+	return string(s)
+}
+
+type GetStatusResponse struct {
+	ID    int
+	State RaftState
+	Term  int
+}
+
+type PeerRPCProxy struct {
+	Conn *rpc.Client
+	URL  string
 }

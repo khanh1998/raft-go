@@ -16,15 +16,11 @@ import (
 type RaftBrain interface {
 	RequestVote(input *common.RequestVoteInput, output *common.RequestVoteOutput) (err error)
 	AppendEntries(input *common.AppendEntriesInput, output *common.AppendEntriesOutput) (err error)
-}
-
-type PeerRPCProxy struct {
-	conn *rpc.Client
-	url  string
+	GetInfo() common.GetStatusResponse
 }
 
 type RPCProxyImpl struct {
-	peers      map[int]PeerRPCProxy // TODO: data race
+	peers      map[int]common.PeerRPCProxy // TODO: data race
 	hostID     int
 	hostURL    string
 	brain      RaftBrain
@@ -84,7 +80,7 @@ func (r *RPCProxyImpl) CommitStaging(peerID int, peerURL string, retry int, retr
 
 func (r *RPCProxyImpl) ConnectToPeer(peerID int, peerURL string, retry int, retryDelay time.Duration) error {
 	if r.peers == nil {
-		r.peers = map[int]PeerRPCProxy{}
+		r.peers = map[int]common.PeerRPCProxy{}
 	}
 
 	for i := 0; i < retry; i++ {
@@ -95,9 +91,9 @@ func (r *RPCProxyImpl) ConnectToPeer(peerID int, peerURL string, retry int, retr
 			r.log().Err(err).Msg("ConnectToPeers: Client connection error: ")
 		} else {
 			r.log().Info().Msgf("ConnectToPeers: connect to %s successfully", peerURL)
-			r.peers[peerID] = PeerRPCProxy{
-				conn: client,
-				url:  peerURL,
+			r.peers[peerID] = common.PeerRPCProxy{
+				Conn: client,
+				URL:  peerURL,
 			}
 
 			var message string
@@ -119,7 +115,7 @@ func (r *RPCProxyImpl) ConnectToPeer(peerID int, peerURL string, retry int, retr
 }
 
 func (r *RPCProxyImpl) ConnectToPeers(params []common.PeerInfo) {
-	r.peers = make(map[int]PeerRPCProxy)
+	r.peers = make(map[int]common.PeerRPCProxy)
 
 	var count sync.WaitGroup
 
@@ -144,7 +140,7 @@ func (r *RPCProxyImpl) Disconnect(peerID int) error {
 		return ErrPeerIdDoesNotExist
 	}
 
-	if err := peer.conn.Close(); err != nil {
+	if err := peer.Conn.Close(); err != nil {
 		return err
 	}
 
@@ -153,7 +149,7 @@ func (r *RPCProxyImpl) Disconnect(peerID int) error {
 
 func (r *RPCProxyImpl) DisconnectAll() error {
 	for _, peer := range r.peers {
-		if err := peer.conn.Close(); err != nil {
+		if err := peer.Conn.Close(); err != nil {
 			r.log().Err(err).Msg("DisconnectAll")
 		}
 	}
@@ -182,7 +178,12 @@ func (r *RPCProxyImpl) initRPCProxy(url string) error {
 	go func() {
 		for {
 			<-r.Stop
-			r.listener.Close()
+			err := r.listener.Close()
+			if err != nil {
+				r.log().Err(err).Msg("RPC Proxy stop")
+			}
+
+			r.log().Info().Msg("RPC Proxy stop")
 		}
 	}()
 
@@ -190,15 +191,16 @@ func (r *RPCProxyImpl) initRPCProxy(url string) error {
 		for {
 			conn, err := r.listener.Accept()
 			if err != nil {
-				r.log().Err(err).Msg("initRPCProxy: listener error")
+				r.log().Err(err).Msg("RPCProxy: listener error")
 
 				break
 			} else {
-				r.log().Info().Msg("initRPCProxy: received a request")
+				r.log().Info().Msg("RPCProxy: received a request")
 
 				go r.rpcServer.ServeConn(conn)
 			}
 		}
+		r.log().Err(err).Msg("RPCProxy: main loop stop")
 	}()
 
 	return nil
@@ -209,7 +211,7 @@ func (r RPCProxyImpl) StopServer(peerIdx int) error {
 }
 
 func (r RPCProxyImpl) Reconnect(peerIdx int) error {
-	targetUrl := r.peers[peerIdx].url
+	targetUrl := r.peers[peerIdx].URL
 
 	client, err := rpc.Dial("tcp", targetUrl)
 	if err != nil {
@@ -226,9 +228,9 @@ func (r RPCProxyImpl) Reconnect(peerIdx int) error {
 		r.log().Info().Msg(message)
 	}
 
-	r.peers[peerIdx] = PeerRPCProxy{
-		conn: client,
-		url:  targetUrl,
+	r.peers[peerIdx] = common.PeerRPCProxy{
+		Conn: client,
+		URL:  targetUrl,
 	}
 
 	return nil
@@ -241,7 +243,7 @@ var (
 
 func (r RPCProxyImpl) CallWithoutTimeout(peerID int, serviceMethod string, args any, reply any) error {
 	var (
-		peer PeerRPCProxy
+		peer common.PeerRPCProxy
 		ok   bool
 	)
 
@@ -257,16 +259,16 @@ func (r RPCProxyImpl) CallWithoutTimeout(peerID int, serviceMethod string, args 
 		}
 	}
 
-	if peer.conn == nil {
+	if peer.Conn == nil {
 		return ErrRpcPeerConnectionIsNull
 	}
 
-	return peer.conn.Call(serviceMethod, args, reply)
+	return peer.Conn.Call(serviceMethod, args, reply)
 }
 
 func (r RPCProxyImpl) CallWithTimeout(peerID int, serviceMethod string, args any, reply any, timeout time.Duration) error {
 	var (
-		peer PeerRPCProxy
+		peer common.PeerRPCProxy
 		ok   bool
 	)
 
@@ -282,11 +284,11 @@ func (r RPCProxyImpl) CallWithTimeout(peerID int, serviceMethod string, args any
 		}
 	}
 
-	if peer.conn == nil {
+	if peer.Conn == nil {
 		return ErrRpcPeerConnectionIsNull
 	}
 
-	call := peer.conn.Go(serviceMethod, args, reply, nil)
+	call := peer.Conn.Go(serviceMethod, args, reply, nil)
 	select {
 	case <-time.After(timeout):
 		return errors.New("RPC timeout")

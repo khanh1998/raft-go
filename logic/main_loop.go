@@ -1,5 +1,7 @@
 package logic
 
+import "khanh/raft-go/common"
+
 func (n *RaftBrainImpl) loop() {
 	n.log().Info().Msg("Raft main loop has been started")
 	stop := false
@@ -15,7 +17,7 @@ func (n *RaftBrainImpl) loop() {
 		case <-n.ElectionTimeOut.C:
 			// Thus, a leader in Raft steps down if an election timeout elapses without a successful round of heartbeats to a majority of its cluster;
 			// this allows clients to retry their requests with another server.
-			if n.State == StateLeader && !majorityOK {
+			if n.State == common.StateLeader && !majorityOK {
 				n.ToFollower()
 
 				n.log().Debug().Msg("main loop: leader step down")

@@ -19,7 +19,7 @@ func TestRaftBrainImpl_BroadCastRequestVote(t *testing.T) {
 		logger            *zerolog.Logger
 		DB                Persistence
 		Peers             []common.PeerInfo
-		State             RaftState
+		State             common.RaftState
 		ID                int
 		StateMachine      SimpleStateMachine
 		ElectionTimeOut   *time.Timer
@@ -46,7 +46,7 @@ func TestRaftBrainImpl_BroadCastRequestVote(t *testing.T) {
 				logger:            &zerolog.Logger{},
 				DB:                persistance.NewPersistenceMock(),
 				Peers:             []common.PeerInfo{{ID: 2, RpcUrl: ""}},
-				State:             StateCandidate,
+				State:             common.StateCandidate,
 				ID:                1,
 				StateMachine:      common.NewKeyValueStateMachine(),
 				ElectionTimeOut:   nil,

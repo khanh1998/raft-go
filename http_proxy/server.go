@@ -240,12 +240,13 @@ func (h HttpProxy) Start() {
 
 	go func() {
 		if err := httpServer.ListenAndServe(); err != nil {
-			log.Err(err).Msg("HttpProxy Start")
+			log.Err(err).Msg("HTTP Proxy Start")
 		}
 	}()
 
 	go func() {
 		<-h.Stop
 		httpServer.Shutdown(context.Background())
+		log.Info().Msg("HTTP Proxy stop")
 	}()
 }

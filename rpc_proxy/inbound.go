@@ -27,3 +27,15 @@ func (r *RPCProxyImpl) Ping(name string, message *string) (err error) {
 	*message = fmt.Sprintf("Hello %s, from node ID: %d, URL: %s", name, r.hostID, r.hostURL)
 	return nil
 }
+
+func (r *RPCProxyImpl) GetInfo(_ *struct{}, info *common.GetStatusResponse) (err error) {
+	if !r.Accessible {
+		return ErrInaccessible
+	}
+
+	*info = r.brain.GetInfo()
+
+	r.log().Info().Msg("received GetInfo request")
+
+	return nil
+}

@@ -11,18 +11,6 @@ import (
 	"github.com/rs/zerolog/log"
 )
 
-type RaftState string
-
-const (
-	StateFollower  RaftState = "follower"
-	StateCandidate RaftState = "candidate"
-	StateLeader    RaftState = "leader"
-)
-
-func (s RaftState) String() string {
-	return string(s)
-}
-
 type SessionManager interface{}
 
 type RaftBrainImpl struct {
@@ -30,7 +18,7 @@ type RaftBrainImpl struct {
 	logger            *zerolog.Logger
 	DB                Persistence
 	Peers             []common.PeerInfo
-	State             RaftState
+	State             common.RaftState
 	ID                int
 	StateMachine      SimpleStateMachine
 	ElectionTimeOut   *time.Timer
@@ -185,7 +173,7 @@ type NewRaftBrainParams struct {
 func NewRaftBrain(params NewRaftBrainParams) (*RaftBrainImpl, error) {
 	n := &RaftBrainImpl{
 		ID:           params.ID,
-		State:        StateFollower,
+		State:        common.StateFollower,
 		VotedFor:     0,
 		DB:           params.DB,
 		StateMachine: params.StateMachine,
@@ -263,5 +251,13 @@ func (n *RaftBrainImpl) resetHeartBeatTimeout() {
 		n.HeartBeatTimeOut = time.NewTimer(randomHeartBeatTimeout)
 	} else {
 		n.HeartBeatTimeOut.Reset(randomHeartBeatTimeout)
+	}
+}
+
+func (n *RaftBrainImpl) GetInfo() common.GetStatusResponse {
+	return common.GetStatusResponse{
+		ID:    n.ID,
+		State: n.State,
+		Term:  n.CurrentTerm,
 	}
 }

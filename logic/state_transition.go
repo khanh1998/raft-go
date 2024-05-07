@@ -4,12 +4,12 @@ import "khanh/raft-go/common"
 
 func (n *RaftBrainImpl) ToCandidate() {
 	n.log().Info().Msg("to candidate")
-	n.State = StateCandidate
+	n.State = common.StateCandidate
 }
 
 func (n *RaftBrainImpl) ToLeader() {
 	n.log().Info().Msg("to leader")
-	n.State = StateLeader
+	n.State = common.StateLeader
 
 	n.NextIndex = make(map[int]int)
 	n.MatchIndex = make(map[int]int)
@@ -27,5 +27,5 @@ func (n *RaftBrainImpl) ToLeader() {
 
 func (n *RaftBrainImpl) ToFollower() {
 	n.log().Info().Msg("to follower")
-	n.State = StateFollower
+	n.State = common.StateFollower
 }

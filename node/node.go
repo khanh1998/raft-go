@@ -1,6 +1,7 @@
 package node
 
 import (
+	"khanh/raft-go/common"
 	"khanh/raft-go/http_proxy"
 	"khanh/raft-go/logic"
 	"khanh/raft-go/rpc_proxy"
@@ -47,19 +48,16 @@ func NewNode(params NewNodeParams) *Node {
 
 	brain.Start()
 
-	return &Node{ID: params.ID, brain: brain, rpc: rpcProxy, http: httpProxy}
-}
+	n := &Node{ID: params.ID, brain: brain, rpc: rpcProxy, http: httpProxy}
 
-type GetStatusResponse struct {
-	ID    int
-	State logic.RaftState
-	Term  int
+	return n
 }
 
 func (n *Node) Stop() error {
 	n.rpc.Stop <- struct{}{}
 	n.http.Stop <- struct{}{}
 	n.brain.Stop <- struct{}{}
+	// n.SetUnaccessible()
 	return nil
 }
 
@@ -79,8 +77,8 @@ func (n *Node) Restart() error {
 	return nil
 }
 
-func (n *Node) GetStatus() (res GetStatusResponse) {
-	res = GetStatusResponse{
+func (n *Node) GetStatus() (res common.GetStatusResponse) {
+	res = common.GetStatusResponse{
 		ID:    n.brain.ID,
 		State: n.brain.State,
 		Term:  n.brain.CurrentTerm,

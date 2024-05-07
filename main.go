@@ -18,7 +18,7 @@ import (
 )
 
 func main() {
-	output := zerolog.ConsoleWriter{Out: os.Stdout, TimeFormat: time.RFC3339}
+	output := zerolog.ConsoleWriter{Out: os.Stdout, TimeFormat: time.RFC3339Nano}
 
 	log := zerolog.New(output).With().Timestamp().Logger()
 
@@ -134,14 +134,6 @@ func main() {
 		count.Wait()
 
 		log.Info().Interface("nodes", nodes).Msg("cluster is created")
-
-		time.Sleep(10 * time.Second)
-
-		for _, n := range nodes {
-			if n.GetStatus().State == logic.StateLeader {
-				n.Stop()
-			}
-		}
 	}
 
 	signChan := make(chan os.Signal, 1)
