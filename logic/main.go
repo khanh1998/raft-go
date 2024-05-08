@@ -14,7 +14,6 @@ import (
 type SessionManager interface{}
 
 type RaftBrainImpl struct {
-	// TODO: add mutex
 	logger            *zerolog.Logger
 	DB                Persistence
 	Peers             []common.PeerInfo
@@ -30,7 +29,7 @@ type RaftBrainImpl struct {
 	Session           SessionManager
 	ARM               AsyncResponseManager
 	Stop              chan struct{}
-	AddServerLock     sync.Mutex
+	InOutLock         sync.RWMutex // lock for inbound and outbound RPC methods and for client interaction
 	// Persistent state on all servers:
 	// Updated on stable storage before responding to RPCs
 	CurrentTerm int          // latest term server has seen (initialized to 0 on first boot, increases monotonically)
@@ -43,8 +42,8 @@ type RaftBrainImpl struct {
 
 	// Volatile state on leaders:
 	// Reinitialized after election
-	NextIndex  map[int]int // for each server, index of the next log entry to send to that server (initialized to leader last log index + 1) // TODO: data race
-	MatchIndex map[int]int // for each server, index of highest log entry known to be replicated on server (initialized to 0, increases monotonically) // TODO: data race
+	NextIndex  map[int]int // for each server, index of the next log entry to send to that server (initialized to leader last log index + 1)
+	MatchIndex map[int]int // for each server, index of highest log entry known to be replicated on server (initialized to 0, increases monotonically)
 }
 
 type AsyncResponseItem struct {
@@ -63,7 +62,7 @@ type AsyncResponseIndex struct {
 type AsyncResponseManager struct {
 	m    map[AsyncResponseIndex]AsyncResponse // client id -> response
 	size int
-	l    sync.Mutex
+	lock sync.RWMutex
 }
 
 func NewAsyncResponseManager(size int) AsyncResponseManager {
@@ -71,8 +70,8 @@ func NewAsyncResponseManager(size int) AsyncResponseManager {
 }
 
 func (a *AsyncResponseManager) Register(logIndex int) error {
-	a.l.Lock()
-	defer a.l.Unlock()
+	a.lock.Lock()
+	defer a.lock.Unlock()
 
 	index := AsyncResponseIndex{logIndex}
 
@@ -96,15 +95,20 @@ func (a *AsyncResponseManager) Register(logIndex int) error {
 }
 
 func (a *AsyncResponseManager) PutResponse(logIndex int, msg any, resErr error, timeout time.Duration) error {
+	a.lock.RLock()
 	index := AsyncResponseIndex{logIndex}
 
-	_, ok := a.m[index]
+	slot, ok := a.m[index]
 	if !ok {
+		a.lock.RUnlock()
+
 		return fmt.Errorf("register log index: %d first", logIndex)
 	}
 
+	a.lock.RUnlock()
+
 	select {
-	case a.m[index].msg <- AsyncResponseItem{Response: msg, Err: resErr}:
+	case slot.msg <- AsyncResponseItem{Response: msg, Err: resErr}:
 		log.Info().Int("log index", logIndex).Interface("msg", msg).Interface("err", resErr).Msg("PutResponse")
 	case <-time.After(timeout):
 		return fmt.Errorf("channel log index: %d is not empty", logIndex)
@@ -115,11 +119,17 @@ func (a *AsyncResponseManager) PutResponse(logIndex int, msg any, resErr error, 
 
 // blocking call
 func (a *AsyncResponseManager) TakeResponse(logIndex int, timeout time.Duration) (any, error) {
+	a.lock.RLock()
+
 	index := AsyncResponseIndex{logIndex}
 	item, ok := a.m[index]
 	if !ok {
+		a.lock.RUnlock()
+
 		return nil, fmt.Errorf("register log index: %d first", logIndex)
 	}
+
+	a.lock.RUnlock()
 
 	select {
 	case res := <-item.msg:
@@ -188,7 +198,7 @@ func NewRaftBrain(params NewRaftBrainParams) (*RaftBrainImpl, error) {
 		MatchIndex:        make(map[int]int),
 	}
 
-	err := n.Rehydrate()
+	err := n.rehydrate()
 	if err != nil {
 		return n, err
 	}

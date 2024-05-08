@@ -2,12 +2,12 @@ package logic
 
 import "khanh/raft-go/common"
 
-func (n *RaftBrainImpl) ToCandidate() {
+func (n *RaftBrainImpl) toCandidate() {
 	n.log().Info().Msg("to candidate")
 	n.State = common.StateCandidate
 }
 
-func (n *RaftBrainImpl) ToLeader() {
+func (n *RaftBrainImpl) toLeader() {
 	n.log().Info().Msg("to leader")
 	n.State = common.StateLeader
 
@@ -19,13 +19,13 @@ func (n *RaftBrainImpl) ToLeader() {
 		n.MatchIndex[peer.ID] = 0
 	}
 
-	n.AppendLog(common.Log{
+	n.appendLog(common.Log{
 		Term:    n.CurrentTerm,
 		Command: common.NoOperation,
 	})
 }
 
-func (n *RaftBrainImpl) ToFollower() {
+func (n *RaftBrainImpl) toFollower() {
 	n.log().Info().Msg("to follower")
 	n.State = common.StateFollower
 }

@@ -18,7 +18,7 @@ func (n *RaftBrainImpl) loop() {
 			// Thus, a leader in Raft steps down if an election timeout elapses without a successful round of heartbeats to a majority of its cluster;
 			// this allows clients to retry their requests with another server.
 			if n.State == common.StateLeader && !majorityOK {
-				n.ToFollower()
+				n.toFollower()
 
 				n.log().Debug().Msg("main loop: leader step down")
 			}

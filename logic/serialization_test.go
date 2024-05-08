@@ -54,7 +54,7 @@ func Test_nodeImpl_Serialize(t *testing.T) {
 				VotedFor:    tt.fields.VotedFor,
 				Logs:        tt.fields.Logs,
 			}
-			if got := n.Serialize(false, false, ""); !reflect.DeepEqual(got, tt.want) {
+			if got := n.serialize(false, false, ""); !reflect.DeepEqual(got, tt.want) {
 				t.Errorf("nodeImpl.Serialize() = %v, want %v", got, tt.want)
 			}
 		})
@@ -115,7 +115,7 @@ func Test_nodeImpl_Deserialize(t *testing.T) {
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
 			n := &RaftBrainImpl{}
-			if err := n.Deserialize(tt.args.data); (err != nil) != tt.wantErr {
+			if err := n.deserialize(tt.args.data); (err != nil) != tt.wantErr {
 				t.Errorf("nodeImpl.Deserialize() error = %v, wantErr %v", err, tt.wantErr)
 			}
 
@@ -127,8 +127,8 @@ func Test_nodeImpl_Deserialize(t *testing.T) {
 				t.Errorf("current term val = %v, want wal %v", n.VotedFor, tt.want.VotedFor)
 			}
 
-			if !reflect.DeepEqual(n.Serialize(false, false, ""), tt.args.data) {
-				t.Errorf("current term val = %v, want wal %v", n.Serialize(false, false, ""), tt.args.data)
+			if !reflect.DeepEqual(n.serialize(false, false, ""), tt.args.data) {
+				t.Errorf("current term val = %v, want wal %v", n.serialize(false, false, ""), tt.args.data)
 			}
 
 			if !reflect.DeepEqual(n.Logs, tt.want.Logs) {

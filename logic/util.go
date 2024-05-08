@@ -5,9 +5,9 @@ import (
 	"time"
 )
 
-func (n *RaftBrainImpl) DeleteLogFrom(index int) error {
+func (n *RaftBrainImpl) deleteLogFrom(index int) error {
 	defer func() {
-		data := n.Serialize(true, true, "DeleteLogFrom")
+		data := n.serialize(true, true, "DeleteLogFrom")
 		if err := n.DB.AppendLog(data); err != nil {
 			n.log().Err(err).Msg("DeleteLogFrom save to db error: ")
 		}
@@ -33,9 +33,9 @@ func (n *RaftBrainImpl) DeleteLogFrom(index int) error {
 	return nil
 }
 
-func (n *RaftBrainImpl) AppendLogs(logItems []common.Log) {
+func (n *RaftBrainImpl) appendLogs(logItems []common.Log) {
 	defer func() {
-		data := n.Serialize(true, true, "AppendLogs")
+		data := n.serialize(true, true, "AppendLogs")
 		if err := n.DB.AppendLog(data); err != nil {
 			n.log().Err(err).Msg("AppendLogs save to db error: ")
 		}
@@ -44,9 +44,9 @@ func (n *RaftBrainImpl) AppendLogs(logItems []common.Log) {
 	n.Logs = append(n.Logs, logItems...)
 }
 
-func (n *RaftBrainImpl) AppendLog(logItem common.Log) int {
+func (n *RaftBrainImpl) appendLog(logItem common.Log) int {
 	defer func() {
-		data := n.Serialize(true, true, "AppendLog")
+		data := n.serialize(true, true, "AppendLog")
 		if err := n.DB.AppendLog(data); err != nil {
 			n.log().Err(err).Msg("AppendLog save to db error: ")
 		}
@@ -60,7 +60,7 @@ func (n *RaftBrainImpl) AppendLog(logItem common.Log) int {
 	return index
 }
 
-func (n *RaftBrainImpl) GetLog(index int) (common.Log, error) {
+func (n *RaftBrainImpl) getLog(index int) (common.Log, error) {
 	if len(n.Logs) == 0 {
 		return common.Log{}, ErrLogIsEmtpy
 	}
@@ -74,9 +74,9 @@ func (n *RaftBrainImpl) GetLog(index int) (common.Log, error) {
 	return n.Logs[realIndex], nil
 }
 
-func (n *RaftBrainImpl) SetCurrentTerm(term int) {
+func (n *RaftBrainImpl) setCurrentTerm(term int) {
 	defer func() {
-		data := n.Serialize(true, true, "SetCurrentTerm")
+		data := n.serialize(true, true, "SetCurrentTerm")
 		if err := n.DB.AppendLog(data); err != nil {
 			n.log().Err(err).Msg("SetCurrentTerm save to db error: ")
 		}
@@ -85,9 +85,9 @@ func (n *RaftBrainImpl) SetCurrentTerm(term int) {
 	n.CurrentTerm = term
 }
 
-func (n *RaftBrainImpl) SetVotedFor(nodeID int) {
+func (n *RaftBrainImpl) setVotedFor(nodeID int) {
 	defer func() {
-		data := n.Serialize(true, true, "SetVotedFor")
+		data := n.serialize(true, true, "SetVotedFor")
 		if err := n.DB.AppendLog(data); err != nil {
 			n.log().Err(err).Msg("SetVotedFor save to db error: ")
 		}
@@ -117,7 +117,7 @@ func (n *RaftBrainImpl) applyLog() {
 	for n.CommitIndex > n.LastApplied {
 		n.LastApplied += 1
 
-		log, err := n.GetLog(n.LastApplied)
+		log, err := n.getLog(n.LastApplied)
 		if err != nil {
 			break
 		}

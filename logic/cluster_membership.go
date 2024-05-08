@@ -8,8 +8,8 @@ import (
 )
 
 func (r *RaftBrainImpl) AddServer(input common.AddServerInput, output *common.AddServerOutput) (err error) {
-	r.AddServerLock.Lock()
-	defer r.AddServerLock.Unlock()
+	r.InOutLock.Lock()
+	defer r.InOutLock.Unlock()
 
 	if r.State != common.StateLeader {
 		output = &common.AddServerOutput{
@@ -45,7 +45,7 @@ func (r *RaftBrainImpl) AddServer(input common.AddServerInput, output *common.Ad
 	// wait until the previous configuration in log is committed
 
 	// append new configuration to log (old configuration + new server), commit it using majority of new configuration
-	index := r.AppendLog(common.Log{
+	index := r.appendLog(common.Log{
 		Term:        r.CurrentTerm,
 		ClientID:    0,
 		SequenceNum: 0,
@@ -96,13 +96,13 @@ func (r *RaftBrainImpl) CatchUp(peerID int) error {
 		if nextIdx > 1 {
 			input.PrevLogIndex = nextIdx - 1
 
-			prevLog, err := r.GetLog(nextIdx - 1)
+			prevLog, err := r.getLog(nextIdx - 1)
 			if err == nil {
 				input.PrevLogTerm = prevLog.Term
 			}
 		}
 
-		logItem, err := r.GetLog(nextIdx)
+		logItem, err := r.getLog(nextIdx)
 		if err == nil {
 			input.Entries = []common.Log{logItem}
 		}

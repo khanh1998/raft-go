@@ -20,6 +20,7 @@ func (r *RaftBrainImpl) getLeaderHttpUrl() string {
 }
 
 func (r *RaftBrainImpl) ClientRequest(input *common.ClientRequestInput, output *common.ClientRequestOutput) (err error) {
+	r.InOutLock.Lock()
 	if r.State != common.StateLeader {
 		leaderUrl := r.getLeaderHttpUrl()
 
@@ -29,15 +30,19 @@ func (r *RaftBrainImpl) ClientRequest(input *common.ClientRequestInput, output *
 			LeaderHint: leaderUrl,
 		}
 
+		r.InOutLock.Unlock()
+
 		return nil
 	}
 
-	index := r.AppendLog(common.Log{
+	index := r.appendLog(common.Log{
 		Term:        r.CurrentTerm,
 		Command:     input.Command,
 		ClientID:    input.ClientID,
 		SequenceNum: input.SequenceNum,
 	})
+
+	r.InOutLock.Unlock()
 
 	var status common.ClientRequestStatus = common.StatusOK
 	var response any = nil
@@ -66,6 +71,8 @@ func (r *RaftBrainImpl) ClientRequest(input *common.ClientRequestInput, output *
 }
 
 func (r *RaftBrainImpl) RegisterClient(input *common.RegisterClientInput, output *common.RegisterClientOutput) (err error) {
+	r.InOutLock.Lock()
+
 	if r.State != common.StateLeader {
 		leaderUrl := r.getLeaderHttpUrl()
 
@@ -74,15 +81,19 @@ func (r *RaftBrainImpl) RegisterClient(input *common.RegisterClientInput, output
 			LeaderHint: leaderUrl,
 		}
 
+		r.InOutLock.Unlock()
+
 		return nil
 	}
 
-	index := r.AppendLog(common.Log{
+	index := r.appendLog(common.Log{
 		Term:        r.CurrentTerm,
 		ClientID:    0,
 		SequenceNum: 0,
 		Command:     "register",
 	})
+
+	r.InOutLock.Unlock()
 
 	var status common.ClientRequestStatus = common.StatusOK
 
@@ -127,7 +138,7 @@ func (r *RaftBrainImpl) ClientQuery(input *common.ClientQueryInput, output *comm
 	}
 	var ok bool
 	for i := 0; i < 100; i++ {
-		log, err := r.GetLog(r.CommitIndex)
+		log, err := r.getLog(r.CommitIndex)
 		if err != nil {
 			return err
 		}

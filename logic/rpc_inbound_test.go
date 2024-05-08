@@ -303,7 +303,7 @@ func Test_nodeImpl_AppendEntries(t *testing.T) {
 				MinRandomDuration: 1000,
 				MaxRandomDuration: 10000,
 			}
-			keys, err := n2.GetPersistanceKeyList()
+			keys, err := n2.getPersistanceKeyList()
 			assert.NoError(t, err)
 			// assert.Equal(t, []string{}, keys)
 			data, err := n2.DB.ReadNewestLog(keys)
@@ -311,7 +311,7 @@ func Test_nodeImpl_AppendEntries(t *testing.T) {
 			// assert.Equal(t, map[string]string{}, data)
 			_ = data
 
-			err = n2.Rehydrate()
+			err = n2.rehydrate()
 
 			assert.NoError(t, err)
 

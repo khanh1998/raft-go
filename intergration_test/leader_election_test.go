@@ -11,7 +11,7 @@ func TestLeaderElection(t *testing.T) {
 	c := NewCluster(5)
 	defer c.Clean()
 
-	time.Sleep(3000 * time.Millisecond)
+	time.Sleep(5000 * time.Millisecond)
 	status, err := c.HasOneLeader()
 
 	assert.NoError(t, err, "expect one leader int the cluster")

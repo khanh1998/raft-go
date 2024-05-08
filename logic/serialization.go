@@ -9,8 +9,7 @@ import (
 	"time"
 )
 
-// TODO: copy lock
-func (n RaftBrainImpl) Serialize(delimiter bool, createdAt bool, source string) map[string]string {
+func (n *RaftBrainImpl) serialize(delimiter bool, createdAt bool, source string) map[string]string {
 	data := make(map[string]string)
 	if delimiter {
 		data["a"] = "---------------------------------------------"
@@ -32,7 +31,7 @@ func (n RaftBrainImpl) Serialize(delimiter bool, createdAt bool, source string) 
 	return data
 }
 
-func (n *RaftBrainImpl) Deserialize(data map[string]string) error {
+func (n *RaftBrainImpl) deserialize(data map[string]string) error {
 	currentTerm, err := strconv.ParseInt(data["current_term"], 10, 32)
 	if err != nil {
 		return err
@@ -72,7 +71,7 @@ func (n *RaftBrainImpl) Deserialize(data map[string]string) error {
 	return nil
 }
 
-func (n *RaftBrainImpl) GetPersistanceKeyList() ([]string, error) {
+func (n *RaftBrainImpl) getPersistanceKeyList() ([]string, error) {
 	data, err := n.DB.ReadNewestLog([]string{"log_count"})
 	if err != nil {
 		return nil, err
@@ -98,8 +97,8 @@ func (n *RaftBrainImpl) GetPersistanceKeyList() ([]string, error) {
 	return keys, nil
 }
 
-func (n *RaftBrainImpl) Rehydrate() error {
-	keys, err := n.GetPersistanceKeyList()
+func (n *RaftBrainImpl) rehydrate() error {
+	keys, err := n.getPersistanceKeyList()
 	if err != nil {
 		if errors.Is(err, persistance.ErrEmptyData) {
 			n.log().Err(err).Msg("data file is empty")
@@ -114,7 +113,7 @@ func (n *RaftBrainImpl) Rehydrate() error {
 		return err
 	}
 
-	if err := n.Deserialize(data); err != nil {
+	if err := n.deserialize(data); err != nil {
 		return err
 	}
 

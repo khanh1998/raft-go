@@ -21,6 +21,9 @@ func (n *RaftBrainImpl) AppendEntries(input *common.AppendEntriesInput, output *
 		Interface("req", input).
 		Msg("Received an AppendEntries request")
 
+	n.InOutLock.Lock()
+	defer n.InOutLock.Unlock()
+
 	defer func() {
 		output.NodeID = n.ID
 
@@ -31,7 +34,7 @@ func (n *RaftBrainImpl) AppendEntries(input *common.AppendEntriesInput, output *
 			n.resetElectionTimeout() // TODO: review this, because log syncing can take long
 
 			if n.VotedFor == 0 { // input.Term == n.CurrentTerm
-				n.SetVotedFor(input.LeaderID)
+				n.setVotedFor(input.LeaderID)
 			}
 		}
 
@@ -46,9 +49,9 @@ func (n *RaftBrainImpl) AppendEntries(input *common.AppendEntriesInput, output *
 	// what if one node has bigger term but less log?
 	if input.Term > n.CurrentTerm {
 		n.CurrentTerm = input.Term
-		n.ToFollower()
-		n.SetVotedFor(input.LeaderID)
-		n.SetCurrentTerm(input.Term)
+		n.toFollower()
+		n.setVotedFor(input.LeaderID)
+		n.setCurrentTerm(input.Term)
 	}
 
 	// 1. Reply false if term < currentTerm (§5.1)
@@ -61,7 +64,7 @@ func (n *RaftBrainImpl) AppendEntries(input *common.AppendEntriesInput, output *
 	if input.PrevLogIndex > 0 { // if leader has no log, then no need to check
 		// 2. Reply false if log doesn’t contain an entry at prevLogIndex whose term matches prevLogTerm (§5.3)
 		// WARN: log index start from 1, not 0
-		logItem, err := n.GetLog(input.PrevLogIndex)
+		logItem, err := n.getLog(input.PrevLogIndex)
 		switch err {
 		case ErrLogIsEmtpy:
 			*output = common.AppendEntriesOutput{Term: n.CurrentTerm, Success: false, Message: MsgTheResponderHasNoLog}
@@ -80,10 +83,10 @@ func (n *RaftBrainImpl) AppendEntries(input *common.AppendEntriesInput, output *
 		}
 
 		// 3. If an existing entry conflicts with a new one (same index but different terms), delete the existing entry and all that follow it (§5.3)
-		logItem, err = n.GetLog(input.PrevLogIndex + 1)
+		logItem, err = n.getLog(input.PrevLogIndex + 1)
 		if err == nil {
 			if logItem.Term != input.Term {
-				n.DeleteLogFrom(input.PrevLogIndex + 1)
+				n.deleteLogFrom(input.PrevLogIndex + 1)
 				*output = common.AppendEntriesOutput{Term: n.CurrentTerm, Success: false, Message: MsgCurrentLogTermsAreNotMatched}
 
 				return nil
@@ -93,9 +96,9 @@ func (n *RaftBrainImpl) AppendEntries(input *common.AppendEntriesInput, output *
 
 	// 4. Append any new entries not already in the log
 	if len(input.Entries) > 0 {
-		_, err = n.GetLog(input.PrevLogIndex + 1)
+		_, err = n.getLog(input.PrevLogIndex + 1)
 		if err != nil { // entries are not already in the log
-			n.AppendLogs(input.Entries)
+			n.appendLogs(input.Entries)
 		}
 	}
 
@@ -117,6 +120,9 @@ func (n *RaftBrainImpl) RequestVote(input *common.RequestVoteInput, output *comm
 		Interface("ID", n.ID).
 		Interface("req", input).
 		Msg("Received an RequestVote request")
+
+	n.InOutLock.Lock()
+	defer n.InOutLock.Unlock()
 
 	defer func() {
 		output.NodeID = n.ID
@@ -146,7 +152,7 @@ func (n *RaftBrainImpl) RequestVote(input *common.RequestVoteInput, output *comm
 	// 2. If votedFor is null or candidateId, and candidate’s log is at least as up-to-date as receiver’s log, grant vote (§5.2, §5.4)
 	if n.VotedFor == 0 {
 		if n.isLogUpToDate(input.LastLogIndex, input.LastLogTerm) {
-			n.SetVotedFor(input.CandidateID)
+			n.setVotedFor(input.CandidateID)
 
 			*output = common.RequestVoteOutput{Term: n.CurrentTerm, VoteGranted: true, Message: ""}
 
