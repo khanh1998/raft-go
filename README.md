@@ -15,19 +15,19 @@ To clear the previous state of the cluster: `make clear`\
 Open three terminals, and input the three below commands to three terminals respectively:\
 Terminal 1 - Node 1: `make node1`\
 Terminal 2 - Node 2: `make node2`\
-Terminal 3 - Node 3: `make node2`\
+Terminal 3 - Node 3: `make node2`
 ## 1.2 Using one terminal
 In this mode, logs of nodes in the cluster will be all shown in one terminal.\
 To clear the previous state of the cluster: `make clear`\
-Open a terminal, and type: `make run`\
+Open a terminal, and type: `make run`
 # 2. Specify the URL of the leader
 After the cluster is started up, a few seconds later there will be an election, and finally a leader will be elected.\
 The default cluster will have three nodes, initially, all three nodes are followers, and after a successful election, one of the followers becomes the leader of the cluster.\
 At the moment, all of your requests including reading and writing need to go through the leader.\
-To find which node is the current leader, you can check its log, recent logs of the leader will have `state=leader`. At the moment node's HTTP URL is hardcoded in `main.go`.\
+To find which node is the current leader, you can check its log, recent logs of the leader will have `state=leader`. At the moment node's HTTP URL is hardcoded in `main.go`.
 # 3. Interact with the cluster
 ## 3.1 Register client
-This API is to create a session for a current client. To read or write data to the cluster, a session is required.\ The purpose of the session is to make the requests are idempotent, by assigning a monotonically increasing number.\
+This API is to create a session for a current client. To read or write data to the cluster, a session is required. The purpose of the session is to make the requests are idempotent, by assigning a monotonically increasing number.
 
 You need to replace the `localhost:8080` with the leader URL you found in step #2.
 ```bash
@@ -104,7 +104,7 @@ curl --location 'localhost:8080/cli' \
     "command": "get name"
 }'
 ```
-Since we don't need `client_id` and `sequence_num` in this request, so we can set it both as `0`.\
+Since we don't need `client_id` and `sequence_num` in this request, so we can set it both as `0`.
 
 If success:
 
