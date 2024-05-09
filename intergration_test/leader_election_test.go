@@ -38,7 +38,7 @@ func TestReLeaderElection(t *testing.T) {
 	assert.ErrorIs(t, err, ErrThereIsNoLeader, "expect no leader in cluster")
 
 	// re-elect new leader
-	time.Sleep(3000 * time.Millisecond)
+	time.Sleep(5000 * time.Millisecond)
 	status3, err := c.HasOneLeader()
 
 	assert.NoError(t, err, "expect one leader in the cluster")

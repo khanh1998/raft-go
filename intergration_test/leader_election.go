@@ -14,7 +14,6 @@ import (
 	"time"
 
 	"github.com/rs/zerolog"
-	"github.com/rs/zerolog/log"
 )
 
 type Cluster struct {
@@ -117,10 +116,6 @@ func (c *Cluster) StopNode(nodeId int) {
 		}
 		if node.ID == nodeId {
 			node.Stop()
-			if err := c.RpcProxy.Disconnect(nodeId); err != nil {
-				log.Err(err).Msg("StopNode")
-			}
-			// c.Nodes[index] = nil
 			break
 		}
 	}

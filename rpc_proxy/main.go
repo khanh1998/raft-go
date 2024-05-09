@@ -20,16 +20,17 @@ type RaftBrain interface {
 }
 
 type RPCProxyImpl struct {
-	peers      map[int]common.PeerRPCProxy
-	hostID     int
-	hostURL    string
-	brain      RaftBrain
-	rpcServer  *rpc.Server
-	Log        *zerolog.Logger
-	Stop       chan struct{}
-	Accessible bool
-	listener   net.Listener
-	lock       sync.RWMutex
+	peers       map[int]common.PeerRPCProxy
+	hostID      int
+	hostURL     string
+	brain       RaftBrain
+	rpcServer   *rpc.Server
+	Log         *zerolog.Logger
+	Stop        chan struct{}
+	Accessible  bool
+	listener    net.Listener
+	lock        sync.RWMutex
+	connections []net.Conn // TODO: unsafe, memory leak
 }
 
 type PeerRPCProxyConnectInfo struct {
@@ -203,15 +204,24 @@ func (r *RPCProxyImpl) initRPCProxy(url string) error {
 
 	r.log().Info().Msg("initRPCProxy: finished register node")
 	go func() {
-		for {
-			<-r.Stop
-			err := r.listener.Close()
-			if err != nil {
-				r.log().Err(err).Msg("RPC Proxy stop")
-			}
-
-			r.log().Info().Msg("RPC Proxy stop")
+		<-r.Stop
+		err := r.listener.Close()
+		if err != nil {
+			r.log().Err(err).Msg("RPC Proxy stopping triggered")
 		}
+
+		r.log().Info().Msg("RPC Proxy stopping triggered")
+
+		r.lock.Lock()
+		defer r.lock.Unlock()
+
+		for _, conn := range r.connections {
+			if err := conn.Close(); err != nil {
+				r.log().Err(err).Msg("RPC Proxy stopping: close connection")
+			}
+		}
+
+		r.connections = []net.Conn{} // delete all closed connnections
 	}()
 
 	go func() {
@@ -224,9 +234,15 @@ func (r *RPCProxyImpl) initRPCProxy(url string) error {
 			} else {
 				r.log().Info().Msg("RPCProxy: received a request")
 
+				r.lock.Lock()
+				r.connections = append(r.connections, conn)
+				r.lock.Unlock()
+
 				go r.rpcServer.ServeConn(conn)
 			}
+
 		}
+
 		r.log().Err(err).Msg("RPCProxy: main loop stop")
 	}()
 

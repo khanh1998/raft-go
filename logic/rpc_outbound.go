@@ -125,7 +125,7 @@ func (n *RaftBrainImpl) BroadcastAppendEntries() (majorityOK bool) {
 		for _, peer := range n.Peers {
 			count.Add(1)
 			go func(peerID int) {
-				nextIdx := n.NextIndex[peerID]
+				nextIdx := n.NextIndex[peerID] // data race
 				input := common.AppendEntriesInput{
 					Term:         n.CurrentTerm,
 					LeaderID:     n.ID,
@@ -163,10 +163,10 @@ func (n *RaftBrainImpl) BroadcastAppendEntries() (majorityOK bool) {
 						successCount += 1
 						n.MatchIndex[peerID] = common.Min(n.NextIndex[peerID], len(n.Logs))
 
-						n.NextIndex[peerID] = common.Min(n.NextIndex[peerID]+1, len(n.Logs)+1)
+						n.NextIndex[peerID] = common.Min(n.NextIndex[peerID]+1, len(n.Logs)+1) // data race
 					} else {
 						if output.Term <= n.CurrentTerm {
-							n.NextIndex[peerID] = common.Max(0, n.NextIndex[peerID]-1)
+							n.NextIndex[peerID] = common.Max(0, n.NextIndex[peerID]-1) // data race
 						} else {
 							// the appendEntries request is failed,
 							// because current leader is outdated
