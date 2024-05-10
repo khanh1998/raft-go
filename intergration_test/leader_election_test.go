@@ -11,7 +11,7 @@ func TestLeaderElection(t *testing.T) {
 	c := NewCluster(5)
 	defer c.Clean()
 
-	time.Sleep(5000 * time.Millisecond)
+	time.Sleep(1000 * time.Millisecond)
 	status, err := c.HasOneLeader()
 
 	assert.NoError(t, err, "expect one leader int the cluster")
@@ -22,9 +22,9 @@ func TestLeaderElection(t *testing.T) {
 
 func TestReLeaderElection(t *testing.T) {
 	c := NewCluster(3)
-	// defer c.Clean()
+	defer c.Clean()
 
-	time.Sleep(3000 * time.Millisecond)
+	time.Sleep(1000 * time.Millisecond)
 	status1, err := c.HasOneLeader()
 
 	assert.NoError(t, err, "expect one leader in the cluster")
@@ -38,7 +38,7 @@ func TestReLeaderElection(t *testing.T) {
 	assert.ErrorIs(t, err, ErrThereIsNoLeader, "expect no leader in cluster")
 
 	// re-elect new leader
-	time.Sleep(5000 * time.Millisecond)
+	time.Sleep(1000 * time.Millisecond)
 	status3, err := c.HasOneLeader()
 
 	assert.NoError(t, err, "expect one leader in the cluster")

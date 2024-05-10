@@ -19,14 +19,16 @@ func TestStop(t *testing.T) {
 
 	n := NewNode(NewNodeParams{
 		Brain: logic.NewRaftBrainParams{
-			ID:                1,
-			Peers:             peers,
-			DataFileName:      "logs.dat",
-			MinRandomDuration: 100,
-			MaxRandomDuration: 200,
-			Log:               &zerolog.Logger{},
-			DB:                persistance.NewPersistenceMock(),
-			StateMachine:      common.NewKeyValueStateMachine(),
+			ID:                  1,
+			Peers:               peers,
+			DataFileName:        "logs.dat",
+			HeartBeatTimeOutMin: 150,
+			HeartBeatTimeOutMax: 300,
+			ElectionTimeOutMin:  300,
+			ElectionTimeOutMax:  500,
+			Log:                 &zerolog.Logger{},
+			DB:                  persistance.NewPersistenceMock(),
+			StateMachine:        common.NewKeyValueStateMachine(),
 		},
 		RPCProxy: rpc_proxy.NewRPCImplParams{
 			Peers:   peers,
@@ -38,6 +40,7 @@ func TestStop(t *testing.T) {
 			URL: "localhost:8080",
 		},
 	})
+	n.Start()
 
 	_, err := rpc.Dial("tcp", ":1234")
 	assert.NoError(t, err, "connect to rpc server ok")

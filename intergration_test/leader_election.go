@@ -60,11 +60,13 @@ func (c *Cluster) init(num int) {
 			param := node.NewNodeParams{
 				ID: id + i,
 				Brain: logic.NewRaftBrainParams{
-					DataFileName:      fmt.Sprintf("test.log.%d.dat", id+i),
-					MinRandomDuration: 150,
-					MaxRandomDuration: 300,
-					Log:               &log,
-					Peers:             peers,
+					DataFileName:        fmt.Sprintf("test.log.%d.dat", id+i),
+					HeartBeatTimeOutMin: 150,
+					HeartBeatTimeOutMax: 300,
+					ElectionTimeOutMin:  300,
+					ElectionTimeOutMax:  500,
+					Log:                 &log,
+					Peers:               peers,
 					// DB:                persistance.NewPersistence(fmt.Sprintf("test.log.%d.dat", id+i)),
 					DB:           persistance.NewPersistenceMock(),
 					StateMachine: common.NewKeyValueStateMachine(),

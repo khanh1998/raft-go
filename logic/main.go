@@ -14,22 +14,24 @@ import (
 type SessionManager interface{}
 
 type RaftBrainImpl struct {
-	logger            *zerolog.Logger
-	DB                Persistence
-	Peers             []common.PeerInfo
-	State             common.RaftState
-	ID                int
-	StateMachine      SimpleStateMachine
-	ElectionTimeOut   *time.Timer
-	HeartBeatTimeOut  *time.Timer
-	Quorum            int
-	MinRandomDuration int64
-	MaxRandomDuration int64
-	RpcProxy          RPCProxy
-	Session           SessionManager
-	ARM               AsyncResponseManager
-	Stop              chan struct{}
-	InOutLock         sync.RWMutex // lock for inbound and outbound RPC methods and for client interaction
+	logger              *zerolog.Logger
+	DB                  Persistence
+	Peers               []common.PeerInfo
+	State               common.RaftState
+	ID                  int
+	StateMachine        SimpleStateMachine
+	ElectionTimeOut     *time.Timer
+	HeartBeatTimeOut    *time.Timer
+	Quorum              int
+	HeartBeatTimeOutMin int64
+	HeartBeatTimeOutMax int64
+	ElectionTimeOutMin  int64
+	ElectionTimeOutMax  int64
+	RpcProxy            RPCProxy
+	Session             SessionManager
+	ARM                 AsyncResponseManager
+	Stop                chan struct{}
+	InOutLock           sync.RWMutex // lock for inbound and outbound RPC methods and for client interaction
 	// Persistent state on all servers:
 	// Updated on stable storage before responding to RPCs
 	CurrentTerm int          // latest term server has seen (initialized to 0 on first boot, increases monotonically)
@@ -170,14 +172,16 @@ type PeerInfo struct {
 }
 
 type NewRaftBrainParams struct {
-	ID                int
-	Peers             []common.PeerInfo
-	DataFileName      string
-	MinRandomDuration int64
-	MaxRandomDuration int64
-	Log               *zerolog.Logger
-	DB                Persistence
-	StateMachine      SimpleStateMachine
+	ID                  int
+	Peers               []common.PeerInfo
+	DataFileName        string
+	HeartBeatTimeOutMin int64
+	HeartBeatTimeOutMax int64
+	ElectionTimeOutMin  int64
+	ElectionTimeOutMax  int64
+	Log                 *zerolog.Logger
+	DB                  Persistence
+	StateMachine        SimpleStateMachine
 }
 
 func NewRaftBrain(params NewRaftBrainParams) (*RaftBrainImpl, error) {
@@ -190,12 +194,15 @@ func NewRaftBrain(params NewRaftBrainParams) (*RaftBrainImpl, error) {
 		ARM:          NewAsyncResponseManager(100),
 		Stop:         make(chan struct{}),
 
-		MinRandomDuration: params.MinRandomDuration,
-		MaxRandomDuration: params.MaxRandomDuration,
-		logger:            params.Log,
-		Peers:             []common.PeerInfo{},
-		NextIndex:         make(map[int]int),
-		MatchIndex:        make(map[int]int),
+		HeartBeatTimeOutMin: params.HeartBeatTimeOutMin,
+		HeartBeatTimeOutMax: params.HeartBeatTimeOutMax,
+		ElectionTimeOutMin:  params.ElectionTimeOutMin,
+		ElectionTimeOutMax:  params.ElectionTimeOutMax,
+
+		logger:     params.Log,
+		Peers:      []common.PeerInfo{},
+		NextIndex:  make(map[int]int),
+		MatchIndex: make(map[int]int),
 	}
 
 	err := n.rehydrate()
@@ -247,7 +254,7 @@ func (n *RaftBrainImpl) log() *zerolog.Logger {
 }
 
 func (n *RaftBrainImpl) resetElectionTimeout() {
-	randomElectionTimeOut := time.Duration(common.RandInt(n.MinRandomDuration*10, n.MaxRandomDuration*10)) * time.Millisecond
+	randomElectionTimeOut := time.Duration(common.RandInt(n.ElectionTimeOutMin, n.ElectionTimeOutMax)) * time.Millisecond
 	n.log().Info().Interface("seconds", randomElectionTimeOut.Seconds()).Msg("resetElectionTimeout")
 	if n.ElectionTimeOut == nil {
 		n.ElectionTimeOut = time.NewTimer(randomElectionTimeOut)
@@ -257,7 +264,7 @@ func (n *RaftBrainImpl) resetElectionTimeout() {
 }
 
 func (n *RaftBrainImpl) resetHeartBeatTimeout() {
-	randomHeartBeatTimeout := time.Duration(common.RandInt(n.MinRandomDuration, n.MaxRandomDuration)) * time.Millisecond
+	randomHeartBeatTimeout := time.Duration(common.RandInt(n.HeartBeatTimeOutMin, n.HeartBeatTimeOutMax)) * time.Millisecond
 	n.log().Info().Interface("seconds", randomHeartBeatTimeout.Seconds()).Msg("resetHeartBeatTimeout")
 	if n.HeartBeatTimeOut == nil {
 		n.HeartBeatTimeOut = time.NewTimer(randomHeartBeatTimeout)

@@ -37,7 +37,7 @@ func (r *RaftBrainImpl) AddServer(input common.AddServerInput, output *common.Ad
 		}
 
 		duration := time.Since(begin)
-		if err == nil && duration < time.Duration(r.MinRandomDuration*1000) {
+		if err == nil && duration < time.Duration(r.HeartBeatTimeOutMin*1000) {
 			break
 		}
 	}

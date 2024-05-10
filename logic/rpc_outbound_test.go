@@ -16,25 +16,27 @@ func Test_nodeImpl_BroadCastRequestVote(t *testing.T) {
 
 func TestRaftBrainImpl_BroadCastRequestVote(t *testing.T) {
 	type fields struct {
-		logger            *zerolog.Logger
-		DB                Persistence
-		Peers             []common.PeerInfo
-		State             common.RaftState
-		ID                int
-		StateMachine      SimpleStateMachine
-		ElectionTimeOut   *time.Timer
-		HeartBeatTimeOut  *time.Timer
-		Quorum            int
-		MinRandomDuration int64
-		MaxRandomDuration int64
-		RpcProxy          RPCProxy
-		CurrentTerm       int
-		VotedFor          int
-		Logs              []common.Log
-		CommitIndex       int
-		LastApplied       int
-		NextIndex         map[int]int
-		MatchIndex        map[int]int
+		logger              *zerolog.Logger
+		DB                  Persistence
+		Peers               []common.PeerInfo
+		State               common.RaftState
+		ID                  int
+		StateMachine        SimpleStateMachine
+		ElectionTimeOut     *time.Timer
+		HeartBeatTimeOut    *time.Timer
+		Quorum              int
+		HeartBeatTimeOutMin int64
+		HeartBeatTimeOutMax int64
+		ElectionTimeOutMin  int64
+		ElectionTimeOutMax  int64
+		RpcProxy            RPCProxy
+		CurrentTerm         int
+		VotedFor            int
+		Logs                []common.Log
+		CommitIndex         int
+		LastApplied         int
+		NextIndex           map[int]int
+		MatchIndex          map[int]int
 	}
 	tests := []struct {
 		name   string
@@ -43,46 +45,50 @@ func TestRaftBrainImpl_BroadCastRequestVote(t *testing.T) {
 		{
 			name: "",
 			fields: fields{
-				logger:            &zerolog.Logger{},
-				DB:                persistance.NewPersistenceMock(),
-				Peers:             []common.PeerInfo{{ID: 2, RpcUrl: ""}},
-				State:             common.StateCandidate,
-				ID:                1,
-				StateMachine:      common.NewKeyValueStateMachine(),
-				ElectionTimeOut:   nil,
-				HeartBeatTimeOut:  nil,
-				Quorum:            3,
-				MinRandomDuration: 8,
-				MaxRandomDuration: 8,
-				RpcProxy:          rpc_proxy.RPCProxyMock{},
-				CurrentTerm:       7,
-				VotedFor:          0,
-				Logs:              []common.Log{},
+				logger:              &zerolog.Logger{},
+				DB:                  persistance.NewPersistenceMock(),
+				Peers:               []common.PeerInfo{{ID: 2, RpcUrl: ""}},
+				State:               common.StateCandidate,
+				ID:                  1,
+				StateMachine:        common.NewKeyValueStateMachine(),
+				ElectionTimeOut:     nil,
+				HeartBeatTimeOut:    nil,
+				Quorum:              3,
+				HeartBeatTimeOutMin: 8,
+				HeartBeatTimeOutMax: 8,
+				ElectionTimeOutMin:  40,
+				ElectionTimeOutMax:  40,
+				RpcProxy:            rpc_proxy.RPCProxyMock{},
+				CurrentTerm:         7,
+				VotedFor:            0,
+				Logs:                []common.Log{},
 			},
 		},
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
 			n := &RaftBrainImpl{
-				logger:            tt.fields.logger,
-				DB:                tt.fields.DB,
-				Peers:             tt.fields.Peers,
-				State:             tt.fields.State,
-				ID:                tt.fields.ID,
-				StateMachine:      tt.fields.StateMachine,
-				ElectionTimeOut:   tt.fields.ElectionTimeOut,
-				HeartBeatTimeOut:  tt.fields.HeartBeatTimeOut,
-				Quorum:            tt.fields.Quorum,
-				MinRandomDuration: tt.fields.MinRandomDuration,
-				MaxRandomDuration: tt.fields.MaxRandomDuration,
-				RpcProxy:          tt.fields.RpcProxy,
-				CurrentTerm:       tt.fields.CurrentTerm,
-				VotedFor:          tt.fields.VotedFor,
-				Logs:              tt.fields.Logs,
-				CommitIndex:       tt.fields.CommitIndex,
-				LastApplied:       tt.fields.LastApplied,
-				NextIndex:         tt.fields.NextIndex,
-				MatchIndex:        tt.fields.MatchIndex,
+				logger:              tt.fields.logger,
+				DB:                  tt.fields.DB,
+				Peers:               tt.fields.Peers,
+				State:               tt.fields.State,
+				ID:                  tt.fields.ID,
+				StateMachine:        tt.fields.StateMachine,
+				ElectionTimeOut:     tt.fields.ElectionTimeOut,
+				HeartBeatTimeOut:    tt.fields.HeartBeatTimeOut,
+				Quorum:              tt.fields.Quorum,
+				HeartBeatTimeOutMin: tt.fields.HeartBeatTimeOutMin,
+				HeartBeatTimeOutMax: tt.fields.HeartBeatTimeOutMax,
+				ElectionTimeOutMin:  tt.fields.ElectionTimeOutMin,
+				ElectionTimeOutMax:  tt.fields.ElectionTimeOutMax,
+				RpcProxy:            tt.fields.RpcProxy,
+				CurrentTerm:         tt.fields.CurrentTerm,
+				VotedFor:            tt.fields.VotedFor,
+				Logs:                tt.fields.Logs,
+				CommitIndex:         tt.fields.CommitIndex,
+				LastApplied:         tt.fields.LastApplied,
+				NextIndex:           tt.fields.NextIndex,
+				MatchIndex:          tt.fields.MatchIndex,
 			}
 			n.BroadCastRequestVote()
 		})
