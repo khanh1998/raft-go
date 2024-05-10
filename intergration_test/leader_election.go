@@ -80,6 +80,7 @@ func (c *Cluster) init(num int) {
 			}
 
 			n := node.NewNode(param)
+			n.Start()
 
 			c.createNodeParams[i] = param
 			c.Nodes[i] = n

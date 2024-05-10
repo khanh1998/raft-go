@@ -20,12 +20,13 @@ type RaftBrain interface {
 }
 
 type RPCProxyImpl struct {
+	peerInfos   []common.PeerInfo
 	peers       map[int]common.PeerRPCProxy
 	hostID      int
 	hostURL     string
 	brain       RaftBrain
 	rpcServer   *rpc.Server
-	Log         *zerolog.Logger
+	logger      *zerolog.Logger
 	Stop        chan struct{}
 	Accessible  bool
 	listener    net.Listener
@@ -39,7 +40,7 @@ type PeerRPCProxyConnectInfo struct {
 }
 
 func (r *RPCProxyImpl) log() *zerolog.Logger {
-	l := r.Log.With().Int("RPC_ID", r.hostID).Str("RPC_URL", r.hostURL).Logger()
+	l := r.logger.With().Int("RPC_ID", r.hostID).Str("RPC_URL", r.hostURL).Logger()
 	return &l
 }
 
@@ -73,17 +74,12 @@ func NewRPCImpl(params NewRPCImplParams) (*RPCProxyImpl, error) {
 	r := RPCProxyImpl{
 		hostID:     params.HostID,
 		hostURL:    params.HostURL,
-		Log:        params.Log,
+		logger:     params.Log,
 		Stop:       make(chan struct{}),
 		Accessible: true,
 		peers:      make(map[int]common.PeerRPCProxy),
+		peerInfos:  params.Peers,
 	}
-
-	err := r.initRPCProxy(params.HostURL)
-	if err != nil {
-		return nil, err
-	}
-	// r.ConnectToPeers(params.Peers)
 
 	return &r, nil
 }
@@ -113,9 +109,9 @@ func (r *RPCProxyImpl) connectToPeer(peerID int, peerURL string, retry int, retr
 	for i := 0; i < retry; i++ {
 		client, err := rpc.Dial("tcp", peerURL)
 		if err != nil {
-			time.Sleep(retryDelay)
-
 			r.log().Err(err).Msg("ConnectToPeers: Client connection error: ")
+
+			time.Sleep(retryDelay)
 		} else {
 			r.log().Info().Msgf("ConnectToPeers: connect to %s successfully", peerURL)
 			r.setPeer(peerID, common.PeerRPCProxy{
@@ -141,7 +137,8 @@ func (r *RPCProxyImpl) connectToPeer(peerID int, peerURL string, retry int, retr
 	return nil
 }
 
-func (r *RPCProxyImpl) ConnectToPeers(params []common.PeerInfo) {
+func (r *RPCProxyImpl) connectToPeers(params []common.PeerInfo) {
+	r.peers = make(map[int]common.PeerRPCProxy)
 	var count sync.WaitGroup
 
 	for _, peer := range params {
@@ -185,7 +182,7 @@ func (r *RPCProxyImpl) disconnectAll() error {
 	return nil
 }
 
-func (r *RPCProxyImpl) initRPCProxy(url string) error {
+func (r *RPCProxyImpl) initServer(url string) error {
 	r.rpcServer = rpc.NewServer()
 	if err := r.rpcServer.RegisterName("RPCProxyImpl", r); err != nil {
 		r.log().Err(err).Msg("initRPCProxy")
@@ -203,6 +200,15 @@ func (r *RPCProxyImpl) initRPCProxy(url string) error {
 	r.listener = listener
 
 	r.log().Info().Msg("initRPCProxy: finished register node")
+
+	return nil
+}
+
+func (r *RPCProxyImpl) Start() {
+	if err := r.initServer(r.hostURL); err != nil {
+		r.log().Panic().Err(err).Msg("Start RPC Proxy")
+	}
+
 	go func() {
 		<-r.Stop
 		err := r.listener.Close()
@@ -232,7 +238,7 @@ func (r *RPCProxyImpl) initRPCProxy(url string) error {
 
 				break
 			} else {
-				r.log().Info().Msg("RPCProxy: received a request")
+				r.log().Info().Msg("RPCProxy: new connection created")
 
 				r.lock.Lock()
 				r.connections = append(r.connections, conn)
@@ -243,14 +249,10 @@ func (r *RPCProxyImpl) initRPCProxy(url string) error {
 
 		}
 
-		r.log().Err(err).Msg("RPCProxy: main loop stop")
+		r.log().Info().Msg("RPCProxy: main loop stop")
 	}()
 
-	return nil
-}
-
-func (r *RPCProxyImpl) stopServer(peerIdx int) error {
-	return r.listener.Close()
+	r.connectToPeers(r.peerInfos)
 }
 
 func (r *RPCProxyImpl) reconnect(peerIdx int) error {

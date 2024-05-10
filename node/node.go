@@ -43,14 +43,15 @@ func NewNode(params NewNodeParams) *Node {
 	httpProxy.SetBrain(brain)
 	brain.SetRpcProxy(rpcProxy)
 
-	rpcProxy.ConnectToPeers(params.RPCProxy.Peers)
-	httpProxy.Start()
-
-	brain.Start()
-
 	n := &Node{ID: params.ID, brain: brain, rpc: rpcProxy, http: httpProxy}
 
 	return n
+}
+
+func (n *Node) Start() {
+	n.rpc.Start()
+	n.http.Start()
+	n.brain.Start()
 }
 
 func (n *Node) Stop() error {

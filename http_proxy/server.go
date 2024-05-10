@@ -249,4 +249,6 @@ func (h HttpProxy) Start() {
 		httpServer.Shutdown(context.Background())
 		log.Info().Msg("HTTP Proxy stop")
 	}()
+
+	log.Info().Msg("HTTP start")
 }

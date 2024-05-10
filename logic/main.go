@@ -228,6 +228,8 @@ func (n *RaftBrainImpl) Start() {
 	n.resetHeartBeatTimeout()
 
 	go n.loop()
+
+	n.log().Info().Msg("Brain start")
 }
 
 func (n *RaftBrainImpl) log() *zerolog.Logger {
