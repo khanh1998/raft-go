@@ -45,8 +45,6 @@ func (n *RaftBrainImpl) AppendEntries(input *common.AppendEntriesInput, output *
 	}()
 
 	// If RPC request or response contains term T > currentTerm: set currentTerm = T, convert to follower (§5.1)
-	// TODO: review this
-	// what if one node has bigger term but less log?
 	if input.Term > n.CurrentTerm {
 		n.CurrentTerm = input.Term
 		n.toFollower()

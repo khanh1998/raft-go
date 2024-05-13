@@ -7,8 +7,21 @@ import (
 	"github.com/stretchr/testify/assert"
 )
 
-func TestLeaderElection(t *testing.T) {
+func TestLeaderElection5(t *testing.T) {
 	c := NewCluster(5)
+	defer c.Clean()
+
+	time.Sleep(1000 * time.Millisecond)
+	status, err := c.HasOneLeader()
+
+	assert.NoError(t, err, "expect one leader int the cluster")
+	assert.Greater(t, status.Term, 0)
+	assert.Greater(t, status.ID, 0)
+
+}
+
+func TestLeaderElection3(t *testing.T) {
+	c := NewCluster(3)
 	defer c.Clean()
 
 	time.Sleep(1000 * time.Millisecond)

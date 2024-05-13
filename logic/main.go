@@ -240,6 +240,7 @@ func (n *RaftBrainImpl) Start() {
 }
 
 func (n *RaftBrainImpl) log() *zerolog.Logger {
+	// data race
 	sub := n.logger.With().
 		Int("RB_ID", n.ID).
 		Str("state", n.State.String()).
