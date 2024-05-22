@@ -39,3 +39,7 @@ func (r *RPCProxyImpl) GetInfo(_ *struct{}, info *common.GetStatusResponse) (err
 
 	return nil
 }
+
+func (r *RPCProxyImpl) ToVotingMember(_ *struct{}, _ *struct{}) (err error) {
+	return r.brain.ToVotingMember()
+}

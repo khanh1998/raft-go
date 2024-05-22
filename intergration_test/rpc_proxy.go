@@ -14,7 +14,7 @@ import (
 type RPCProxyImpl struct {
 	Log        *zerolog.Logger
 	peers      map[int]common.PeerRPCProxy
-	peerParams []common.PeerInfo
+	peerParams []common.ClusterMember
 }
 
 type PeerRPCProxyConnectInfo struct {
@@ -28,7 +28,7 @@ func (r RPCProxyImpl) log() *zerolog.Logger {
 }
 
 type NewRPCImplParams struct {
-	Peers []common.PeerInfo
+	Peers []common.ClusterMember
 	Log   *zerolog.Logger
 }
 
@@ -50,9 +50,9 @@ func (r *RPCProxyImpl) ConnectToPeer(peerID int, peerURL string, retry int, retr
 		if err != nil {
 			time.Sleep(retryDelay)
 
-			r.log().Err(err).Msg("ConnectToPeers: Client connection error: ")
+			r.log().Err(err).Msg("ConnectToPeer: Client connection error: ")
 		} else {
-			r.log().Info().Msgf("ConnectToPeers: connect to %s successfully", peerURL)
+			r.log().Info().Msgf("ConnectToPeer: connect to %s successfully", peerURL)
 			r.peers[peerID] = common.PeerRPCProxy{
 				Conn: client,
 				URL:  peerURL,
@@ -64,7 +64,7 @@ func (r *RPCProxyImpl) ConnectToPeer(peerID int, peerURL string, retry int, retr
 
 			err := r.SendPing(peerID, &timeout)
 			if err != nil {
-				r.log().Err(err).Str("url", peerURL).Msg("ConnectToPeers: cannot ping")
+				r.log().Err(err).Str("url", peerURL).Msg("ConnectToPeer: cannot ping")
 			} else {
 				r.log().Info().Msg(message)
 			}
@@ -76,7 +76,7 @@ func (r *RPCProxyImpl) ConnectToPeer(peerID int, peerURL string, retry int, retr
 	return nil
 }
 
-func (r *RPCProxyImpl) ConnectToPeers(params []common.PeerInfo) {
+func (r *RPCProxyImpl) ConnectToPeers(params []common.ClusterMember) {
 	r.peers = make(map[int]common.PeerRPCProxy)
 
 	var count sync.WaitGroup
@@ -108,7 +108,7 @@ func (r *RPCProxyImpl) Disconnect(peerId int) error {
 }
 
 func (r RPCProxyImpl) Reconnect(peerId int) error {
-	var peer *common.PeerInfo
+	var peer *common.ClusterMember
 	for _, p := range r.peerParams {
 		if peerId == p.ID {
 			peer = &p

@@ -3,6 +3,7 @@ package http_proxy
 import (
 	"context"
 	"errors"
+	"fmt"
 	"khanh/raft-go/common"
 	"net/http"
 	"regexp"
@@ -12,16 +13,19 @@ import (
 )
 
 type RaftBrain interface {
+	// todo: remove returned error, error should be included in output
 	ClientRequest(input *common.ClientRequestInput, output *common.ClientRequestOutput) (err error)
 	RegisterClient(input *common.RegisterClientInput, output *common.RegisterClientOutput) (err error)
 	ClientQuery(input *common.ClientQueryInput, output *common.ClientQueryOutput) (err error)
+	AddServer(input common.AddServerInput, output *common.AddServerOutput) (err error)
+	RemoveServer(input common.RemoveServerInput, output *common.RemoveServerOutput) (err error)
 }
 
 type HttpProxy struct {
-	brain     RaftBrain
-	host      string
-	Stop      chan struct{}
-	Accessile bool
+	brain      RaftBrain
+	host       string
+	Stop       chan struct{}
+	Accessible bool
 }
 
 type NewHttpProxyParams struct {
@@ -29,98 +33,32 @@ type NewHttpProxyParams struct {
 }
 
 func NewHttpProxy(params NewHttpProxyParams) *HttpProxy {
-	h := HttpProxy{host: params.URL, Stop: make(chan struct{}), Accessile: true}
+	h := HttpProxy{host: params.URL, Stop: make(chan struct{}), Accessible: true}
 
 	return &h
+}
+
+func (h *HttpProxy) SetAccessible() {
+	h.Accessible = true
+}
+
+func (h *HttpProxy) SetInaccessible() {
+	h.Accessible = false
 }
 
 func (h *HttpProxy) SetBrain(brain RaftBrain) {
 	h.brain = brain
 }
 
-// deprecated
-func (h HttpProxy) clientQuery(r *gin.Engine) {
-	r.POST("/query", func(c *gin.Context) {
-		if !h.Accessile {
-			c.Status(http.StatusRequestTimeout)
-
-			return
-		}
-
-		var request common.ClientQueryInput
-		if err := c.BindJSON(&request); err != nil {
-			return
-		}
-
-		var response common.ClientQueryOutput
-		err := h.brain.ClientQuery(&request, &response)
-		if err != nil {
-			c.IndentedJSON(http.StatusInternalServerError, response)
-		} else {
-			c.IndentedJSON(http.StatusOK, response)
-		}
-	})
-}
-
-// deprecated
-func (h HttpProxy) registerClient(r *gin.Engine) {
-	r.POST("/register", func(c *gin.Context) {
-		if !h.Accessile {
-			c.Status(http.StatusRequestTimeout)
-
-			return
-		}
-		var request common.RegisterClientInput
-		if err := c.BindJSON(&request); err != nil {
-			return
-		}
-
-		var response common.RegisterClientOutput
-
-		err := h.brain.RegisterClient(&request, &response)
-		if err != nil {
-			c.IndentedJSON(http.StatusInternalServerError, response)
-		} else {
-			c.IndentedJSON(http.StatusOK, response)
-		}
-	})
-}
-
-// deprecated
-func (h HttpProxy) clientRequest(r *gin.Engine) {
-	r.POST("/command", func(c *gin.Context) {
-		if !h.Accessile {
-			c.Status(http.StatusRequestTimeout)
-
-			return
-		}
-		var request common.ClientRequestInput
-		if err := c.BindJSON(&request); err != nil {
-			return
-		}
-
-		if request.ClientID <= 0 || request.SequenceNum <= 0 || request.Command == nil {
-			c.Error(errors.New("invalid data"))
-			return
-		}
-
-		var response common.ClientRequestOutput
-		err := h.brain.ClientRequest(&request, &response)
-		if err != nil {
-			c.IndentedJSON(http.StatusInternalServerError, response)
-		} else {
-			c.IndentedJSON(http.StatusOK, response)
-		}
-	})
-}
-
-func (h HttpProxy) cli(r *gin.Engine) {
+func (h *HttpProxy) cli(r *gin.Engine) {
 	r.POST("/cli", func(c *gin.Context) {
-		if !h.Accessile {
+		fmt.Println("receive a request ", h.Accessible)
+		if !h.Accessible {
 			c.Status(http.StatusRequestTimeout)
 
 			return
 		}
+
 		var responseData common.ClientRequestOutput
 		var requestData common.ClientRequestInput
 		if err := c.BindJSON(&requestData); err != nil {
@@ -170,6 +108,60 @@ func (h HttpProxy) cli(r *gin.Engine) {
 				LeaderHint: response.LeaderHint,
 				Response:   response.ClientID,
 			}
+		case CommandTypeAddServer:
+			var (
+				httpUrl, rpcUrl string
+				id              int
+			)
+			id, httpUrl, rpcUrl, err = common.DecomposeAddSeverCommand(requestData.Command.(string))
+			if err != nil {
+				responseData = common.ClientRequestOutput{
+					Status:   common.StatusNotOK,
+					Response: "invalid command",
+				}
+			} else {
+				request := common.AddServerInput{
+					ID:               id,
+					NewServerHttpUrl: httpUrl,
+					NewServerRpcUrl:  rpcUrl,
+
+					ClientID:    requestData.ClientID,
+					SequenceNum: requestData.SequenceNum,
+				}
+				var response common.AddServerOutput
+				err = h.brain.AddServer(request, &response)
+				responseData = common.ClientRequestOutput{
+					Status:     response.Status,
+					LeaderHint: response.LeaderHint,
+				}
+			}
+		case CommandTypeRemoveServer:
+			var (
+				httpUrl, rpcUrl string
+				id              int
+			)
+			id, httpUrl, rpcUrl, err = common.DecomposeRemoveServerCommand(requestData.Command.(string))
+			if err != nil {
+				responseData = common.ClientRequestOutput{
+					Status:   common.StatusNotOK,
+					Response: "invalid command",
+				}
+			} else {
+				request := common.RemoveServerInput{
+					ID:               id,
+					NewServerHttpUrl: httpUrl,
+					NewServerRpcUrl:  rpcUrl,
+
+					ClientID:    requestData.ClientID,
+					SequenceNum: requestData.SequenceNum,
+				}
+				var response common.RemoveServerOutput
+				err = h.brain.RemoveServer(request, &response)
+				responseData = common.ClientRequestOutput{
+					Status:     response.Status,
+					LeaderHint: response.LeaderHint,
+				}
+			}
 		}
 
 		if err != nil {
@@ -186,12 +178,16 @@ const (
 	CommandTypeGet CommandType = iota
 	CommandTypeSet
 	CommandTypeRegister
+	CommandTypeAddServer
+	CommandTypeRemoveServer
 )
 
 var (
-	get, _      = regexp.Compile(`^get\s[a-zA-A0-9\-\_]+$`)
-	set, _      = regexp.Compile(`^set\s[a-zA-A0-9\-\_]+\s.+$`)
-	register, _ = regexp.Compile(`^register$`)
+	get, _          = regexp.Compile(`^get\s[a-zA-A0-9\-\_]+$`)
+	set, _          = regexp.Compile(`^set\s[a-zA-A0-9\-\_]+\s.+$`)
+	register, _     = regexp.Compile(`^register$`)
+	addServer, _    = regexp.Compile(`^addServer\s[0-9]+\s.+\s.+$`)
+	removeServer, _ = regexp.Compile(`^removeServer\s[0-9]+\s.+\s.+$`)
 )
 
 func verifyRequest(request common.ClientRequestInput) (errs []error, cmdType CommandType) {
@@ -217,6 +213,16 @@ func verifyRequest(request common.ClientRequestInput) (errs []error, cmdType Com
 		cmdType = CommandTypeRegister
 	}
 
+	if addServer.MatchString(cmd) {
+		valid = true
+		cmdType = CommandTypeAddServer
+	}
+
+	if removeServer.MatchString(cmd) {
+		valid = true
+		cmdType = CommandTypeRemoveServer
+	}
+
 	if !valid {
 		errs = append(errs, errors.New("command is invalid"))
 	}
@@ -224,13 +230,12 @@ func verifyRequest(request common.ClientRequestInput) (errs []error, cmdType Com
 	return
 }
 
-func (h HttpProxy) Start() {
+func (h *HttpProxy) Start() {
 	gin.SetMode(gin.ReleaseMode)
 	r := gin.New()
 
-	h.clientRequest(r)
-	h.registerClient(r)
-	h.clientQuery(r)
+	fmt.Println(h)
+
 	h.cli(r)
 
 	httpServer := &http.Server{

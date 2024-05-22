@@ -1,6 +1,7 @@
 package node
 
 import (
+	"fmt"
 	"khanh/raft-go/common"
 	"khanh/raft-go/http_proxy"
 	"khanh/raft-go/logic"
@@ -25,7 +26,6 @@ type NewNodeParams struct {
 }
 
 func NewNode(params NewNodeParams) *Node {
-	params.Brain.ID = params.ID
 	brain, err := logic.NewRaftBrain(params.Brain)
 	if err != nil {
 		log.Fatal().Msg(err.Error())
@@ -48,30 +48,35 @@ func NewNode(params NewNodeParams) *Node {
 	return n
 }
 
-func (n *Node) Start() {
+func (n *Node) Start(cachingUp bool) {
+	n.SetInaccessible()
 	n.rpc.Start()
 	n.http.Start()
-	n.brain.Start()
+	if !cachingUp {
+		n.brain.Start()
+	}
+	n.SetAccessible()
 }
 
 func (n *Node) Stop() error {
 	n.rpc.Stop <- struct{}{}
 	n.http.Stop <- struct{}{}
 	n.brain.Stop <- struct{}{}
-	// n.SetUnaccessible()
 	return nil
 }
 
-func (n *Node) SetUnaccessible() {
-	n.accessible = true
-	n.http.Accessile = false
+func (n *Node) SetInaccessible() {
+	n.accessible = false
+	n.http.SetInaccessible()
 	n.rpc.Accessible = false
+	fmt.Println("the node now is inaccessible", n.http.Accessible)
 }
 
 func (n *Node) SetAccessible() {
 	n.accessible = true
-	n.http.Accessile = true
+	n.http.SetAccessible()
 	n.rpc.Accessible = true
+	fmt.Println("the node now is accessible", n.http.Accessible)
 }
 
 func (n *Node) Restart() error {

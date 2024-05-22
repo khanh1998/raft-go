@@ -2,6 +2,7 @@ package main
 
 import (
 	"flag"
+	"fmt"
 	"khanh/raft-go/common"
 	"khanh/raft-go/http_proxy"
 	"khanh/raft-go/logic"
@@ -10,7 +11,6 @@ import (
 	"khanh/raft-go/rpc_proxy"
 	"os"
 	"os/signal"
-	"sync"
 	"syscall"
 	"time"
 
@@ -22,127 +22,51 @@ func main() {
 
 	log := zerolog.New(output).With().Timestamp().Logger()
 
-	log.Info().Str("foo", "bar").Msg("Hello World")
-
-	// Output: 2006-01-02T15:04:05Z07:00 | INFO  | ***Hello World**** foo:BAR
-
-	peers := []common.PeerInfo{
-		{
-			ID:      1,
-			RpcUrl:  "localhost:1234",
-			HttpUrl: "localhost:8080",
-		},
-		{
-			ID:      2,
-			RpcUrl:  "localhost:1235",
-			HttpUrl: "localhost:8081",
-		},
-		{
-			ID:      3,
-			RpcUrl:  "localhost:1236",
-			HttpUrl: "localhost:8082",
-		},
-	}
-
 	id := flag.Int("id", -1, "")
+	// if catchingUp is false, the node will be the follower in one-member-cluster. the follower then become the leader after that.
+	// if catchingUP is true, the node will receive logs from leader. once the node is cautch up with the leader,
+	// it will be add to the cluster as a follower.
+	// each cluster can have at most one node start with catching-up = fase, this is the first node of the cluster,
+	// following nodes have to set catching-up = true.
+	catchingUp := flag.Bool("catching-up", false, "to specify whether the current node need to catch up with the leader or not")
+	rpcPort := flag.Int("rpc-port", 1234, "RPC port")
+	httpPort := flag.Int("http-port", 8080, "HTTP port")
 	flag.Parse()
-	minRandom, maxRandom := int64(1000), int64(3000)
-	params := []node.NewNodeParams{
-		{
-			ID: 1,
-			Brain: logic.NewRaftBrainParams{
-				DataFileName:        "log.1.dat",
-				HeartBeatTimeOutMin: minRandom,
-				HeartBeatTimeOutMax: maxRandom,
-				ElectionTimeOutMin:  5 * minRandom,
-				ElectionTimeOutMax:  5 * maxRandom,
-				Log:                 &log,
-				Peers:               peers,
-				DB:                  persistance.NewPersistence("log.1.dat"),
-				StateMachine:        common.NewKeyValueStateMachine(),
+
+	if id == nil || *id < 0 {
+		log.Fatal().Msg("node's `id` is required")
+	}
+	fileName := fmt.Sprintf("log.%d.dat", *id)
+
+	params := node.NewNodeParams{
+		ID: *id,
+		Brain: logic.NewRaftBrainParams{
+			DataFileName:        fileName,
+			HeartBeatTimeOutMin: 2000,
+			HeartBeatTimeOutMax: 5000,
+			ElectionTimeOutMin:  12000,
+			ElectionTimeOutMax:  15000,
+			Log:                 &log,
+			Info: common.ClusterMember{
+				ID:      *id,
+				RpcUrl:  fmt.Sprintf("localhost:%d", *rpcPort),
+				HttpUrl: fmt.Sprintf("localhost:%d", *httpPort),
 			},
-			RPCProxy: rpc_proxy.NewRPCImplParams{
-				Peers:   peers,
-				HostURL: "localhost:1234",
-				Log:     &log,
-			},
-			HTTPProxy: http_proxy.NewHttpProxyParams{
-				URL: "localhost:8080",
-			},
+			DB:           persistance.NewPersistence(fileName),
+			StateMachine: common.NewKeyValueStateMachine(),
+			CachingUp:    *catchingUp,
 		},
-		{
-			ID: 2,
-			Brain: logic.NewRaftBrainParams{
-				DataFileName:        "log.2.dat",
-				HeartBeatTimeOutMin: minRandom,
-				HeartBeatTimeOutMax: maxRandom,
-				ElectionTimeOutMin:  5 * minRandom,
-				ElectionTimeOutMax:  5 * maxRandom,
-				Log:                 &log,
-				Peers:               peers,
-				DB:                  persistance.NewPersistence("log.2.dat"),
-				StateMachine:        common.NewKeyValueStateMachine(),
-			},
-			RPCProxy: rpc_proxy.NewRPCImplParams{
-				Peers:   peers,
-				HostURL: "localhost:1235",
-				Log:     &log,
-			},
-			HTTPProxy: http_proxy.NewHttpProxyParams{
-				URL: "localhost:8081",
-			},
+		RPCProxy: rpc_proxy.NewRPCImplParams{
+			HostURL: fmt.Sprintf("localhost:%d", *rpcPort),
+			Log:     &log,
 		},
-		{
-			ID: 3,
-			Brain: logic.NewRaftBrainParams{
-				DataFileName:        "log.3.dat",
-				HeartBeatTimeOutMin: minRandom,
-				HeartBeatTimeOutMax: maxRandom,
-				ElectionTimeOutMin:  5 * minRandom,
-				ElectionTimeOutMax:  5 * maxRandom,
-				Log:                 &log,
-				Peers:               peers,
-				DB:                  persistance.NewPersistence("log.3.dat"),
-				StateMachine:        common.NewKeyValueStateMachine(),
-			},
-			RPCProxy: rpc_proxy.NewRPCImplParams{
-				Peers:   peers,
-				HostURL: "localhost:1236",
-				Log:     &log,
-			},
-			HTTPProxy: http_proxy.NewHttpProxyParams{
-				URL: "localhost:8082",
-			},
+		HTTPProxy: http_proxy.NewHttpProxyParams{
+			URL: fmt.Sprintf("localhost:%d", *httpPort),
 		},
 	}
 
-	nodes := make([]*node.Node, len(params))
-
-	if id != nil && *id >= 0 {
-		// multiple processes mode.
-		// each process will carry a single raft instance.
-		n := node.NewNode(params[*id])
-		n.Start()
-	} else {
-		// single process mode.
-		// one process carry multiple raft instances.
-		count := sync.WaitGroup{}
-		for id, conf := range params {
-			count.Add(1)
-			go func(id int, conf node.NewNodeParams) {
-				log.Info().Interface("nodes", id).Msg("start")
-				n := node.NewNode(conf)
-				n.Start()
-				nodes[id] = n
-				count.Done()
-
-				log.Info().Interface("nodes", id).Msg("done")
-			}(id, conf)
-		}
-		count.Wait()
-
-		log.Info().Interface("nodes", nodes).Msg("cluster is created")
-	}
+	n := node.NewNode(params)
+	n.Start(params.Brain.CachingUp)
 
 	signChan := make(chan os.Signal, 1)
 	signal.Notify(signChan, os.Interrupt, syscall.SIGTERM)

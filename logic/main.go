@@ -1,37 +1,40 @@
 package logic
 
 import (
-	"fmt"
 	"khanh/raft-go/common"
-	"math"
 	"sync"
 	"time"
 
 	"github.com/rs/zerolog"
-	"github.com/rs/zerolog/log"
 )
 
 type SessionManager interface{}
+type MembershipManager interface {
+	Process(command any) error
+	AddServer(input common.AddServerInput) error
+}
 
 type RaftBrainImpl struct {
-	logger              *zerolog.Logger
-	DB                  Persistence
-	Peers               []common.PeerInfo
-	State               common.RaftState
-	ID                  int
-	StateMachine        SimpleStateMachine
-	ElectionTimeOut     *time.Timer
-	HeartBeatTimeOut    *time.Timer
-	Quorum              int
-	HeartBeatTimeOutMin int64
-	HeartBeatTimeOutMax int64
-	ElectionTimeOutMin  int64
-	ElectionTimeOutMax  int64
-	RpcProxy            RPCProxy
-	Session             SessionManager
-	ARM                 AsyncResponseManager
-	Stop                chan struct{}
-	InOutLock           sync.RWMutex // lock for inbound and outbound RPC methods and for client interaction
+	logger                    *zerolog.Logger
+	DB                        Persistence
+	Members                   []common.ClusterMember
+	State                     common.RaftState
+	ID                        int
+	StateMachine              SimpleStateMachine
+	ElectionTimeOut           *time.Timer
+	HeartBeatTimeOut          *time.Timer
+	HeartBeatTimeOutMin       int64 // millisecond
+	HeartBeatTimeOutMax       int64 // millisecond
+	ElectionTimeOutMin        int64 // millisecond
+	ElectionTimeOutMax        int64 // millisecond
+	RpcProxy                  RPCProxy
+	Session                   SessionManager
+	ARM                       AsyncResponseManager
+	Stop                      chan struct{}
+	newMembers                chan common.ClusterMemberChange
+	InOutLock                 sync.RWMutex // lock for inbound and outbound RPC methods and for client interaction
+	ChangeMemberLock          sync.Mutex   // lock for adding or removing a member from the cluster
+	lastHeartbeatReceivedTime time.Time
 	// Persistent state on all servers:
 	// Updated on stable storage before responding to RPCs
 	CurrentTerm int          // latest term server has seen (initialized to 0 on first boot, increases monotonically)
@@ -61,88 +64,6 @@ type AsyncResponseIndex struct {
 	LogIndex int
 }
 
-type AsyncResponseManager struct {
-	m    map[AsyncResponseIndex]AsyncResponse // client id -> response
-	size int
-	lock sync.RWMutex
-}
-
-func NewAsyncResponseManager(size int) AsyncResponseManager {
-	return AsyncResponseManager{m: map[AsyncResponseIndex]AsyncResponse{}, size: size}
-}
-
-func (a *AsyncResponseManager) Register(logIndex int) error {
-	a.lock.Lock()
-	defer a.lock.Unlock()
-
-	index := AsyncResponseIndex{logIndex}
-
-	_, ok := a.m[index]
-	if ok {
-		return fmt.Errorf("already registered log index: %d", logIndex)
-	}
-
-	a.m[index] = AsyncResponse{
-		msg:       make(chan AsyncResponseItem, 1),
-		createdAt: time.Now(),
-	}
-
-	log.Info().
-		Interface("data", a.m[index]).
-		Interface("index", logIndex).
-		Interface("capacity", cap(a.m[index].msg)).
-		Msg("Register")
-
-	return nil
-}
-
-func (a *AsyncResponseManager) PutResponse(logIndex int, msg any, resErr error, timeout time.Duration) error {
-	a.lock.RLock()
-	index := AsyncResponseIndex{logIndex}
-
-	slot, ok := a.m[index]
-	if !ok {
-		a.lock.RUnlock()
-
-		return fmt.Errorf("register log index: %d first", logIndex)
-	}
-
-	a.lock.RUnlock()
-
-	select {
-	case slot.msg <- AsyncResponseItem{Response: msg, Err: resErr}:
-		log.Info().Int("log index", logIndex).Interface("msg", msg).Interface("err", resErr).Msg("PutResponse")
-	case <-time.After(timeout):
-		return fmt.Errorf("channel log index: %d is not empty", logIndex)
-	}
-
-	return nil
-}
-
-// blocking call
-func (a *AsyncResponseManager) TakeResponse(logIndex int, timeout time.Duration) (any, error) {
-	a.lock.RLock()
-
-	index := AsyncResponseIndex{logIndex}
-	item, ok := a.m[index]
-	if !ok {
-		a.lock.RUnlock()
-
-		return nil, fmt.Errorf("register log index: %d first", logIndex)
-	}
-
-	a.lock.RUnlock()
-
-	select {
-	case res := <-item.msg:
-		close(item.msg)
-		delete(a.m, index)
-		return res.Response, res.Err
-	case <-time.After(timeout):
-		return nil, fmt.Errorf("timeout error: can't get messsage")
-	}
-}
-
 type LogAppliedEvent struct {
 	SequenceNum int
 	Response    any
@@ -159,6 +80,7 @@ type RPCProxy interface {
 	SendPing(peerId int, timeout *time.Duration) (err error)
 
 	ConnectToNewPeer(peerID int, peerURL string, retry int, retryDelay time.Duration) error
+	SendToVotingMember(peerId int, timeout *time.Duration) (err error)
 }
 
 type Persistence interface {
@@ -172,8 +94,7 @@ type PeerInfo struct {
 }
 
 type NewRaftBrainParams struct {
-	ID                  int
-	Peers               []common.PeerInfo
+	Info                common.ClusterMember
 	DataFileName        string
 	HeartBeatTimeOutMin int64
 	HeartBeatTimeOutMax int64
@@ -182,50 +103,59 @@ type NewRaftBrainParams struct {
 	Log                 *zerolog.Logger
 	DB                  Persistence
 	StateMachine        SimpleStateMachine
+	CachingUp           bool
 }
 
 func NewRaftBrain(params NewRaftBrainParams) (*RaftBrainImpl, error) {
 	n := &RaftBrainImpl{
-		ID:           params.ID,
-		State:        common.StateFollower,
+		ID: params.Info.ID,
+		State: func() common.RaftState {
+			if params.CachingUp {
+				return common.StateCatchingUp
+			}
+			return common.StateFollower
+		}(),
 		VotedFor:     0,
 		DB:           params.DB,
 		StateMachine: params.StateMachine,
 		ARM:          NewAsyncResponseManager(100),
 		Stop:         make(chan struct{}),
+		newMembers:   make(chan common.ClusterMemberChange, 10),
 
 		HeartBeatTimeOutMin: params.HeartBeatTimeOutMin,
 		HeartBeatTimeOutMax: params.HeartBeatTimeOutMax,
 		ElectionTimeOutMin:  params.ElectionTimeOutMin,
 		ElectionTimeOutMax:  params.ElectionTimeOutMax,
 
+		lastHeartbeatReceivedTime: time.Now(),
+
 		logger:     params.Log,
-		Peers:      []common.PeerInfo{},
+		Members:    []common.ClusterMember{},
 		NextIndex:  make(map[int]int),
 		MatchIndex: make(map[int]int),
 	}
 
-	err := n.rehydrate()
+	err := n.restoreRaftStateFromFile()
 	if err != nil {
 		return n, err
 	}
 
+	// if this is the first node of the cluster,
+	// initialy add it's info to the cluster members.
+	if len(n.Logs) == 0 {
+		if !params.CachingUp {
+			n.appendLog(common.Log{
+				Term:        1,
+				ClientID:    0,
+				SequenceNum: 0,
+				Command:     common.ComposeAddServerCommand(params.Info.ID, params.Info.HttpUrl, params.Info.RpcUrl),
+			})
+		}
+	} else {
+		n.RestoreClusterMemberInfoFromLogs()
+	}
+
 	n.applyLog()
-
-	for _, peer := range params.Peers {
-		if peer.ID != n.ID {
-			n.Peers = append(n.Peers, peer)
-		}
-	}
-
-	n.Quorum = int(math.Ceil(float64(len(n.Peers)) / 2.0))
-
-	for _, peer := range n.Peers {
-		if peer.ID != n.ID {
-			n.NextIndex[peer.ID] = len(n.Logs) + 1
-			n.MatchIndex[peer.ID] = 0
-		}
-	}
 
 	return n, nil
 }
@@ -236,7 +166,9 @@ func (n *RaftBrainImpl) Start() {
 
 	go n.loop()
 
-	n.log().Info().Msg("Brain start")
+	n.log().Info().
+		Interface("members", n.Members).
+		Msg("Brain start")
 }
 
 func (n *RaftBrainImpl) log() *zerolog.Logger {

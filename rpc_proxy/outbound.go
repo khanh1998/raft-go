@@ -18,11 +18,11 @@ func (r *RPCProxyImpl) SendAppendEntries(peerId int, timeout *time.Duration, inp
 
 	if timeout != nil {
 		if err := r.callWithTimeout(peerId, serviceMethod, input, &output, *timeout); err != nil {
-			return output, nil
+			return output, err
 		}
 	} else {
 		if err := r.callWithoutTimeout(peerId, serviceMethod, input, &output); err != nil {
-			return output, nil
+			return output, err
 		}
 	}
 
@@ -37,11 +37,11 @@ func (r *RPCProxyImpl) SendRequestVote(peerId int, timeout *time.Duration, input
 
 	if timeout != nil {
 		if err := r.callWithTimeout(peerId, serviceMethod, input, &output, *timeout); err != nil {
-			return output, nil
+			return output, err
 		}
 	} else {
 		if err := r.callWithoutTimeout(peerId, serviceMethod, input, &output); err != nil {
-			return output, nil
+			return output, err
 		}
 	}
 
@@ -63,6 +63,26 @@ func (r *RPCProxyImpl) SendPing(peerId int, timeout *time.Duration) (err error) 
 		}
 	} else {
 		if err := r.callWithoutTimeout(peerId, serviceMethod, senderName, &responseMsg); err != nil {
+			return err
+		}
+	}
+
+	return nil
+}
+
+func (r *RPCProxyImpl) SendToVotingMember(peerId int, timeout *time.Duration) (err error) {
+	if !r.Accessible {
+		return ErrInaccessible
+	}
+	serviceMethod := "RPCProxyImpl.ToVotingMember"
+	input, output := struct{}{}, struct{}{}
+
+	if timeout != nil {
+		if err := r.callWithTimeout(peerId, serviceMethod, input, &output, *timeout); err != nil {
+			return err
+		}
+	} else {
+		if err := r.callWithoutTimeout(peerId, serviceMethod, input, &output); err != nil {
 			return err
 		}
 	}

@@ -2,6 +2,7 @@ package logic
 
 import (
 	"khanh/raft-go/common"
+	"time"
 )
 
 var (
@@ -12,6 +13,7 @@ var (
 	MsgTheResponderHasFewerLogThanRequester = "the responder has fewer log than the requester"
 	MsgTheResponderAlreadyMakeAVote         = "the responder already made a vote"
 	MsgTheRequesterLogsAreOutOfDate         = "the requestor logs are out of date"
+	MsgTheLeaderIsStillAlive                = "the leader is still alive"
 )
 
 // AppendEntries Invoked by leader to replicate log entries (§5.3); also used as heartbeat (§5.2).
@@ -36,6 +38,12 @@ func (n *RaftBrainImpl) AppendEntries(input *common.AppendEntriesInput, output *
 			if n.VotedFor == 0 { // input.Term == n.CurrentTerm
 				n.setVotedFor(input.LeaderID)
 			}
+
+			n.lastHeartbeatReceivedTime = time.Now()
+		} else {
+			if output.Message != MsgRequesterTermIsOutDated {
+				n.lastHeartbeatReceivedTime = time.Now()
+			}
 		}
 
 		n.log().Info().
@@ -46,8 +54,11 @@ func (n *RaftBrainImpl) AppendEntries(input *common.AppendEntriesInput, output *
 
 	// If RPC request or response contains term T > currentTerm: set currentTerm = T, convert to follower (§5.1)
 	if input.Term > n.CurrentTerm {
-		n.CurrentTerm = input.Term
-		n.toFollower()
+		if n.State != common.StateCatchingUp {
+			// if current node is catching up with current leader,
+			// don't change to follower util the leader allow.
+			n.toFollower()
+		}
 		n.setVotedFor(input.LeaderID)
 		n.setCurrentTerm(input.Term)
 	}
@@ -102,7 +113,7 @@ func (n *RaftBrainImpl) AppendEntries(input *common.AppendEntriesInput, output *
 
 	// 5. If leaderCommit > commitIndex, set commitIndex = min(leaderCommit, index of last new entry)
 	if input.LeaderCommit > n.CommitIndex {
-		n.CommitIndex = common.Min(input.LeaderCommit, len(n.Logs))
+		n.CommitIndex = common.Min(input.LeaderCommit, len(n.Logs)) // data race
 	}
 
 	n.applyLog()
@@ -114,14 +125,6 @@ func (n *RaftBrainImpl) AppendEntries(input *common.AppendEntriesInput, output *
 
 // Invoked by candidates to gather votes (§5.2).
 func (n *RaftBrainImpl) RequestVote(input *common.RequestVoteInput, output *common.RequestVoteOutput) (err error) {
-	n.log().Info().
-		Interface("ID", n.ID).
-		Interface("req", input).
-		Msg("Received an RequestVote request")
-
-	n.InOutLock.Lock()
-	defer n.InOutLock.Unlock()
-
 	defer func() {
 		output.NodeID = n.ID
 
@@ -139,6 +142,27 @@ func (n *RaftBrainImpl) RequestVote(input *common.RequestVoteInput, output *comm
 			Interface("out", output).
 			Msg("Response an RequestVote request")
 	}()
+
+	n.log().Info().
+		Interface("ID", n.ID).
+		Interface("req", input).
+		Msg("Received an RequestVote request")
+
+	n.InOutLock.Lock()
+	defer n.InOutLock.Unlock()
+
+	// when a follower is removed from the cluster, it will never aware of that,
+	// because the leader won't send update logs to removed follower after it receive the received command.
+	// this check is to prevent removed follower request vote from others.
+	if time.Since(n.lastHeartbeatReceivedTime) < time.Duration(n.ElectionTimeOutMin*1000000) {
+		output = &common.RequestVoteOutput{
+			Term:        n.CurrentTerm,
+			Message:     MsgTheLeaderIsStillAlive,
+			VoteGranted: false,
+			NodeID:      n.ID,
+		}
+		return
+	}
 
 	// 1. Reply false if term < currentTerm (§5.1)
 	if input.Term < n.CurrentTerm {

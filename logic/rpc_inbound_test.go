@@ -333,7 +333,7 @@ func Test_nodeImpl_AppendEntries(t *testing.T) {
 			// assert.Equal(t, map[string]string{}, data)
 			_ = data
 
-			err = n2.rehydrate()
+			err = n2.restoreRaftStateFromFile()
 
 			assert.NoError(t, err)
 

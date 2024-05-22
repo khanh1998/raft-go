@@ -8,7 +8,7 @@ import (
 
 func (r *RaftBrainImpl) getLeaderHttpUrl() string {
 	leaderUrl := ""
-	for _, peer := range r.Peers {
+	for _, peer := range r.Members {
 		if peer.ID != r.ID && peer.ID == r.VotedFor {
 			leaderUrl = peer.HttpUrl
 

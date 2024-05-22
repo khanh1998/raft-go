@@ -18,7 +18,7 @@ func TestRaftBrainImpl_BroadCastRequestVote(t *testing.T) {
 	type fields struct {
 		logger              *zerolog.Logger
 		DB                  Persistence
-		Peers               []common.PeerInfo
+		Peers               []common.ClusterMember
 		State               common.RaftState
 		ID                  int
 		StateMachine        SimpleStateMachine
@@ -47,7 +47,7 @@ func TestRaftBrainImpl_BroadCastRequestVote(t *testing.T) {
 			fields: fields{
 				logger:              &zerolog.Logger{},
 				DB:                  persistance.NewPersistenceMock(),
-				Peers:               []common.PeerInfo{{ID: 2, RpcUrl: ""}},
+				Peers:               []common.ClusterMember{{ID: 2, RpcUrl: ""}},
 				State:               common.StateCandidate,
 				ID:                  1,
 				StateMachine:        common.NewKeyValueStateMachine(),
@@ -70,13 +70,12 @@ func TestRaftBrainImpl_BroadCastRequestVote(t *testing.T) {
 			n := &RaftBrainImpl{
 				logger:              tt.fields.logger,
 				DB:                  tt.fields.DB,
-				Peers:               tt.fields.Peers,
+				Members:             tt.fields.Peers,
 				State:               tt.fields.State,
 				ID:                  tt.fields.ID,
 				StateMachine:        tt.fields.StateMachine,
 				ElectionTimeOut:     tt.fields.ElectionTimeOut,
 				HeartBeatTimeOut:    tt.fields.HeartBeatTimeOut,
-				Quorum:              tt.fields.Quorum,
 				HeartBeatTimeOutMin: tt.fields.HeartBeatTimeOutMin,
 				HeartBeatTimeOutMax: tt.fields.HeartBeatTimeOutMax,
 				ElectionTimeOutMin:  tt.fields.ElectionTimeOutMin,

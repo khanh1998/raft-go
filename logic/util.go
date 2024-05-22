@@ -2,8 +2,18 @@ package logic
 
 import (
 	"khanh/raft-go/common"
+	"math"
 	"time"
 )
+
+func (n *RaftBrainImpl) isMemberOfCluster() bool {
+	for _, mem := range n.Members {
+		if mem.ID == n.ID {
+			return true
+		}
+	}
+	return false
+}
 
 func (n *RaftBrainImpl) deleteLogFrom(index int) error {
 	defer func() {
@@ -22,13 +32,18 @@ func (n *RaftBrainImpl) deleteLogFrom(index int) error {
 	}
 
 	realIndex := int(index - 1)
+	deletedLogs := n.Logs[realIndex:]
 	n.Logs = n.Logs[:realIndex]
 
 	// these two numbers will be calculated again later.
 	n.LastApplied = 0
 	n.CommitIndex = 0
-	// clear all data in state machine, so logs can be applied from beggining later.
+	// clear all data in state machine, so logs can be applied from beginning later.
 	n.StateMachine = common.NewKeyValueStateMachine()
+
+	for i := len(deletedLogs) - 1; i >= 0; i-- {
+		n.RevertChangeMember(deletedLogs[i].Command.(string))
+	}
 
 	return nil
 }
@@ -42,6 +57,12 @@ func (n *RaftBrainImpl) appendLogs(logItems []common.Log) {
 	}()
 
 	n.Logs = append(n.Logs, logItems...)
+
+	// we need to update cluster membership infomation as soon as we receive the log,
+	// don't need to wait until it get commited.
+	for _, logItem := range logItems {
+		n.ChangeMember(logItem.Command.(string))
+	}
 }
 
 func (n *RaftBrainImpl) appendLog(logItem common.Log) int {
@@ -56,6 +77,10 @@ func (n *RaftBrainImpl) appendLog(logItem common.Log) int {
 	index := len(n.Logs)
 
 	n.log().Info().Interface("log", logItem).Msg("AppendLog")
+
+	// we need to update cluster membership infomation as soon as we receive the log,
+	// don't need to wait until it get commited.
+	n.ChangeMember(logItem.Command.(string))
 
 	return index
 }
@@ -122,7 +147,7 @@ func (n *RaftBrainImpl) applyLog() {
 			break
 		}
 
-		res, err := n.StateMachine.Process(log.ClientID, log.SequenceNum, log.Command, n.LastApplied)
+		res, _ := n.StateMachine.Process(log.ClientID, log.SequenceNum, log.Command, n.LastApplied)
 
 		if n.State == common.StateLeader {
 			err = n.ARM.PutResponse(n.LastApplied, res, err, 30*time.Second)
@@ -137,6 +162,10 @@ func (n *RaftBrainImpl) applyLog() {
 	}
 }
 
+func (r *RaftBrainImpl) Quorum() int {
+	return int(math.Floor(float64(len(r.Members))/2.0)) + 1
+}
+
 func (n *RaftBrainImpl) lastLogInfo() (index, term int) {
 	if len(n.Logs) > 0 {
 		index = len(n.Logs) - 1
@@ -146,4 +175,12 @@ func (n *RaftBrainImpl) lastLogInfo() (index, term int) {
 	}
 
 	return 0, -1
+}
+
+func (r *RaftBrainImpl) GetMembers() []common.ClusterMember {
+	return r.Members
+}
+
+func (r *RaftBrainImpl) GetNewMembersChannel() <-chan common.ClusterMemberChange {
+	return r.newMembers
 }

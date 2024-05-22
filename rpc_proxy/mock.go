@@ -31,3 +31,9 @@ func (r RPCProxyMock) SendPing(peerId int, timeout *time.Duration) (err error) {
 func (r RPCProxyMock) ConnectToNewPeer(peerID int, peerURL string, retry int, retryDelay time.Duration) error {
 	return nil
 }
+
+func (r RPCProxyMock) SendToVotingMember(peerId int, timeout *time.Duration) (err error) {
+	return nil
+}
+
+func (r RPCProxyMock) AddServer(member common.ClusterMember) {}

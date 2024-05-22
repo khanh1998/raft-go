@@ -97,7 +97,7 @@ func (n *RaftBrainImpl) getPersistanceKeyList() ([]string, error) {
 	return keys, nil
 }
 
-func (n *RaftBrainImpl) rehydrate() error {
+func (n *RaftBrainImpl) restoreRaftStateFromFile() error {
 	keys, err := n.getPersistanceKeyList()
 	if err != nil {
 		if errors.Is(err, persistance.ErrEmptyData) {

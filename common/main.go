@@ -34,7 +34,7 @@ type RequestVoteOutput struct {
 	NodeID      int    // id of the responder
 }
 
-type PeerInfo struct {
+type ClusterMember struct {
 	ID      int
 	RpcUrl  string
 	HttpUrl string
@@ -43,9 +43,10 @@ type PeerInfo struct {
 type RaftState string
 
 const (
-	StateFollower  RaftState = "follower"
-	StateCandidate RaftState = "candidate"
-	StateLeader    RaftState = "leader"
+	StateFollower   RaftState = "follower"
+	StateCandidate  RaftState = "candidate"
+	StateLeader     RaftState = "leader"
+	StateCatchingUp RaftState = "catching-up" // new node is catching up with current leader of the cluster, i can't vote
 )
 
 func (s RaftState) String() string {

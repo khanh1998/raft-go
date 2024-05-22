@@ -41,10 +41,10 @@ func (c *Cluster) init(num int) {
 	rpcPort := 1234
 	httpPort := 8080
 
-	peers := []common.PeerInfo{}
+	peers := []common.ClusterMember{}
 
 	for i := 0; i < num; i++ {
-		peers = append(peers, common.PeerInfo{
+		peers = append(peers, common.ClusterMember{
 			ID:     id + i,
 			RpcUrl: fmt.Sprintf(":%d", rpcPort+i),
 		})
@@ -66,13 +66,12 @@ func (c *Cluster) init(num int) {
 					ElectionTimeOutMin:  300,
 					ElectionTimeOutMax:  500,
 					Log:                 &log,
-					Peers:               peers,
+					Info:                peers[i],
 					// DB:                persistance.NewPersistence(fmt.Sprintf("test.log.%d.dat", id+i)),
 					DB:           persistance.NewPersistenceMock(),
 					StateMachine: common.NewKeyValueStateMachine(),
 				},
 				RPCProxy: rpc_proxy.NewRPCImplParams{
-					Peers:   peers,
 					HostURL: fmt.Sprintf(":%d", rpcPort+i),
 					Log:     &log,
 				},
@@ -82,7 +81,7 @@ func (c *Cluster) init(num int) {
 			}
 
 			n := node.NewNode(param)
-			n.Start()
+			n.Start(param.Brain.CachingUp)
 
 			c.createNodeParams[i] = param
 			c.Nodes[i] = n

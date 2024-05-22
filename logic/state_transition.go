@@ -1,6 +1,9 @@
 package logic
 
-import "khanh/raft-go/common"
+import (
+	"fmt"
+	"khanh/raft-go/common"
+)
 
 func (n *RaftBrainImpl) toCandidate() {
 	n.log().Info().Msg("to candidate")
@@ -14,9 +17,11 @@ func (n *RaftBrainImpl) toLeader() {
 	n.NextIndex = make(map[int]int)
 	n.MatchIndex = make(map[int]int)
 
-	for _, peer := range n.Peers {
-		n.NextIndex[peer.ID] = len(n.Logs) + 1
-		n.MatchIndex[peer.ID] = 0
+	for _, peer := range n.Members {
+		if peer.ID != n.ID {
+			n.NextIndex[peer.ID] = len(n.Logs) + 1
+			n.MatchIndex[peer.ID] = 0
+		}
 	}
 
 	n.appendLog(common.Log{
@@ -28,4 +33,19 @@ func (n *RaftBrainImpl) toLeader() {
 func (n *RaftBrainImpl) toFollower() {
 	n.log().Info().Msg("to follower")
 	n.State = common.StateFollower
+}
+
+// this will transition the node from non-voting to voting member (follower),
+// trigger the election timeout and heartbeat timeout timer.
+func (n *RaftBrainImpl) ToVotingMember() error {
+	n.InOutLock.Lock()
+	defer n.InOutLock.Unlock()
+
+	if n.State == common.StateCatchingUp {
+		n.State = common.StateFollower
+		n.Start()
+	} else {
+		return fmt.Errorf("current status is %s", n.State)
+	}
+	return nil
 }

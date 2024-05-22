@@ -15,12 +15,13 @@ import (
 )
 
 func TestStop(t *testing.T) {
-	peers := []common.PeerInfo{}
-
 	n := NewNode(NewNodeParams{
 		Brain: logic.NewRaftBrainParams{
-			ID:                  1,
-			Peers:               peers,
+			Info: common.ClusterMember{
+				RpcUrl:  ":1234",
+				HttpUrl: "localhost:8080",
+				ID:      1,
+			},
 			DataFileName:        "logs.dat",
 			HeartBeatTimeOutMin: 150,
 			HeartBeatTimeOutMax: 300,
@@ -31,7 +32,6 @@ func TestStop(t *testing.T) {
 			StateMachine:        common.NewKeyValueStateMachine(),
 		},
 		RPCProxy: rpc_proxy.NewRPCImplParams{
-			Peers:   peers,
 			HostID:  1,
 			HostURL: ":1234",
 			Log:     &zerolog.Logger{},
@@ -40,7 +40,7 @@ func TestStop(t *testing.T) {
 			URL: "localhost:8080",
 		},
 	})
-	n.Start()
+	n.Start(false)
 
 	_, err := rpc.Dial("tcp", ":1234")
 	assert.NoError(t, err, "connect to rpc server ok")

@@ -9,14 +9,40 @@ This is a simple distributed key-value database, built on top of [Raft](https://
 ![Orverall Architecture](docs/diagram.drawio.png "Orverall Architecture")
 
 # 1. Start the cluster
-## 1.1 Using multiple terminals (recommended)
+## 1.1 Dynamic cluster
+With dynamic cluster you can freely add or remove nodes as you want (one at a time). \
+The general idea is, firstly you create a one-node-cluster, the only node will obviously become the leader. You can perform all command with this cluster normally. \
+Then you add a new node to the cluster to form a two-nodes-cluster, the new node need to catch up with the current leader, before it offically become the member of the cluster. The catching up can take long time, and you can only add (or remove) one node to the cluster at time. \
+After the second node is added successfully, you now can add the third node to the cluster. And keep going on, you can add as much as you want. \
+
+To create the first node:
+``` bash
+go run -race main.go -id=1 -catching-up=false -rpc-port=1234 -http-port=8080
+```
+
+Second node:
+``` bash
+go run -race main.go -id=2 -catching-up=true -rpc-port=1235 -http-port=8081
+```
+
+Third Node:
+
+``` bash
+go run -race main.go -id=3 -catching-up=true -rpc-port=1236 -http-port=8082
+```
+
+In case the second or third node is crashed and need to restart, set `catching-up=false` because they have catched up with the current leader.
+
+
+## 1.2 Static cluster (unavailable)
+## 1.2.1 Using multiple terminals (recommended)
 In this mode, logs of each node in the cluster will be shown in its terminal.\
 To clear the previous state of the cluster: `make clear`\
 Open three terminals, and input the three below commands to three terminals respectively:\
 Terminal 1 - Node 1: `make node1`\
 Terminal 2 - Node 2: `make node2`\
 Terminal 3 - Node 3: `make node2`
-## 1.2 Using one terminal
+## 1.2.2 Using one terminal
 In this mode, logs of nodes in the cluster will be all shown in one terminal.\
 To clear the previous state of the cluster: `make clear`\
 Open a terminal, and type: `make run`

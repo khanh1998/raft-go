@@ -1,16 +1,25 @@
 package logic
 
 import (
+	"errors"
 	"khanh/raft-go/common"
 	"sync"
 	"time"
+
+	"github.com/rs/zerolog/log"
 )
 
 func (n *RaftBrainImpl) BroadCastRequestVote() {
-	n.logger.Info().Msg("BroadCastRequestVote")
-
 	n.InOutLock.Lock()
 	defer n.InOutLock.Unlock()
+
+	if !n.isMemberOfCluster() {
+		// a leader is removed from the cluster becoming follower,
+		// the follower now isn't part of the cluster,
+		// so i can't request vote from others.
+		log.Err(errors.New("the current follower is removed from the cluster")).Msg("BroadCastRequestVote")
+		return
+	}
 
 	if n.State == common.StateFollower {
 		// On conversion to candidate, start election:
@@ -32,18 +41,22 @@ func (n *RaftBrainImpl) BroadCastRequestVote() {
 			LastLogTerm:  lastLogTerm,
 		}
 
-		responses := make(map[int]*common.RequestVoteOutput, len(n.Peers))
+		responses := make(map[int]*common.RequestVoteOutput, len(n.Members))
 		responsesMutex := sync.Mutex{}
 
 		voteGrantedCount := 1 // voted for itself first
 		maxTerm := n.CurrentTerm
-		maxTermID := -1
+		maxTermID := n.ID
 
 		var count sync.WaitGroup
 
 		timeout := 1 * time.Second
 
-		for _, peer := range n.Peers {
+		for _, peer := range n.Members {
+			if peer.ID == n.ID {
+				continue
+			}
+
 			count.Add(1)
 			go func(peerID int) {
 				output, err := n.RpcProxy.SendRequestVote(peerID, &timeout, input)
@@ -73,10 +86,13 @@ func (n *RaftBrainImpl) BroadCastRequestVote() {
 
 		count.Wait()
 
-		n.log().Info().Interface("responses", responses).Msg("BroadCastRequestVote: Response")
+		n.log().Info().
+			Interface("responses", responses).
+			Int("quorum", n.Quorum()).
+			Msg("BroadCastRequestVote: Response")
 
 		// TODO: If AppendEntries RPC received from new leader: convert to follower
-		if voteGrantedCount > n.Quorum {
+		if voteGrantedCount >= n.Quorum() {
 			n.toLeader()
 			n.resetHeartBeatTimeout()
 			n.log().Info().Msg("become leader")
@@ -100,8 +116,6 @@ func (n *RaftBrainImpl) BroadCastRequestVote() {
 }
 
 func (n *RaftBrainImpl) BroadcastAppendEntries() (majorityOK bool) {
-	n.logger.Info().Msg("BroadcastAppendEntries")
-
 	n.InOutLock.Lock()
 	defer n.InOutLock.Unlock()
 
@@ -109,9 +123,9 @@ func (n *RaftBrainImpl) BroadcastAppendEntries() (majorityOK bool) {
 		n.resetHeartBeatTimeout()
 		n.log().Info().Msg("BroadcastAppendEntries")
 
-		successCount := 0
+		successCount := 1
 		maxTerm := n.CurrentTerm
-		maxTermID := -1
+		maxTermID := n.ID
 		m := map[int]common.AppendEntriesOutput{}
 		responseLock := sync.Mutex{}
 
@@ -122,7 +136,10 @@ func (n *RaftBrainImpl) BroadcastAppendEntries() (majorityOK bool) {
 		//   decrement nextIndex and retry (§5.3)
 
 		var count sync.WaitGroup
-		for _, peer := range n.Peers {
+		for _, peer := range n.Members {
+			if peer.ID == n.ID {
+				continue
+			}
 			count.Add(1)
 			go func(peerID int) {
 				nextIdx := n.NextIndex[peerID] // data race
@@ -188,9 +205,10 @@ func (n *RaftBrainImpl) BroadcastAppendEntries() (majorityOK bool) {
 			Int("max_term", maxTerm).
 			Int("max_term_id", maxTermID).
 			Interface("responses", m).
+			Bool("majority_ok", majorityOK).
 			Msg("BroadcastAppendEntries")
 
-		if successCount >= n.Quorum {
+		if successCount >= n.Quorum() {
 			majorityOK = true
 			// If there exists an N such that N > commitIndex, a majority
 			// of matchIndex[i] ≥ N, and log[N].term == currentTerm: set commitIndex = N (§5.3, §5.4).
@@ -205,7 +223,7 @@ func (n *RaftBrainImpl) BroadcastAppendEntries() (majorityOK bool) {
 						}
 					}
 
-					if count >= n.Quorum && log.Term == n.CurrentTerm {
+					if count >= n.Quorum() && log.Term == n.CurrentTerm {
 						n.CommitIndex = N
 
 						break
