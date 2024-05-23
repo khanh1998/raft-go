@@ -15,9 +15,9 @@ The general idea is, firstly you create a one-node-cluster, the only node will o
 Then you add a new node to the cluster to form a two-nodes-cluster, the new node needs to catch up with the current leader before it officially becomes a member of the cluster. The catching-up can take a long time, and you can only add (or remove) one node to the cluster at a time. \
 After the second node is added successfully, now you can add the third node to the cluster. And keep going like that, you can add as much as you want.
 
-> :warning: When you add or remove a node, the quorum is also changed.
+> :warning: When you add or remove a node, the quorum is also changed. \
 > For a cluster with $n$ nodes, the quorum $q$ can be calculated as:
->$`[ q = \left\lfloor \frac{n}{2} \right\rfloor + 1 ]`$
+> $$[ q = \left\lfloor \frac{n}{2} \right\rfloor + 1 ]$$
 
 ## 1.1.1 Adding servers to cluster
 To create the first node, wait for few seconds and this node will become the leader of a one-node-cluster:
