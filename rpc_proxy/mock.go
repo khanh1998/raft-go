@@ -24,7 +24,7 @@ func (r RPCProxyMock) SendRequestVote(peerId int, timeout *time.Duration, input 
 	return r.requestVote[peerId], nil
 }
 
-func (r RPCProxyMock) SendPing(peerId int, timeout *time.Duration) (err error) {
+func (r RPCProxyMock) SendPing(peerId int, timeout *time.Duration) (res common.PingResponse, err error) {
 	return
 }
 

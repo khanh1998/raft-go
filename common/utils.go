@@ -3,9 +3,14 @@ package common
 import (
 	"crypto/rand"
 	"math/big"
+	"strings"
 
 	"github.com/rs/zerolog/log"
 )
+
+func trimAndLower(s string) string {
+	return strings.ToLower(strings.Trim(s, " "))
+}
 
 func Min(a, b int) int {
 	if a < b {

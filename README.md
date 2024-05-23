@@ -10,28 +10,67 @@ This is a simple distributed key-value database, built on top of [Raft](https://
 
 # 1. Start the cluster
 ## 1.1 Dynamic cluster
-With dynamic cluster you can freely add or remove nodes as you want (one at a time). \
-The general idea is, firstly you create a one-node-cluster, the only node will obviously become the leader. You can perform all command with this cluster normally. \
-Then you add a new node to the cluster to form a two-nodes-cluster, the new node need to catch up with the current leader, before it offically become the member of the cluster. The catching up can take long time, and you can only add (or remove) one node to the cluster at time. \
-After the second node is added successfully, you now can add the third node to the cluster. And keep going on, you can add as much as you want. \
+With a dynamic cluster, you can freely add or remove nodes as you want (one at a time). \
+The general idea is, firstly you create a one-node-cluster, the only node will obviously become the leader. You can perform all commands with this cluster normally. \
+Then you add a new node to the cluster to form a two-nodes-cluster, the new node needs to catch up with the current leader before it officially becomes a member of the cluster. The catching-up can take a long time, and you can only add (or remove) one node to the cluster at a time. \
+After the second node is added successfully, now you can add the third node to the cluster. And keep going on, you can add as much as you want.
 
-To create the first node:
+> :warning: When you add or remove a node, the quorum is also changed.
+> For a cluster with \( n \) nodes, the quorum \( q \) can be calculated as:
+>\[ q = \left\lfloor \frac{n}{2} \right\rfloor + 1 \]
+
+## 1.1.1 Adding servers to cluster
+To create the first node, wait for few seconds and this node will become the leader of a one-node-cluster:
 ``` bash
 go run -race main.go -id=1 -catching-up=false -rpc-port=1234 -http-port=8080
 ```
 
-Second node:
+To add second node:
+Run below command to start the server, the server now is in catching-up mode, is wait to receive log updates from current leader.
 ``` bash
 go run -race main.go -id=2 -catching-up=true -rpc-port=1235 -http-port=8081
 ```
+Send request to add new server to leader, so the leader can start the catching-up process with new server.
+``` bash
+curl --location 'localhost:8080/cli' \
+--header 'Content-Type: application/json' \
+--data '{
+    "command": "addServer 2 localhost:8081 localhost:1235"
+}'
+```
+The format of command to add a new server to the cluster is:
+```
+addServer [server id] [http url] [rpc url]
+```
 
-Third Node:
-
+To add third Node:
+Start the server:
 ``` bash
 go run -race main.go -id=3 -catching-up=true -rpc-port=1236 -http-port=8082
 ```
+Send request to leader:
+``` bash
+curl --location 'localhost:8080/cli' \
+--header 'Content-Type: application/json' \
+--data '{
+    "command": "addServer 3 localhost:8082 localhost:1234"
+}'
+```
 
 In case the second or third node is crashed and need to restart, set `catching-up=false` because they have catched up with the current leader.
+
+## 1.1.2 Removing servers to cluster
+In case you want to remove a node from the cluster, send an HTTP request to the leader to specify which server you want to remove. The leader can be removed as any other server.
+``` bash
+curl --location 'localhost:8080/cli' \
+--header 'Content-Type: application/json' \
+--data '{
+    "command": "removeServer 3 localhost:8082 localhost:1234"
+}'
+```
+
+After the server is removed from the cluster, you need to manually shut it down.
+If you want to get a previously removed server to join the cluster again, you need to choose a new ID for it, as you can't reuse the used server IDs.
 
 
 ## 1.2 Static cluster (unavailable)

@@ -88,6 +88,7 @@ func (n *RaftBrainImpl) BroadCastRequestVote() {
 
 		n.log().Info().
 			Interface("responses", responses).
+			Interface("members", n.Members).
 			Int("quorum", n.Quorum()).
 			Msg("BroadCastRequestVote: Response")
 
@@ -205,7 +206,9 @@ func (n *RaftBrainImpl) BroadcastAppendEntries() (majorityOK bool) {
 			Int("max_term", maxTerm).
 			Int("max_term_id", maxTermID).
 			Interface("responses", m).
+			Interface("members", n.Members).
 			Bool("majority_ok", majorityOK).
+			Int("quorum", n.Quorum()).
 			Msg("BroadcastAppendEntries")
 
 		if successCount >= n.Quorum() {

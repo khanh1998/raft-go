@@ -20,11 +20,16 @@ func (r *RPCProxyImpl) RequestVote(input *common.RequestVoteInput, output *commo
 	return r.brain.RequestVote(input, output)
 }
 
-func (r *RPCProxyImpl) Ping(name string, message *string) (err error) {
+func (r *RPCProxyImpl) Ping(name string, message *common.PingResponse) (err error) {
 	if !r.Accessible {
 		return ErrInaccessible
 	}
-	*message = fmt.Sprintf("Hello %s, from node ID: %d, URL: %s", name, r.hostID, r.hostURL)
+
+	*message = common.PingResponse{
+		ID:      r.hostID,
+		RpcUrl:  r.hostURL,
+		Message: fmt.Sprintf("Hello %s, from node ID: %d, URL: %s", name, r.hostID, r.hostURL),
+	}
 	return nil
 }
 

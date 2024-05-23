@@ -42,7 +42,7 @@ func (n *RaftBrainImpl) deleteLogFrom(index int) error {
 	n.StateMachine = common.NewKeyValueStateMachine()
 
 	for i := len(deletedLogs) - 1; i >= 0; i-- {
-		n.RevertChangeMember(deletedLogs[i].Command.(string))
+		n.revertChangeMember(deletedLogs[i].Command.(string))
 	}
 
 	return nil
@@ -61,7 +61,7 @@ func (n *RaftBrainImpl) appendLogs(logItems []common.Log) {
 	// we need to update cluster membership infomation as soon as we receive the log,
 	// don't need to wait until it get commited.
 	for _, logItem := range logItems {
-		n.ChangeMember(logItem.Command.(string))
+		n.changeMember(logItem.Command.(string))
 	}
 }
 
@@ -80,7 +80,7 @@ func (n *RaftBrainImpl) appendLog(logItem common.Log) int {
 
 	// we need to update cluster membership infomation as soon as we receive the log,
 	// don't need to wait until it get commited.
-	n.ChangeMember(logItem.Command.(string))
+	n.changeMember(logItem.Command.(string))
 
 	return index
 }

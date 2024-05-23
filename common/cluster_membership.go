@@ -19,6 +19,7 @@ type AddServerInput struct {
 type AddServerOutput struct {
 	Status     ClientRequestStatus `json:"status"`
 	LeaderHint string              `json:"leader_hint"`
+	Response   any                 `json:"response"`
 }
 
 type RemoveServerInput struct {
@@ -33,6 +34,7 @@ type RemoveServerInput struct {
 type RemoveServerOutput struct {
 	Status     ClientRequestStatus `json:"status"`
 	LeaderHint string              `json:"leader_hint"`
+	Response   any                 `json:"response"`
 }
 
 func ComposeAddServerCommand(serverId int, httpUrl string, rpcUrl string) string {
@@ -56,7 +58,7 @@ func DecomposeAddSeverCommand(command string) (serverId int, httpUrl string, rpc
 			return
 		}
 
-		httpUrl, rpcUrl = tokens[2], tokens[3]
+		httpUrl, rpcUrl = trimAndLower(tokens[2]), trimAndLower(tokens[3])
 	} else {
 		err = errors.New("not addServer command")
 	}
@@ -77,7 +79,7 @@ func DecomposeRemoveServerCommand(command string) (serverId int, httpUrl string,
 			return
 		}
 
-		httpUrl, rpcUrl = tokens[2], tokens[3]
+		httpUrl, rpcUrl = trimAndLower(tokens[2]), trimAndLower(tokens[3])
 	} else {
 		err = errors.New("not removeServer command")
 	}

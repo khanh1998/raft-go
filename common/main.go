@@ -63,3 +63,9 @@ type PeerRPCProxy struct {
 	Conn *rpc.Client
 	URL  string
 }
+
+type PingResponse struct {
+	ID      int
+	RpcUrl  string
+	Message string
+}

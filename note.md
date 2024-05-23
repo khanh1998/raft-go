@@ -3,6 +3,12 @@ questions:
 
 todos:
 - handle addtion and removal of servers
+- add validation before remove or add new server
+- support static cluster
+- write test :')
+- fix client interaction
+- support log compaction
+- using try-lock instead
 
 - new cluster created
     - start the first server -> leader

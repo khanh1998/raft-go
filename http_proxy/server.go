@@ -133,6 +133,7 @@ func (h *HttpProxy) cli(r *gin.Engine) {
 				responseData = common.ClientRequestOutput{
 					Status:     response.Status,
 					LeaderHint: response.LeaderHint,
+					Response:   response.Response,
 				}
 			}
 		case CommandTypeRemoveServer:
@@ -160,6 +161,7 @@ func (h *HttpProxy) cli(r *gin.Engine) {
 				responseData = common.ClientRequestOutput{
 					Status:     response.Status,
 					LeaderHint: response.LeaderHint,
+					Response:   response.Response,
 				}
 			}
 		}

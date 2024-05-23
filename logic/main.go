@@ -18,6 +18,7 @@ type RaftBrainImpl struct {
 	logger                    *zerolog.Logger
 	DB                        Persistence
 	Members                   []common.ClusterMember
+	nextMemberId              int
 	State                     common.RaftState
 	ID                        int
 	StateMachine              SimpleStateMachine
@@ -77,7 +78,7 @@ type SimpleStateMachine interface {
 type RPCProxy interface {
 	SendAppendEntries(peerId int, timeout *time.Duration, input common.AppendEntriesInput) (output common.AppendEntriesOutput, err error)
 	SendRequestVote(peerId int, timeout *time.Duration, input common.RequestVoteInput) (output common.RequestVoteOutput, err error)
-	SendPing(peerId int, timeout *time.Duration) (err error)
+	SendPing(peerId int, timeout *time.Duration) (res common.PingResponse, err error)
 
 	ConnectToNewPeer(peerID int, peerURL string, retry int, retryDelay time.Duration) error
 	SendToVotingMember(peerId int, timeout *time.Duration) (err error)
@@ -121,6 +122,7 @@ func NewRaftBrain(params NewRaftBrainParams) (*RaftBrainImpl, error) {
 		ARM:          NewAsyncResponseManager(100),
 		Stop:         make(chan struct{}),
 		newMembers:   make(chan common.ClusterMemberChange, 10),
+		nextMemberId: params.Info.ID + 1,
 
 		HeartBeatTimeOutMin: params.HeartBeatTimeOutMin,
 		HeartBeatTimeOutMax: params.HeartBeatTimeOutMax,
@@ -152,7 +154,7 @@ func NewRaftBrain(params NewRaftBrainParams) (*RaftBrainImpl, error) {
 			})
 		}
 	} else {
-		n.RestoreClusterMemberInfoFromLogs()
+		n.restoreClusterMemberInfoFromLogs()
 	}
 
 	n.applyLog()

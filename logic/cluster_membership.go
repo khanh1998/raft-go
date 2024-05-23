@@ -2,39 +2,75 @@ package logic
 
 import (
 	"errors"
+	"fmt"
 	"khanh/raft-go/common"
 	"time"
 
 	"github.com/rs/zerolog/log"
 )
 
-func (r *RaftBrainImpl) RemoveServer(input common.RemoveServerInput, output *common.RemoveServerOutput) (err error) {
-	r.log().Info().Msg("RemoveServer get called")
-	// do input verify
-	r.InOutLock.Lock()
-	isLeader := r.State == common.StateLeader
+func (r *RaftBrainImpl) isValidAddRequest(input common.AddServerInput) error {
+	for _, mem := range r.Members {
+		if mem.ID == input.ID || mem.HttpUrl == input.NewServerHttpUrl || mem.RpcUrl == input.NewServerRpcUrl {
+			return errors.New("the server's information is duplicated")
+		}
+	}
+	if input.ID < r.nextMemberId {
+		return fmt.Errorf("server is should be %d or bigger than that", r.nextMemberId)
+	}
+	return nil
+}
 
+func (r *RaftBrainImpl) isValidRemoveRequest(input common.RemoveServerInput) error {
+	for _, mem := range r.Members {
+		if mem.ID == input.ID && mem.HttpUrl == input.NewServerHttpUrl && mem.RpcUrl == input.NewServerRpcUrl {
+			return errors.New("can't found the server to remove")
+		}
+	}
+	return nil
+}
+
+func (r *RaftBrainImpl) RemoveServer(input common.RemoveServerInput, output *common.RemoveServerOutput) (err error) {
+	r.InOutLock.Lock()
+	_ = output // to disable the warning: argument output is overwritten before first use
+
+	isLeader := r.State == common.StateLeader
 	if !isLeader {
-		output = &common.RemoveServerOutput{
+		*output = common.RemoveServerOutput{
 			Status:     common.StatusNotOK,
 			LeaderHint: r.getLeaderHttpUrl(),
+			Response:   "not leader",
 		}
 
 		r.InOutLock.Unlock()
 		return nil
 	}
+
+	if err := r.isValidRemoveRequest(input); err != nil {
+		*output = common.RemoveServerOutput{
+			Status:     common.StatusNotOK,
+			LeaderHint: r.getLeaderHttpUrl(),
+			Response:   err.Error(),
+		}
+
+		r.InOutLock.Unlock()
+		return nil
+	}
+
 	r.InOutLock.Unlock()
 
 	if !r.ChangeMemberLock.TryLock() {
-		output = &common.RemoveServerOutput{
+		err = errors.New("the server requested to be removed from the cluster is not exist")
+
+		*output = common.RemoveServerOutput{
 			Status:     common.StatusNotOK,
 			LeaderHint: r.getLeaderHttpUrl(),
+			Response:   err.Error(),
 		}
 
-		return errors.New("another node is adding (removing) to the cluster")
+		return nil
 	}
 	defer r.ChangeMemberLock.Unlock()
-	log.Info().Msg("AddServer Got the key")
 
 	index := r.appendLog(common.Log{
 		Term:        r.CurrentTerm,
@@ -43,7 +79,11 @@ func (r *RaftBrainImpl) RemoveServer(input common.RemoveServerInput, output *com
 		Command:     common.ComposeRemoveServerCommand(input.ID, input.NewServerHttpUrl, input.NewServerRpcUrl),
 	})
 
-	if isLeader {
+	// a leader that is removed from the configuration steps down once the C-new entry is committed.
+	// If the leader stepped down before this point,
+	// it might still time out and become leader again, delaying progress
+	isLeaderRemoved := isLeader && input.ID == r.ID
+	if isLeaderRemoved {
 		for {
 			if r.CommitIndex >= index {
 				break
@@ -51,10 +91,10 @@ func (r *RaftBrainImpl) RemoveServer(input common.RemoveServerInput, output *com
 			time.Sleep(100 * time.Millisecond)
 		}
 
-		r.toFollower()
+		r.toFollower() // a follower without a membership can't issue request votes
 	}
 
-	output = &common.RemoveServerOutput{
+	*output = common.RemoveServerOutput{
 		Status:     common.StatusOK,
 		LeaderHint: "",
 	}
@@ -63,50 +103,71 @@ func (r *RaftBrainImpl) RemoveServer(input common.RemoveServerInput, output *com
 }
 
 func (r *RaftBrainImpl) AddServer(input common.AddServerInput, output *common.AddServerOutput) (err error) {
-	// TODO: check whether the server is added to the cluster or not
 	r.InOutLock.Lock()
 	if r.State != common.StateLeader {
-		output = &common.AddServerOutput{
+		*output = common.AddServerOutput{
 			Status:     common.StatusNotOK,
 			LeaderHint: r.getLeaderHttpUrl(),
+			Response:   "not leader",
 		}
 
 		r.InOutLock.Unlock()
 		return nil
 	}
+
+	if err := r.isValidAddRequest(input); err != nil {
+		*output = common.AddServerOutput{
+			Status:     common.StatusNotOK,
+			LeaderHint: r.getLeaderHttpUrl(),
+			Response:   err.Error(),
+		}
+
+		r.InOutLock.Unlock()
+		return nil
+	}
+
 	r.InOutLock.Unlock()
 
 	if !r.ChangeMemberLock.TryLock() {
-		output = &common.AddServerOutput{
+		err = errors.New("another node is adding (removing) to the cluster")
+
+		*output = common.AddServerOutput{
 			Status:     common.StatusNotOK,
 			LeaderHint: r.getLeaderHttpUrl(),
+			Response:   err.Error(),
 		}
 
-		return errors.New("another node is adding (removing) to the cluster")
+		return nil
 	}
 	defer r.ChangeMemberLock.Unlock()
-	log.Info().Msg("AddServer Got the key")
 	timeout := 5 * time.Second
 
 	if err := r.RpcProxy.ConnectToNewPeer(input.ID, input.NewServerRpcUrl, 5, timeout); err != nil {
-		output = &common.AddServerOutput{
+		*output = common.AddServerOutput{
 			Status:     common.StatusNotOK,
 			LeaderHint: r.getLeaderHttpUrl(),
+			Response:   err.Error(),
 		}
 
-		return err
-	}
+		log.Err(err).Msg("ConnectToNewPeer")
 
-	log.Info().Msg("AddServer ConnectToNewPeer")
+		return nil
+	}
 
 	// catch up new server for fixed number of rounds
 	for i := 0; i < 10; i++ {
 		log.Info().Msgf("AddServer catchup start round %d", i)
 		begin := time.Now()
 
-		err := r.CatchUpWithNewMember(input.ID)
+		err := r.catchUpWithNewMember(input.ID)
 		if err != nil {
-			return err
+			*output = common.AddServerOutput{
+				Status:     common.StatusNotOK,
+				LeaderHint: r.getLeaderHttpUrl(),
+				Response:   err.Error(),
+			}
+
+			return nil
 		} else {
 			duration := time.Since(begin)
 			if duration < time.Duration(r.ElectionTimeOutMin*1000) {
@@ -123,6 +184,8 @@ func (r *RaftBrainImpl) AddServer(input common.AddServerInput, output *common.Ad
 		SequenceNum: input.SequenceNum,
 		Command:     common.ComposeAddServerCommand(input.ID, input.NewServerHttpUrl, input.NewServerRpcUrl),
 	})
+
+	r.nextMemberId = input.ID + 1
 
 	err = r.RpcProxy.SendToVotingMember(input.ID, &timeout)
 	if err != nil {
@@ -157,7 +220,7 @@ func (r *RaftBrainImpl) AddServer(input common.AddServerInput, output *common.Ad
 	return nil
 }
 
-func (r *RaftBrainImpl) CatchUpWithNewMember(peerID int) error {
+func (r *RaftBrainImpl) catchUpWithNewMember(peerID int) error {
 	initNextIdx := len(r.Logs)
 	nextIdx := initNextIdx
 	currentTerm := r.CurrentTerm
@@ -220,7 +283,7 @@ func (r *RaftBrainImpl) CatchUpWithNewMember(peerID int) error {
 	return nil
 }
 
-func (r *RaftBrainImpl) RevertChangeMember(command string) error {
+func (r *RaftBrainImpl) revertChangeMember(command string) error {
 	addition := false
 
 	_, _, _, err := common.DecomposeAddSeverCommand(command)
@@ -235,27 +298,28 @@ func (r *RaftBrainImpl) RevertChangeMember(command string) error {
 
 	// revert change
 	if addition {
-		if err := r.RemoveMember(command); err != nil {
+		if err := r.removeMember(command); err != nil {
 			return err
 		}
 	} else {
-		if err := r.AddMember(command); err != nil {
+		if err := r.addMember(command); err != nil {
 			return err
 		}
 	}
 
 	return nil
 }
-func (r *RaftBrainImpl) ChangeMember(command string) error {
-	if err := r.RemoveMember(command); err != nil {
-		if err := r.AddMember(command); err != nil {
+
+func (r *RaftBrainImpl) changeMember(command string) error {
+	if err := r.removeMember(command); err != nil {
+		if err := r.addMember(command); err != nil {
 			return err
 		}
 	}
 	return nil
 }
 
-func (r *RaftBrainImpl) RemoveMember(command string) error {
+func (r *RaftBrainImpl) removeMember(command string) error {
 	id, httpUrl, rpcUrl, err := common.DecomposeRemoveServerCommand(command)
 	if err != nil {
 		return err
@@ -288,7 +352,7 @@ func (r *RaftBrainImpl) RemoveMember(command string) error {
 	return nil
 }
 
-func (r *RaftBrainImpl) AddMember(command string) error {
+func (r *RaftBrainImpl) addMember(command string) error {
 	id, httpUrl, rpcUrl, err := common.DecomposeAddSeverCommand(command)
 	if err != nil {
 		return err
@@ -299,6 +363,8 @@ func (r *RaftBrainImpl) AddMember(command string) error {
 		RpcUrl:  rpcUrl,
 		ID:      id,
 	})
+
+	r.nextMemberId = common.Max(r.nextMemberId, id+1)
 
 	if r.ID != id {
 		r.newMembers <- common.ClusterMemberChange{
@@ -319,37 +385,13 @@ func (r *RaftBrainImpl) AddMember(command string) error {
 	return nil
 }
 
-func (r *RaftBrainImpl) RestoreClusterMemberInfoFromLogs() error {
+func (r *RaftBrainImpl) restoreClusterMemberInfoFromLogs() error {
 	r.Members = []common.ClusterMember{}
-	addition := true
 
 	for _, log := range r.Logs {
-		id, httpUrl, rpcUrl, err := common.DecomposeAddSeverCommand(log.Command.(string))
-		if err != nil {
-			id, httpUrl, rpcUrl, err = common.DecomposeAddSeverCommand(log.Command.(string))
-			if err != nil {
-				continue
-			}
-		} else {
-			addition = true
-		}
-
-		r.Members = append(r.Members, common.ClusterMember{
-			HttpUrl: httpUrl,
-			RpcUrl:  rpcUrl,
-			ID:      id,
-		})
-
-		if r.ID != id {
-			r.newMembers <- common.ClusterMemberChange{
-				ClusterMember: common.ClusterMember{
-					ID:      id,
-					RpcUrl:  rpcUrl,
-					HttpUrl: httpUrl,
-				},
-				Add: addition,
-			}
-		}
+		// log is always either add or remove
+		_ = r.addMember(log.Command.(string))
+		_ = r.removeMember(log.Command.(string))
 	}
 
 	return nil

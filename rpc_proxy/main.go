@@ -13,6 +13,10 @@ import (
 	"github.com/rs/zerolog/log"
 )
 
+var (
+	ErrServerIdDoesNotMatch = errors.New("provided server ID does not match with connected server ID")
+)
+
 // the one which actually processes the request and makes all the decisions.
 type RaftBrain interface {
 	RequestVote(input *common.RequestVoteInput, output *common.RequestVoteOutput) (err error)
@@ -142,15 +146,17 @@ func (r *RPCProxyImpl) connectToPeer(peerID int, peerURL string, retry int, retr
 				URL:  peerURL,
 			})
 
-			var message string
-
 			timeout := 5 * time.Second
 
-			err := r.SendPing(peerID, &timeout)
+			res, err := r.SendPing(peerID, &timeout)
 			if err != nil {
 				r.log().Err(err).Str("url", peerURL).Msg("ConnectToPeer: cannot ping")
 			} else {
-				r.log().Info().Msg(message)
+				if res.ID != peerID {
+					return ErrServerIdDoesNotMatch
+				}
+
+				r.log().Info().Interface("response", res).Msg("SendPing")
 			}
 
 			break

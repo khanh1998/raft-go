@@ -48,26 +48,25 @@ func (r *RPCProxyImpl) SendRequestVote(peerId int, timeout *time.Duration, input
 	return output, nil
 }
 
-func (r *RPCProxyImpl) SendPing(peerId int, timeout *time.Duration) (err error) {
+func (r *RPCProxyImpl) SendPing(peerId int, timeout *time.Duration) (responseMsg common.PingResponse, err error) {
 	if !r.Accessible {
-		return ErrInaccessible
+		return responseMsg, ErrInaccessible
 	}
 	serviceMethod := "RPCProxyImpl.Ping"
 
 	senderName := fmt.Sprintf("hello from Node %d", r.hostID)
-	responseMsg := ""
 
 	if timeout != nil {
 		if err := r.callWithTimeout(peerId, serviceMethod, senderName, &responseMsg, *timeout); err != nil {
-			return err
+			return responseMsg, err
 		}
 	} else {
 		if err := r.callWithoutTimeout(peerId, serviceMethod, senderName, &responseMsg); err != nil {
-			return err
+			return responseMsg, err
 		}
 	}
 
-	return nil
+	return responseMsg, nil
 }
 
 func (r *RPCProxyImpl) SendToVotingMember(peerId int, timeout *time.Duration) (err error) {
