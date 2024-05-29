@@ -113,7 +113,7 @@ func (h *HttpProxy) cli(r *gin.Engine) {
 				httpUrl, rpcUrl string
 				id              int
 			)
-			id, httpUrl, rpcUrl, err = common.DecomposeAddSeverCommand(requestData.Command.(string))
+			id, httpUrl, rpcUrl, err = common.DecomposeAddServerCommand(requestData.Command.(string))
 			if err != nil {
 				responseData = common.ClientRequestOutput{
 					Status:   common.StatusNotOK,

@@ -60,13 +60,16 @@ func (c *Cluster) init(num int) {
 			param := node.NewNodeParams{
 				ID: id + i,
 				Brain: logic.NewRaftBrainParams{
+					ID:                  0,
+					Mode:                common.Static,
+					CachingUp:           false,
 					DataFileName:        fmt.Sprintf("test.log.%d.dat", id+i),
 					HeartBeatTimeOutMin: 150,
 					HeartBeatTimeOutMax: 300,
 					ElectionTimeOutMin:  300,
 					ElectionTimeOutMax:  500,
 					Log:                 &log,
-					Info:                peers[i],
+					Members:             []common.ClusterMember{},
 					// DB:                persistance.NewPersistence(fmt.Sprintf("test.log.%d.dat", id+i)),
 					DB:           persistance.NewPersistenceMock(),
 					StateMachine: common.NewKeyValueStateMachine(),
@@ -81,7 +84,7 @@ func (c *Cluster) init(num int) {
 			}
 
 			n := node.NewNode(param)
-			n.Start(param.Brain.CachingUp)
+			n.Start(param.Brain.Mode == common.Dynamic, param.Brain.CachingUp)
 
 			c.createNodeParams[i] = param
 			c.Nodes[i] = n

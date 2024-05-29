@@ -45,7 +45,18 @@ func ComposeRemoveServerCommand(serverId int, httpUrl string, rpcUrl string) str
 	return fmt.Sprintf("removeServer %d %s %s", serverId, httpUrl, rpcUrl)
 }
 
-func DecomposeAddSeverCommand(command string) (serverId int, httpUrl string, rpcUrl string, err error) {
+func DecomposeChangeSeverCommand(command string) (addition bool, serverId int, httpUrl string, rpcUrl string, err error) {
+	serverId, httpUrl, rpcUrl, err = DecomposeAddServerCommand(command)
+	if err != nil {
+		serverId, httpUrl, rpcUrl, err = DecomposeRemoveServerCommand(command)
+	} else {
+		addition = true
+	}
+
+	return
+}
+
+func DecomposeAddServerCommand(command string) (serverId int, httpUrl string, rpcUrl string, err error) {
 	tokens := strings.Split(command, " ")
 	if len(tokens) != 4 {
 		err = errors.New("not enough args for addServer command")

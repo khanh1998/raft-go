@@ -1,6 +1,7 @@
 package logic
 
 import (
+	"errors"
 	"khanh/raft-go/common"
 	"sync"
 	"time"
@@ -21,6 +22,7 @@ type RaftBrainImpl struct {
 	nextMemberId              int
 	State                     common.RaftState
 	ID                        int
+	LeaderID                  int
 	StateMachine              SimpleStateMachine
 	ElectionTimeOut           *time.Timer
 	HeartBeatTimeOut          *time.Timer
@@ -95,7 +97,11 @@ type PeerInfo struct {
 }
 
 type NewRaftBrainParams struct {
-	Info                common.ClusterMember
+	ID   int
+	Mode common.ClusterMode
+	// list of member servers for STATIC cluster mode.
+	// if cluster mode is DYNAMIC, list contains only one member - is the first node of cluster.
+	Members             []common.ClusterMember
 	DataFileName        string
 	HeartBeatTimeOutMin int64
 	HeartBeatTimeOutMax int64
@@ -104,12 +110,12 @@ type NewRaftBrainParams struct {
 	Log                 *zerolog.Logger
 	DB                  Persistence
 	StateMachine        SimpleStateMachine
-	CachingUp           bool
+	CachingUp           bool // will be ignored if the cluster mode is STATIC
 }
 
 func NewRaftBrain(params NewRaftBrainParams) (*RaftBrainImpl, error) {
 	n := &RaftBrainImpl{
-		ID: params.Info.ID,
+		ID: params.ID,
 		State: func() common.RaftState {
 			if params.CachingUp {
 				return common.StateCatchingUp
@@ -122,7 +128,7 @@ func NewRaftBrain(params NewRaftBrainParams) (*RaftBrainImpl, error) {
 		ARM:          NewAsyncResponseManager(100),
 		Stop:         make(chan struct{}),
 		newMembers:   make(chan common.ClusterMemberChange, 10),
-		nextMemberId: params.Info.ID + 1,
+		nextMemberId: params.ID + 1,
 
 		HeartBeatTimeOutMin: params.HeartBeatTimeOutMin,
 		HeartBeatTimeOutMax: params.HeartBeatTimeOutMax,
@@ -142,19 +148,43 @@ func NewRaftBrain(params NewRaftBrainParams) (*RaftBrainImpl, error) {
 		return n, err
 	}
 
-	// if this is the first node of the cluster,
-	// initialy add it's info to the cluster members.
-	if len(n.Logs) == 0 {
-		if !params.CachingUp {
-			n.appendLog(common.Log{
-				Term:        1,
-				ClientID:    0,
-				SequenceNum: 0,
-				Command:     common.ComposeAddServerCommand(params.Info.ID, params.Info.HttpUrl, params.Info.RpcUrl),
-			})
+	if params.Mode == common.Dynamic {
+		if params.CachingUp {
+			// if the new node is in catching up mode,
+			// we ignore all member configurations, because it hasn't been a part of cluster yet.
+			if len(params.Members) > 0 {
+				return nil, errors.New("in catching up mode, we don't pass member list as parameter")
+			}
+		} else {
+			if len(params.Members) != 1 {
+				return nil, errors.New("in dynamic cluster, initially there is one server")
+			}
+
+			// if this is the first node of cluster and the first time the node get boosted up,
+			// initialy add members to the cluster. otherwise, it's already in the log.
+			if len(n.Logs) == 0 {
+				mem := params.Members[0]
+
+				n.appendLog(common.Log{
+					Term:        1,
+					ClientID:    0,
+					SequenceNum: 0,
+					Command:     common.ComposeAddServerCommand(mem.ID, mem.HttpUrl, mem.RpcUrl),
+				})
+			} else {
+				n.restoreClusterMemberInfoFromLogs()
+			}
 		}
-	} else {
-		n.restoreClusterMemberInfoFromLogs()
+	}
+
+	if params.Mode == common.Static {
+		if len(params.Members) == 0 {
+			return nil, errors.New("in static cluster, you need to pass the member list of cluster")
+		}
+
+		for _, mem := range params.Members {
+			n.addMember(mem.ID, mem.HttpUrl, mem.RpcUrl)
+		}
 	}
 
 	n.applyLog()
@@ -176,9 +206,10 @@ func (n *RaftBrainImpl) Start() {
 func (n *RaftBrainImpl) log() *zerolog.Logger {
 	// data race
 	sub := n.logger.With().
-		Int("RB_ID", n.ID).
+		Int("id", n.ID).
 		Str("state", n.State.String()).
-		Int("voted for", n.VotedFor).
+		Int("votedFor", n.VotedFor).
+		Int("leaderId", n.VotedFor).
 		Int("term", n.CurrentTerm).
 		Int("commitIndex", n.CommitIndex).
 		Int("lastApplied", n.LastApplied).
@@ -186,26 +217,6 @@ func (n *RaftBrainImpl) log() *zerolog.Logger {
 		Interface("matchIndex", n.MatchIndex).
 		Logger()
 	return &sub
-}
-
-func (n *RaftBrainImpl) resetElectionTimeout() {
-	randomElectionTimeOut := time.Duration(common.RandInt(n.ElectionTimeOutMin, n.ElectionTimeOutMax)) * time.Millisecond
-	n.log().Info().Interface("seconds", randomElectionTimeOut.Seconds()).Msg("resetElectionTimeout")
-	if n.ElectionTimeOut == nil {
-		n.ElectionTimeOut = time.NewTimer(randomElectionTimeOut)
-	} else {
-		n.ElectionTimeOut.Reset(randomElectionTimeOut)
-	}
-}
-
-func (n *RaftBrainImpl) resetHeartBeatTimeout() {
-	randomHeartBeatTimeout := time.Duration(common.RandInt(n.HeartBeatTimeOutMin, n.HeartBeatTimeOutMax)) * time.Millisecond
-	n.log().Info().Interface("seconds", randomHeartBeatTimeout.Seconds()).Msg("resetHeartBeatTimeout")
-	if n.HeartBeatTimeOut == nil {
-		n.HeartBeatTimeOut = time.NewTimer(randomHeartBeatTimeout)
-	} else {
-		n.HeartBeatTimeOut.Reset(randomHeartBeatTimeout)
-	}
 }
 
 func (n *RaftBrainImpl) GetInfo() common.GetStatusResponse {

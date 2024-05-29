@@ -18,74 +18,55 @@ var (
 
 // AppendEntries Invoked by leader to replicate log entries (§5.3); also used as heartbeat (§5.2).
 func (n *RaftBrainImpl) AppendEntries(input *common.AppendEntriesInput, output *common.AppendEntriesOutput) (err error) {
-	n.log().Info().
-		Interface("ID", n.ID).
-		Interface("req", input).
-		Msg("Received an AppendEntries request")
+	defer func() {
+		n.log().Info().
+			Interface("id", n.ID).
+			Interface("input", input).
+			Interface("output", output).
+			Msg("AppendEntries")
+	}()
 
 	n.InOutLock.Lock()
 	defer n.InOutLock.Unlock()
 
-	defer func() {
-		output.NodeID = n.ID
-
-		// If election timeout elapses without receiving AppendEntries
-		// RPC from current leader or granting vote to candidate: convert to candidate.
-		// -> if the candidate is granted vote, we reset election time out of current node.
-		if output.Success {
-			n.resetElectionTimeout() // TODO: review this, because log syncing can take long
-
-			if n.VotedFor == 0 { // input.Term == n.CurrentTerm
-				n.setVotedFor(input.LeaderID)
-			}
-
-			n.lastHeartbeatReceivedTime = time.Now()
-		} else {
-			if output.Message != MsgRequesterTermIsOutDated {
-				n.lastHeartbeatReceivedTime = time.Now()
-			}
-		}
-
-		n.log().Info().
-			Interface("ID", n.ID).
-			Interface("out", output).
-			Msg("Responsed an AppendEntries request")
-	}()
-
-	// If RPC request or response contains term T > currentTerm: set currentTerm = T, convert to follower (§5.1)
-	if input.Term > n.CurrentTerm {
-		if n.State != common.StateCatchingUp {
-			// if current node is catching up with current leader,
-			// don't change to follower util the leader allow.
-			n.toFollower()
-		}
-		n.setVotedFor(input.LeaderID)
-		n.setCurrentTerm(input.Term)
-	}
-
 	// 1. Reply false if term < currentTerm (§5.1)
 	if input.Term < n.CurrentTerm {
-		*output = common.AppendEntriesOutput{Term: n.CurrentTerm, Success: false, Message: MsgRequesterTermIsOutDated}
+		*output = common.AppendEntriesOutput{Term: n.CurrentTerm, Success: false, Message: MsgRequesterTermIsOutDated, NodeID: n.ID}
 
 		return nil
 	}
 
-	if input.PrevLogIndex > 0 { // if leader has no log, then no need to check
+	n.lastHeartbeatReceivedTime = time.Now()
+	n.resetElectionTimeout()
+
+	// If RPC request or response contains term T > currentTerm: set currentTerm = T, convert to follower (§5.1)
+	if input.Term > n.CurrentTerm {
+		n.toFollower()
+		n.setLeaderID(input.LeaderID)
+		n.setCurrentTerm(input.Term)
+		n.setVotedFor(0)
+	}
+
+	if input.Term == n.CurrentTerm {
+		n.setLeaderID(input.LeaderID)
+	}
+
+	// WARN: log index start from 1, not 0
+	if input.PrevLogIndex > 0 {
 		// 2. Reply false if log doesn’t contain an entry at prevLogIndex whose term matches prevLogTerm (§5.3)
-		// WARN: log index start from 1, not 0
 		logItem, err := n.getLog(input.PrevLogIndex)
 		switch err {
 		case ErrLogIsEmtpy:
-			*output = common.AppendEntriesOutput{Term: n.CurrentTerm, Success: false, Message: MsgTheResponderHasNoLog}
+			*output = common.AppendEntriesOutput{Term: n.CurrentTerm, Success: false, Message: MsgTheResponderHasNoLog, NodeID: n.ID}
 
 			return nil
 		case ErrIndexOutOfRange:
-			*output = common.AppendEntriesOutput{Term: n.CurrentTerm, Success: false, Message: MsgTheResponderHasFewerLogThanRequester}
+			*output = common.AppendEntriesOutput{Term: n.CurrentTerm, Success: false, Message: MsgTheResponderHasFewerLogThanRequester, NodeID: n.ID}
 
 			return nil
 		case nil:
 			if logItem.Term != input.PrevLogTerm {
-				*output = common.AppendEntriesOutput{Term: n.CurrentTerm, Success: false, Message: MsgPreviousLogTermsAreNotMatched}
+				*output = common.AppendEntriesOutput{Term: n.CurrentTerm, Success: false, Message: MsgPreviousLogTermsAreNotMatched, NodeID: n.ID}
 
 				return nil
 			}
@@ -96,7 +77,7 @@ func (n *RaftBrainImpl) AppendEntries(input *common.AppendEntriesInput, output *
 		if err == nil {
 			if logItem.Term != input.Term {
 				n.deleteLogFrom(input.PrevLogIndex + 1)
-				*output = common.AppendEntriesOutput{Term: n.CurrentTerm, Success: false, Message: MsgCurrentLogTermsAreNotMatched}
+				*output = common.AppendEntriesOutput{Term: n.CurrentTerm, Success: false, Message: MsgCurrentLogTermsAreNotMatched, NodeID: n.ID}
 
 				return nil
 			}
@@ -118,7 +99,7 @@ func (n *RaftBrainImpl) AppendEntries(input *common.AppendEntriesInput, output *
 
 	n.applyLog()
 
-	*output = common.AppendEntriesOutput{Term: n.CurrentTerm, Success: true, Message: ""}
+	*output = common.AppendEntriesOutput{Term: n.CurrentTerm, Success: true, Message: "", NodeID: n.ID}
 
 	return nil
 }
@@ -126,27 +107,12 @@ func (n *RaftBrainImpl) AppendEntries(input *common.AppendEntriesInput, output *
 // Invoked by candidates to gather votes (§5.2).
 func (n *RaftBrainImpl) RequestVote(input *common.RequestVoteInput, output *common.RequestVoteOutput) (err error) {
 	defer func() {
-		output.NodeID = n.ID
-
-		if output.VoteGranted {
-			n.resetElectionTimeout()
-		}
-
-		// If RPC request or response contains term T > currentTerm: set currentTerm = T, convert to follower (§5.1)
-		if input.Term > n.CurrentTerm {
-			n.CurrentTerm = input.Term
-		}
-
 		n.log().Info().
-			Interface("ID", n.ID).
-			Interface("out", output).
-			Msg("Response an RequestVote request")
+			Interface("id", n.ID).
+			Interface("input", input).
+			Interface("output", output).
+			Msg("RequestVote")
 	}()
-
-	n.log().Info().
-		Interface("ID", n.ID).
-		Interface("req", input).
-		Msg("Received an RequestVote request")
 
 	n.InOutLock.Lock()
 	defer n.InOutLock.Unlock()
@@ -154,7 +120,7 @@ func (n *RaftBrainImpl) RequestVote(input *common.RequestVoteInput, output *comm
 	// when a follower is removed from the cluster, it will never aware of that,
 	// because the leader won't send update logs to removed follower after it receive the received command.
 	// this check is to prevent removed follower request vote from others.
-	if time.Since(n.lastHeartbeatReceivedTime) < time.Duration(n.ElectionTimeOutMin*1000000) {
+	if time.Since(n.lastHeartbeatReceivedTime) < time.Duration(n.ElectionTimeOutMax*1000000) {
 		output = &common.RequestVoteOutput{
 			Term:        n.CurrentTerm,
 			Message:     MsgTheLeaderIsStillAlive,
@@ -166,26 +132,39 @@ func (n *RaftBrainImpl) RequestVote(input *common.RequestVoteInput, output *comm
 
 	// 1. Reply false if term < currentTerm (§5.1)
 	if input.Term < n.CurrentTerm {
-		*output = common.RequestVoteOutput{Term: n.CurrentTerm, VoteGranted: false, Message: MsgRequesterTermIsOutDated}
+		*output = common.RequestVoteOutput{Term: n.CurrentTerm, VoteGranted: false, Message: MsgRequesterTermIsOutDated, NodeID: n.ID}
 
 		return nil
 	}
 
+	// If RPC request or response contains term T > currentTerm: set currentTerm = T, convert to follower (§5.1)
+	if input.Term > n.CurrentTerm {
+		n.setCurrentTerm(input.Term)
+		n.setLeaderID(0)
+		n.setVotedFor(0)
+		n.toFollower()
+		// if current node is a follower: then no need to convert to follower.
+		// if current node is a candidate:
+		// if current node is a leader:
+	}
+
 	// 2. If votedFor is null or candidateId, and candidate’s log is at least as up-to-date as receiver’s log, grant vote (§5.2, §5.4)
-	if n.VotedFor == 0 {
+	if n.VotedFor == 0 || n.VotedFor == input.CandidateID {
+		// Retry Mechanisms: However, in a distributed system, network partitions, retries due to lost messages, or other anomalies might lead to a scenario where the same candidate might end up re-sending a RequestVote RPC, or where a follower might process a duplicate RequestVote.
 		if n.isLogUpToDate(input.LastLogIndex, input.LastLogTerm) {
 			n.setVotedFor(input.CandidateID)
+			n.resetElectionTimeout()
 
-			*output = common.RequestVoteOutput{Term: n.CurrentTerm, VoteGranted: true, Message: ""}
+			*output = common.RequestVoteOutput{Term: n.CurrentTerm, VoteGranted: true, Message: "", NodeID: n.ID}
 
 			return nil
 		} else {
-			*output = common.RequestVoteOutput{Term: n.CurrentTerm, VoteGranted: false, Message: MsgTheRequesterLogsAreOutOfDate}
+			*output = common.RequestVoteOutput{Term: n.CurrentTerm, VoteGranted: false, Message: MsgTheRequesterLogsAreOutOfDate, NodeID: n.ID}
 
 			return nil
 		}
 	} else {
-		*output = common.RequestVoteOutput{Term: n.CurrentTerm, VoteGranted: false, Message: MsgTheResponderAlreadyMakeAVote}
+		*output = common.RequestVoteOutput{Term: n.CurrentTerm, VoteGranted: false, Message: MsgTheResponderAlreadyMakeAVote, NodeID: n.ID}
 
 		return nil
 	}

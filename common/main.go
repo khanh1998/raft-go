@@ -35,9 +35,9 @@ type RequestVoteOutput struct {
 }
 
 type ClusterMember struct {
-	ID      int
-	RpcUrl  string
-	HttpUrl string
+	ID      int    `mapstructure:"id"`
+	RpcUrl  string `mapstructure:"rpc_url"`
+	HttpUrl string `mapstructure:"http_url"`
 }
 
 type RaftState string
@@ -46,7 +46,7 @@ const (
 	StateFollower   RaftState = "follower"
 	StateCandidate  RaftState = "candidate"
 	StateLeader     RaftState = "leader"
-	StateCatchingUp RaftState = "catching-up" // new node is catching up with current leader of the cluster, i can't vote
+	StateCatchingUp RaftState = "catching-up" // new node is catching up with current leader of the cluster, it can't vote
 )
 
 func (s RaftState) String() string {

@@ -48,11 +48,11 @@ func NewNode(params NewNodeParams) *Node {
 	return n
 }
 
-func (n *Node) Start(cachingUp bool) {
+func (n *Node) Start(dynamicCluster bool, cachingUp bool) {
 	n.SetInaccessible()
 	n.rpc.Start()
 	n.http.Start()
-	if !cachingUp {
+	if !(dynamicCluster && cachingUp) {
 		n.brain.Start()
 	}
 	n.SetAccessible()

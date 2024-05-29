@@ -284,47 +284,33 @@ func (r *RaftBrainImpl) catchUpWithNewMember(peerID int) error {
 }
 
 func (r *RaftBrainImpl) revertChangeMember(command string) error {
-	addition := false
-
-	_, _, _, err := common.DecomposeAddSeverCommand(command)
-	if err != nil {
-		_, _, _, err = common.DecomposeRemoveServerCommand(command)
-		if err != nil {
-			return err
-		}
-	} else {
-		addition = true
-	}
-
-	// revert change
-	if addition {
-		if err := r.removeMember(command); err != nil {
-			return err
-		}
-	} else {
-		if err := r.addMember(command); err != nil {
-			return err
-		}
-	}
-
-	return nil
-}
-
-func (r *RaftBrainImpl) changeMember(command string) error {
-	if err := r.removeMember(command); err != nil {
-		if err := r.addMember(command); err != nil {
-			return err
-		}
-	}
-	return nil
-}
-
-func (r *RaftBrainImpl) removeMember(command string) error {
-	id, httpUrl, rpcUrl, err := common.DecomposeRemoveServerCommand(command)
+	addition, id, httpUrl, rpcUrl, err := common.DecomposeChangeSeverCommand(command)
 	if err != nil {
 		return err
 	}
 
+	// revert change
+	if addition {
+		return r.removeMember(id, httpUrl, rpcUrl)
+	} else {
+		return r.addMember(id, httpUrl, rpcUrl)
+	}
+}
+
+func (r *RaftBrainImpl) changeMember(command string) error {
+	addition, id, httpUrl, rpcUrl, err := common.DecomposeChangeSeverCommand(command)
+	if err != nil {
+		return err
+	}
+
+	if addition {
+		return r.addMember(id, httpUrl, rpcUrl)
+	} else {
+		return r.addMember(id, httpUrl, rpcUrl)
+	}
+}
+
+func (r *RaftBrainImpl) removeMember(id int, httpUrl, rpcUrl string) error {
 	tmp := []common.ClusterMember{}
 	for _, mem := range r.Members {
 		if mem.ID != id {
@@ -352,12 +338,7 @@ func (r *RaftBrainImpl) removeMember(command string) error {
 	return nil
 }
 
-func (r *RaftBrainImpl) addMember(command string) error {
-	id, httpUrl, rpcUrl, err := common.DecomposeAddSeverCommand(command)
-	if err != nil {
-		return err
-	}
-
+func (r *RaftBrainImpl) addMember(id int, httpUrl, rpcUrl string) error {
 	r.Members = append(r.Members, common.ClusterMember{
 		HttpUrl: httpUrl,
 		RpcUrl:  rpcUrl,
@@ -385,13 +366,14 @@ func (r *RaftBrainImpl) addMember(command string) error {
 	return nil
 }
 
-func (r *RaftBrainImpl) restoreClusterMemberInfoFromLogs() error {
+func (r *RaftBrainImpl) restoreClusterMemberInfoFromLogs() (err error) {
 	r.Members = []common.ClusterMember{}
 
 	for _, log := range r.Logs {
-		// log is always either add or remove
-		_ = r.addMember(log.Command.(string))
-		_ = r.removeMember(log.Command.(string))
+		err = r.changeMember(log.Command.(string))
+		if err != nil {
+			r.log().Err(err).Msg("restoreClusterMemberInfoFromLogs")
+		}
 	}
 
 	return nil

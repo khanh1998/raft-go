@@ -99,6 +99,17 @@ func (n *RaftBrainImpl) getLog(index int) (common.Log, error) {
 	return n.Logs[realIndex], nil
 }
 
+func (n *RaftBrainImpl) setLeaderID(leaderId int) {
+	defer func() {
+		data := n.serialize(true, true, "SetLeaderID")
+		if err := n.DB.AppendLog(data); err != nil {
+			n.log().Err(err).Msg("SetLeaderID save to db error: ")
+		}
+	}()
+
+	n.LeaderID = leaderId
+}
+
 func (n *RaftBrainImpl) setCurrentTerm(term int) {
 	defer func() {
 		data := n.serialize(true, true, "SetCurrentTerm")

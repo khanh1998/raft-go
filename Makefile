@@ -10,5 +10,12 @@ node3:
 	go run -race main.go -id=3 -catching-up=true -rpc-port=1236 -http-port=8082
 # all the next nodes have to set -catching-up=true
 
+nodes1:
+	go run main.go -id=1
+nodes2:
+	go run main.go -id=2
+nodes3:
+	go run main.go -id=3
+	
 clear:
 	rm -f log.*.dat

@@ -2,7 +2,6 @@ package rpc_proxy
 
 import (
 	"errors"
-	"fmt"
 	"khanh/raft-go/common"
 	"net"
 	"net/rpc"
@@ -99,16 +98,6 @@ func (r *RPCProxyImpl) ConnectToNewPeer(peerID int, peerURL string, retry int, r
 	return r.connectToPeer(peerID, peerURL, retry, retryDelay)
 }
 
-func (r *RPCProxyImpl) AddPeerToStaging(peerID int, peerURL string, retry int, retryDelay time.Duration) error {
-
-	return nil
-}
-
-func (r *RPCProxyImpl) CommitStaging(peerID int, peerURL string, retry int, retryDelay time.Duration) error {
-
-	return nil
-}
-
 func (r *RPCProxyImpl) DisconnectToAllPeers() {
 	for id := range r.peers {
 		r.disconnectToPeer(id)
@@ -133,34 +122,38 @@ func (r *RPCProxyImpl) disconnectToPeer(peerID int) error {
 }
 
 func (r *RPCProxyImpl) connectToPeer(peerID int, peerURL string, retry int, retryDelay time.Duration) error {
+	r.setPeer(peerID, common.PeerRPCProxy{
+		Conn: nil,
+		URL:  peerURL,
+	})
+
 	for i := 0; i < retry; i++ {
 		client, err := rpc.Dial("tcp", peerURL)
 		if err != nil {
-			r.log().Err(err).Msg("ConnectToPeer: Client connection error: ")
+			r.log().Err(err).Msgf("ConnectToPeer: can't connect to %s ", peerURL)
 
 			time.Sleep(retryDelay)
 		} else {
 			r.log().Info().Msgf("ConnectToPeer: connect to %s successfully", peerURL)
+			timeout := 5 * time.Second
+
 			r.setPeer(peerID, common.PeerRPCProxy{
 				Conn: client,
 				URL:  peerURL,
 			})
 
-			timeout := 5 * time.Second
-
 			res, err := r.SendPing(peerID, &timeout)
 			if err != nil {
-				r.log().Err(err).Str("url", peerURL).Msg("ConnectToPeer: cannot ping")
+				r.log().Err(err).Msgf("ConnectToPeer: cannot ping %s", peerURL)
 			} else {
 				if res.ID != peerID {
 					return ErrServerIdDoesNotMatch
 				}
-
-				r.log().Info().Interface("response", res).Msg("SendPing")
 			}
 
 			break
 		}
+
 	}
 
 	return nil
@@ -264,14 +257,14 @@ func (r *RPCProxyImpl) reconnect(peerIdx int) error {
 		return err
 	}
 
-	var message string
-	err = client.Call("RPCProxyImpl.Ping", fmt.Sprintf("Node %v", r.hostID), &message)
+	timeout := 1 * time.Second
+	res, err := r.SendPing(peerIdx, &timeout)
 	if err != nil {
-		r.log().Err(err).Str("url", targetUrl).Msg("Reconnect: cannot ping")
-
-		return err
+		r.log().Err(err).Msgf("ConnectToPeer: cannot ping %s", targetUrl)
 	} else {
-		r.log().Info().Msg(message)
+		if res.ID != peerIdx {
+			return ErrServerIdDoesNotMatch
+		}
 	}
 
 	r.setPeer(peerIdx, common.PeerRPCProxy{
@@ -285,41 +278,56 @@ func (r *RPCProxyImpl) reconnect(peerIdx int) error {
 var (
 	ErrPeerIdDoesNotExist      = errors.New("rpc peer id does not exist")
 	ErrRpcPeerConnectionIsNull = errors.New("rpc peer connection is nil")
+	ErrRpcTimeout              = errors.New("rpc call take too long")
 )
 
-func (r *RPCProxyImpl) callWithoutTimeout(peerID int, serviceMethod string, args any, reply any) error {
-	peer, err := r.getPeer(peerID)
-	if err != nil {
-		return err
-	}
+func (r *RPCProxyImpl) callWithoutTimeout(peerID int, serviceMethod string, args any, reply any) (err error) {
+	var peer common.PeerRPCProxy
 
-	if peer.Conn == nil {
-		return ErrRpcPeerConnectionIsNull
-	}
+	for i := 0; i < 1; i++ {
+		peer, err = r.getPeer(peerID)
+		if err != nil {
+			return err
+		}
 
-	return peer.Conn.Call(serviceMethod, args, reply)
-}
-
-func (r *RPCProxyImpl) callWithTimeout(peerID int, serviceMethod string, args any, reply any, timeout time.Duration) error {
-	peer, err := r.getPeer(peerID)
-	if err != nil {
-		return err
-	}
-
-	if peer.Conn == nil {
-		return ErrRpcPeerConnectionIsNull
-	}
-
-	call := peer.Conn.Go(serviceMethod, args, reply, nil)
-	select {
-	case <-time.After(timeout):
-		return errors.New("RPC timeout")
-	case resp := <-call.Done:
-		if resp != nil && resp.Error != nil {
+		if peer.Conn == nil {
 			r.reconnect(peerID)
-			return resp.Error
 		}
 	}
 
-	return nil
+	if peer.Conn != nil {
+		return peer.Conn.Call(serviceMethod, args, reply)
+	}
+	return ErrRpcPeerConnectionIsNull
+}
+
+func (r *RPCProxyImpl) callWithTimeout(peerID int, serviceMethod string, args any, reply any, timeout time.Duration) (err error) {
+	var peer common.PeerRPCProxy
+
+	for i := 0; i < 1; i++ {
+		peer, err = r.getPeer(peerID)
+		if err != nil {
+			return err
+		}
+
+		if peer.Conn == nil {
+			r.reconnect(peerID)
+		}
+	}
+
+	if peer.Conn != nil {
+		call := peer.Conn.Go(serviceMethod, args, reply, nil)
+		select {
+		case <-time.After(timeout):
+			return ErrRpcTimeout
+		case resp := <-call.Done:
+			if resp != nil && resp.Error != nil {
+				r.reconnect(peerID)
+				return resp.Error
+			}
+		}
+
+		return nil
+	}
+	return ErrRpcPeerConnectionIsNull
 }

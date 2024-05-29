@@ -17,11 +17,10 @@ import (
 func TestStop(t *testing.T) {
 	n := NewNode(NewNodeParams{
 		Brain: logic.NewRaftBrainParams{
-			Info: common.ClusterMember{
-				RpcUrl:  ":1234",
-				HttpUrl: "localhost:8080",
-				ID:      1,
-			},
+			ID:                  1,
+			Mode:                common.Static,
+			Members:             []common.ClusterMember{},
+			CachingUp:           false,
 			DataFileName:        "logs.dat",
 			HeartBeatTimeOutMin: 150,
 			HeartBeatTimeOutMax: 300,
@@ -40,7 +39,7 @@ func TestStop(t *testing.T) {
 			URL: "localhost:8080",
 		},
 	})
-	n.Start(false)
+	n.Start(false, false)
 
 	_, err := rpc.Dial("tcp", ":1234")
 	assert.NoError(t, err, "connect to rpc server ok")

@@ -1,6 +1,7 @@
 package logic
 
 import (
+	"errors"
 	"fmt"
 	"khanh/raft-go/common"
 )
@@ -13,6 +14,7 @@ func (n *RaftBrainImpl) toCandidate() {
 func (n *RaftBrainImpl) toLeader() {
 	n.log().Info().Msg("to leader")
 	n.State = common.StateLeader
+	n.LeaderID = n.ID
 
 	n.NextIndex = make(map[int]int)
 	n.MatchIndex = make(map[int]int)
@@ -31,8 +33,14 @@ func (n *RaftBrainImpl) toLeader() {
 }
 
 func (n *RaftBrainImpl) toFollower() {
-	n.log().Info().Msg("to follower")
-	n.State = common.StateFollower
+	if n.State != common.StateCatchingUp {
+		n.State = common.StateFollower
+		n.log().Info().Msg("toFollower")
+	} else {
+		// if the current node's status is catching-up, i can't call this function to become a follower by itself,
+		// need to wait the permission from the current leader.
+		n.log().Error().Err(errors.New("catching-up can't be changed to follower with this function")).Msg("toFollower")
+	}
 }
 
 // this will transition the node from non-voting to voting member (follower),

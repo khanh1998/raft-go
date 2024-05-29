@@ -10,7 +10,7 @@
             "request": "launch",
             "mode": "auto",
             "program": "main.go",
-            "args": ["-id=1", "-catching-up=false", "-rpc-port=1234","-http-port=8080"]
+            "args": ["-id=3"]
         }
     ]
 }
