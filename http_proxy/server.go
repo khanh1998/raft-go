@@ -124,9 +124,6 @@ func (h *HttpProxy) cli(r *gin.Engine) {
 					ID:               id,
 					NewServerHttpUrl: httpUrl,
 					NewServerRpcUrl:  rpcUrl,
-
-					ClientID:    requestData.ClientID,
-					SequenceNum: requestData.SequenceNum,
 				}
 				var response common.AddServerOutput
 				err = h.brain.AddServer(request, &response)
@@ -152,9 +149,6 @@ func (h *HttpProxy) cli(r *gin.Engine) {
 					ID:               id,
 					NewServerHttpUrl: httpUrl,
 					NewServerRpcUrl:  rpcUrl,
-
-					ClientID:    requestData.ClientID,
-					SequenceNum: requestData.SequenceNum,
 				}
 				var response common.RemoveServerOutput
 				err = h.brain.RemoveServer(request, &response)
@@ -167,7 +161,7 @@ func (h *HttpProxy) cli(r *gin.Engine) {
 		}
 
 		if err != nil {
-			c.IndentedJSON(http.StatusInternalServerError, requestData)
+			c.String(http.StatusInternalServerError, err.Error())
 		} else {
 			c.IndentedJSON(http.StatusOK, responseData)
 		}

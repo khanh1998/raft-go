@@ -122,6 +122,20 @@ func (r *RPCProxyImpl) disconnectToPeer(peerID int) error {
 }
 
 func (r *RPCProxyImpl) connectToPeer(peerID int, peerURL string, retry int, retryDelay time.Duration) error {
+	timeout := 1 * time.Second
+
+	// an connection exist
+	peer, err := r.getPeer(peerID)
+	if err == nil && peer.Conn != nil {
+		res, err := r.SendPing(peerID, &timeout)
+		if err == nil {
+			if res.ID == peerID {
+				return nil
+			}
+		}
+	}
+
+	// non connection exist
 	r.setPeer(peerID, common.PeerRPCProxy{
 		Conn: nil,
 		URL:  peerURL,
@@ -135,7 +149,6 @@ func (r *RPCProxyImpl) connectToPeer(peerID int, peerURL string, retry int, retr
 			time.Sleep(retryDelay)
 		} else {
 			r.log().Info().Msgf("ConnectToPeer: connect to %s successfully", peerURL)
-			timeout := 5 * time.Second
 
 			r.setPeer(peerID, common.PeerRPCProxy{
 				Conn: client,
@@ -292,6 +305,8 @@ func (r *RPCProxyImpl) callWithoutTimeout(peerID int, serviceMethod string, args
 
 		if peer.Conn == nil {
 			r.reconnect(peerID)
+		} else {
+			break
 		}
 	}
 
@@ -312,6 +327,8 @@ func (r *RPCProxyImpl) callWithTimeout(peerID int, serviceMethod string, args an
 
 		if peer.Conn == nil {
 			r.reconnect(peerID)
+		} else {
+			break
 		}
 	}
 

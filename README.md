@@ -9,7 +9,32 @@ This is a simple distributed key-value database, built on top of [Raft](https://
 ![Orverall Architecture](docs/diagram.drawio.png "Orverall Architecture")
 
 # 1. Start the cluster
-## 1.1 Dynamic cluster (unavailable)
+## 1.0 Configuration
+You need a config file `config.yml` whose content as bellow:
+```yaml
+cluster:
+  mode: static # the cluster can be either 'static' or 'dynamic'
+  servers: # if the mode is 'dynamic', `servers` will be ignored
+    - id: 1
+      host: "http://localhost"
+      http_port: 8080
+      rpc_port: 1234
+    - id: 2
+      host: "http://localhost"
+      http_port: 8081
+      rpc_port: 1235
+    - id: 3
+      host: "http://localhost"
+      http_port: 8082
+      rpc_port: 1236
+# timeout in miliseconds
+min_election_timeout_ms: 12000
+max_election_timeout_ms: 15000
+min_heartbeat_timeout_ms: 2000
+max_heartbeat_timeout_ms: 5000
+```
+Pick the mode of cluster, It can be either `dynamic` or `static`.
+## 1.1 Dynamic cluster
 With a dynamic cluster, you can freely add or remove nodes as you want (one at a time). \
 The general idea is, firstly you create a one-node-cluster, the only node will obviously become the leader. You can perform all commands with this cluster normally. \
 Then you add a new node to the cluster to form a two-nodes-cluster, the new node needs to catch up with the current leader before it officially becomes a member of the cluster. The catching-up can take a long time, and you can only add (or remove) one node to the cluster at a time. \
@@ -74,30 +99,6 @@ If you want to get a previously removed server to join the cluster again, you ne
 
 
 ## 1.2 Static cluster
-## 1.2.0 Configuration
-For static cluster, you need to describe the member servers of cluster in the file `config.yml` as below:
-```yaml
-cluster:
-  mode: static # the cluster can be either 'static' or 'dynamic'
-  servers: # if the mode is 'dynamic', `servers` will be ignored
-    - id: 1
-      host: "http://localhost"
-      http_port: 8080
-      rpc_port: 1234
-    - id: 2
-      host: "http://localhost"
-      http_port: 8081
-      rpc_port: 1235
-    - id: 3
-      host: "http://localhost"
-      http_port: 8082
-      rpc_port: 1236
-# timeout in miliseconds
-min_election_timeout_ms: 12000
-max_election_timeout_ms: 15000
-min_heartbeat_timeout_ms: 2000
-max_heartbeat_timeout_ms: 5000
-```
 ## 1.2.1 Using multiple terminals (recommended)
 In this mode, logs of each node in the cluster will be shown in its terminal.\
 To clear the previous state of the cluster: `make clear`\

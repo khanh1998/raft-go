@@ -11,9 +11,6 @@ type AddServerInput struct {
 	ID               int
 	NewServerHttpUrl string
 	NewServerRpcUrl  string
-
-	ClientID    int
-	SequenceNum int
 }
 
 type AddServerOutput struct {
@@ -26,9 +23,6 @@ type RemoveServerInput struct {
 	ID               int
 	NewServerHttpUrl string
 	NewServerRpcUrl  string
-
-	ClientID    int
-	SequenceNum int
 }
 
 type RemoveServerOutput struct {

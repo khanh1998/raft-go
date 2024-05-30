@@ -24,10 +24,10 @@ func (r *RaftBrainImpl) isValidAddRequest(input common.AddServerInput) error {
 func (r *RaftBrainImpl) isValidRemoveRequest(input common.RemoveServerInput) error {
 	for _, mem := range r.Members {
 		if mem.ID == input.ID && mem.HttpUrl == input.NewServerHttpUrl && mem.RpcUrl == input.NewServerRpcUrl {
-			return errors.New("can't found the server to remove")
+			return nil
 		}
 	}
-	return nil
+	return errors.New("can't found the server to remove")
 }
 
 func (r *RaftBrainImpl) RemoveServer(input common.RemoveServerInput, output *common.RemoveServerOutput) (err error) {
@@ -74,8 +74,8 @@ func (r *RaftBrainImpl) RemoveServer(input common.RemoveServerInput, output *com
 
 	index := r.appendLog(common.Log{
 		Term:        r.CurrentTerm,
-		ClientID:    input.ClientID,
-		SequenceNum: input.SequenceNum,
+		ClientID:    0,
+		SequenceNum: 0,
 		Command:     common.ComposeRemoveServerCommand(input.ID, input.NewServerHttpUrl, input.NewServerRpcUrl),
 	})
 
@@ -177,45 +177,26 @@ func (r *RaftBrainImpl) AddServer(input common.AddServerInput, output *common.Ad
 		log.Info().Msgf("AddServer catchup end round %d", i)
 	}
 
-	// append new configuration to log (old configuration + new server), commit it using majority of new configuration
-	index := r.appendLog(common.Log{
+	r.appendLog(common.Log{
 		Term:        r.CurrentTerm,
-		ClientID:    input.ClientID,
-		SequenceNum: input.SequenceNum,
+		ClientID:    0,
+		SequenceNum: 0,
 		Command:     common.ComposeAddServerCommand(input.ID, input.NewServerHttpUrl, input.NewServerRpcUrl),
 	})
 
+	// after append new config to log, we use it immediately without wating commit
+
 	r.nextMemberId = input.ID + 1
 
+	// allow new server to become follower
 	err = r.RpcProxy.SendToVotingMember(input.ID, &timeout)
 	if err != nil {
 		log.Err(err).Msg("SendToVotingMember")
 	}
 
-	var status common.ClientRequestStatus = common.StatusOK
-	var response any = nil
-
-	if err := r.ARM.Register(index); err != nil {
-		r.log().Err(err).Msg("ClientRequest_Register")
-	}
-
-	response, err = r.ARM.TakeResponse(index, 60*time.Second)
-	if err != nil {
-		status = common.StatusNotOK
-
-		if errors.Is(err, common.ErrorSessionExpired) {
-			response = common.SessionExpired
-		}
-
-		r.log().Err(err).Msg("ClientRequest_TakeResponse")
-	}
-
-	_ = response
-
 	*output = common.AddServerOutput{
-		Status: status,
+		Status: common.StatusOK,
 	}
-	// reply ok
 
 	return nil
 }
@@ -306,7 +287,7 @@ func (r *RaftBrainImpl) changeMember(command string) error {
 	if addition {
 		return r.addMember(id, httpUrl, rpcUrl)
 	} else {
-		return r.addMember(id, httpUrl, rpcUrl)
+		return r.removeMember(id, httpUrl, rpcUrl)
 	}
 }
 

@@ -19,14 +19,17 @@ todos:
 - handle addtion and removal of servers
 - add validation before remove or add new server
 - support static cluster
+- fix dynamic cluster
 - use yaml as config file
 - write test :')
 - fix client interaction
 - support log compaction
 - using try-lock instead
 - using subscriber pattern
-
 - distributed lock
 - support viper to read config from cluster
+
+- check why response is null when setting data, third node addded
+- check remove server
 
 

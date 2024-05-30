@@ -49,6 +49,8 @@ func (n *RaftBrainImpl) ToVotingMember() error {
 	n.InOutLock.Lock()
 	defer n.InOutLock.Unlock()
 
+	n.log().Info().Msg("ToVotingMember")
+
 	if n.State == common.StateCatchingUp {
 		n.State = common.StateFollower
 		n.Start()
