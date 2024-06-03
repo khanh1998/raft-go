@@ -68,6 +68,13 @@ func (r *RPCProxyImpl) setPeer(peerId int, peerInfo common.PeerRPCProxy) {
 	r.peers[peerId] = peerInfo
 }
 
+func (r *RPCProxyImpl) deletePeer(peerId int) {
+	r.lock.Lock()
+	defer r.lock.Unlock()
+
+	delete(r.peers, peerId)
+}
+
 type NewRPCImplParams struct {
 	HostID  int
 	HostURL string
@@ -116,7 +123,7 @@ func (r *RPCProxyImpl) disconnectToPeer(peerID int) error {
 		return err
 	}
 
-	delete(r.peers, peerID) // TODO: data race
+	r.deletePeer(peerID)
 
 	return nil
 }

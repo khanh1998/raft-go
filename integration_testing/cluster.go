@@ -1,4 +1,4 @@
-package intergration_test
+package integration_testing
 
 import (
 	"errors"
@@ -9,6 +9,7 @@ import (
 	"khanh/raft-go/node"
 	"khanh/raft-go/persistance"
 	"khanh/raft-go/rpc_proxy"
+	"log"
 	"os"
 	"sync"
 	"time"
@@ -17,87 +18,112 @@ import (
 )
 
 type Cluster struct {
-	Nodes            []*node.Node
-	RpcProxy         RPCProxyImpl
-	log              *zerolog.Logger
-	createNodeParams []node.NewNodeParams
+	Nodes               map[int]*node.Node // nodes or servers in cluster
+	RpcAgent            RpcAgentImpl       // use this rpc agent to get real-time status from servers in cluster
+	HttpAgent           HttpAgent
+	log                 *zerolog.Logger
+	createNodeParams    map[int]node.NewNodeParams
+	MaxElectionTimeout  time.Duration
+	MaxHeartbeatTimeout time.Duration
+	config              *common.Config
 }
 
-func NewCluster(numNode int) *Cluster {
+func NewCluster(filePath string) *Cluster {
 	c := Cluster{}
-	c.init(numNode)
+	c.init(filePath)
 
 	return &c
 }
 
-func (c *Cluster) init(num int) {
-	zerolog.TimeFieldFormat = time.RFC3339Nano
+func (c *Cluster) init(filePath string) {
+	config, err := common.ReadConfigFromFile(&filePath)
+	if err != nil {
+		log.Panic(err)
+	}
 
+	c.config = config
+
+	c.MaxElectionTimeout = time.Duration(config.MaxElectionTimeoutMs * 1000 * 1000)
+	c.MaxHeartbeatTimeout = time.Duration(config.MaxHeartbeatTimeoutMs * 1000 * 1000)
+
+	zerolog.TimeFieldFormat = time.RFC3339Nano
 	output := zerolog.ConsoleWriter{Out: os.Stdout, TimeFormat: time.RFC3339Nano}
 
 	log := zerolog.New(output).With().Timestamp().Logger()
 
-	id := 1
-	rpcPort := 1234
-	httpPort := 8080
-
 	peers := []common.ClusterMember{}
-
-	for i := 0; i < num; i++ {
+	for _, mem := range config.Cluster.Servers {
 		peers = append(peers, common.ClusterMember{
-			ID:     id + i,
-			RpcUrl: fmt.Sprintf(":%d", rpcPort+i),
+			ID:      mem.ID,
+			RpcUrl:  fmt.Sprintf("%s:%d", mem.Host, mem.RpcPort),
+			HttpUrl: fmt.Sprintf("%s:%d", mem.Host, mem.HttpPort),
 		})
 	}
 
-	c.Nodes = make([]*node.Node, num)
-	c.createNodeParams = make([]node.NewNodeParams, num)
+	c.Nodes = make(map[int]*node.Node)
+	c.createNodeParams = make(map[int]node.NewNodeParams)
 
 	l := sync.WaitGroup{}
-	for i := 0; i < num; i++ {
+	for _, mem := range peers {
 		l.Add(1)
-		go func(i int) {
+		go func(mem common.ClusterMember) {
 			param := node.NewNodeParams{
-				ID: id + i,
+				ID: mem.ID,
 				Brain: logic.NewRaftBrainParams{
-					ID:                  0,
+					ID:                  mem.ID,
 					Mode:                common.Static,
 					CachingUp:           false,
-					DataFileName:        fmt.Sprintf("test.log.%d.dat", id+i),
-					HeartBeatTimeOutMin: 150,
-					HeartBeatTimeOutMax: 300,
-					ElectionTimeOutMin:  300,
-					ElectionTimeOutMax:  500,
+					DataFileName:        fmt.Sprintf("test.log.%d.dat", mem.ID),
+					HeartBeatTimeOutMin: config.MinHeartbeatTimeoutMs,
+					HeartBeatTimeOutMax: config.MaxHeartbeatTimeoutMs,
+					ElectionTimeOutMin:  config.MinElectionTimeoutMs,
+					ElectionTimeOutMax:  config.MaxElectionTimeoutMs,
 					Log:                 &log,
-					Members:             []common.ClusterMember{},
+					Members:             peers,
 					// DB:                persistance.NewPersistence(fmt.Sprintf("test.log.%d.dat", id+i)),
 					DB:           persistance.NewPersistenceMock(),
 					StateMachine: common.NewKeyValueStateMachine(),
 				},
 				RPCProxy: rpc_proxy.NewRPCImplParams{
-					HostURL: fmt.Sprintf(":%d", rpcPort+i),
+					HostURL: mem.RpcUrl,
 					Log:     &log,
+					HostID:  mem.ID,
 				},
 				HTTPProxy: http_proxy.NewHttpProxyParams{
-					URL: fmt.Sprintf("localhost:%d", httpPort+i),
+					URL: mem.HttpUrl,
 				},
 			}
 
 			n := node.NewNode(param)
-			n.Start(param.Brain.Mode == common.Dynamic, param.Brain.CachingUp)
+			n.Start(false, false)
 
-			c.createNodeParams[i] = param
-			c.Nodes[i] = n
+			c.createNodeParams[mem.ID] = param
+			c.Nodes[mem.ID] = n
 			l.Done()
-		}(i)
+		}(mem)
 	}
 
-	rpcProxy, err := NewRPCImpl(NewRPCImplParams{Peers: peers, Log: &log})
+	rpcAgent, err := NewRPCImpl(NewRPCImplParams{Peers: peers, Log: &log})
 	if err != nil {
 		panic(err)
 	}
 
-	c.RpcProxy = *rpcProxy
+	httpServerUrls := []HttpServerConnectionInfo{}
+
+	for _, server := range config.Cluster.Servers {
+		httpServerUrls = append(httpServerUrls, HttpServerConnectionInfo{
+			Id:  server.ID,
+			Url: fmt.Sprintf("%s:%d", server.Host, server.HttpPort),
+		})
+	}
+
+	httpAgent := NewHttpAgent(HttpAgentArgs{
+		serverUrls: httpServerUrls,
+		Log:        &log,
+	})
+
+	c.RpcAgent = *rpcAgent
+	c.HttpAgent = *httpAgent
 	c.log = &log
 
 	l.Wait()
@@ -111,6 +137,16 @@ var (
 
 func (c *Cluster) DisconnectLeader() error {
 
+	return nil
+}
+
+func (c *Cluster) StopLeader() error {
+	status, err := c.HasOneLeader()
+	if err != nil {
+		return err
+	}
+
+	c.StopNode(status.ID)
 	return nil
 }
 
@@ -152,7 +188,7 @@ func (c *Cluster) HasOneLeader() (common.GetStatusResponse, error) {
 		if n == nil {
 			continue
 		}
-		status, err := c.RpcProxy.GetInfo(n.ID, &timeout)
+		status, err := c.RpcAgent.GetInfo(n.ID, &timeout)
 		if err != nil {
 			c.log.Err(err).Msg("HasOneLeader_GetInfo")
 

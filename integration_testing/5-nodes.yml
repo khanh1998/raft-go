@@ -13,8 +13,16 @@ cluster:
       host: "localhost"
       http_port: 8082
       rpc_port: 1236
+    - id: 4
+      host: "localhost"
+      http_port: 8083
+      rpc_port: 1237
+    - id: 5
+      host: "localhost"
+      http_port: 8084
+      rpc_port: 1238
 # timeout in miliseconds
-min_election_timeout_ms: 12000
-max_election_timeout_ms: 15000
-min_heartbeat_timeout_ms: 2000
-max_heartbeat_timeout_ms: 5000
+min_election_timeout_ms: 150
+max_election_timeout_ms: 300
+min_heartbeat_timeout_ms: 1
+max_heartbeat_timeout_ms: 20

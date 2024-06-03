@@ -4,13 +4,15 @@ import (
 	"errors"
 	"fmt"
 	"khanh/raft-go/common"
+	"os"
+	"syscall"
 	"time"
 
 	"github.com/rs/zerolog/log"
 )
 
 func (r *RaftBrainImpl) isValidAddRequest(input common.AddServerInput) error {
-	for _, mem := range r.Members {
+	for _, mem := range r.members {
 		if mem.ID == input.ID || mem.HttpUrl == input.NewServerHttpUrl || mem.RpcUrl == input.NewServerRpcUrl {
 			return errors.New("the server's information is duplicated")
 		}
@@ -22,7 +24,7 @@ func (r *RaftBrainImpl) isValidAddRequest(input common.AddServerInput) error {
 }
 
 func (r *RaftBrainImpl) isValidRemoveRequest(input common.RemoveServerInput) error {
-	for _, mem := range r.Members {
+	for _, mem := range r.members {
 		if mem.ID == input.ID && mem.HttpUrl == input.NewServerHttpUrl && mem.RpcUrl == input.NewServerRpcUrl {
 			return nil
 		}
@@ -30,8 +32,25 @@ func (r *RaftBrainImpl) isValidRemoveRequest(input common.RemoveServerInput) err
 	return errors.New("can't found the server to remove")
 }
 
+func (r *RaftBrainImpl) WaitForLogCommited(dur time.Duration, index int) error {
+	timeout := time.After(dur)
+	stop := false
+	for !stop {
+		select {
+		case <-timeout:
+			return errors.New("timeout: wait for log commited")
+		default:
+			if r.CommitIndex >= index {
+				stop = true
+			}
+			time.Sleep(100 * time.Millisecond)
+		}
+	}
+	return nil
+}
+
 func (r *RaftBrainImpl) RemoveServer(input common.RemoveServerInput, output *common.RemoveServerOutput) (err error) {
-	r.InOutLock.Lock()
+	r.inOutLock.Lock()
 	_ = output // to disable the warning: argument output is overwritten before first use
 
 	isLeader := r.State == common.StateLeader
@@ -42,7 +61,7 @@ func (r *RaftBrainImpl) RemoveServer(input common.RemoveServerInput, output *com
 			Response:   "not leader",
 		}
 
-		r.InOutLock.Unlock()
+		r.inOutLock.Unlock()
 		return nil
 	}
 
@@ -53,13 +72,13 @@ func (r *RaftBrainImpl) RemoveServer(input common.RemoveServerInput, output *com
 			Response:   err.Error(),
 		}
 
-		r.InOutLock.Unlock()
+		r.inOutLock.Unlock()
 		return nil
 	}
 
-	r.InOutLock.Unlock()
+	r.inOutLock.Unlock()
 
-	if !r.ChangeMemberLock.TryLock() {
+	if !r.changeMemberLock.TryLock() {
 		err = errors.New("the server requested to be removed from the cluster is not exist")
 
 		*output = common.RemoveServerOutput{
@@ -70,7 +89,7 @@ func (r *RaftBrainImpl) RemoveServer(input common.RemoveServerInput, output *com
 
 		return nil
 	}
-	defer r.ChangeMemberLock.Unlock()
+	defer r.changeMemberLock.Unlock()
 
 	index := r.appendLog(common.Log{
 		Term:        r.CurrentTerm,
@@ -79,31 +98,34 @@ func (r *RaftBrainImpl) RemoveServer(input common.RemoveServerInput, output *com
 		Command:     common.ComposeRemoveServerCommand(input.ID, input.NewServerHttpUrl, input.NewServerRpcUrl),
 	})
 
-	// a leader that is removed from the configuration steps down once the C-new entry is committed.
-	// If the leader stepped down before this point,
-	// it might still time out and become leader again, delaying progress
+	msg := fmt.Sprintf("server %d can be shut down now", input.ID)
+	err = r.WaitForLogCommited(30*time.Second, index)
+	if err != nil {
+		msg = fmt.Sprintf("log isn't commited, server %d can't be shut down", input.ID)
+	}
+
 	isLeaderRemoved := isLeader && input.ID == r.ID
 	if isLeaderRemoved {
-		for {
-			if r.CommitIndex >= index {
-				break
-			}
-			time.Sleep(100 * time.Millisecond)
-		}
-
-		r.toFollower() // a follower without a membership can't issue request votes
+		r.State = common.StateRemoved
+		r.Stop <- struct{}{}
+		r.log().Info().Msg("the server will be shut down in 5s")
+		time.AfterFunc(5*time.Second, func() {
+			pid := os.Getpid()
+			syscall.Kill(pid, syscall.SIGTERM)
+		})
 	}
 
 	*output = common.RemoveServerOutput{
 		Status:     common.StatusOK,
 		LeaderHint: "",
+		Response:   msg,
 	}
 
 	return nil
 }
 
 func (r *RaftBrainImpl) AddServer(input common.AddServerInput, output *common.AddServerOutput) (err error) {
-	r.InOutLock.Lock()
+	r.inOutLock.Lock()
 	if r.State != common.StateLeader {
 		*output = common.AddServerOutput{
 			Status:     common.StatusNotOK,
@@ -111,7 +133,7 @@ func (r *RaftBrainImpl) AddServer(input common.AddServerInput, output *common.Ad
 			Response:   "not leader",
 		}
 
-		r.InOutLock.Unlock()
+		r.inOutLock.Unlock()
 		return nil
 	}
 
@@ -122,13 +144,13 @@ func (r *RaftBrainImpl) AddServer(input common.AddServerInput, output *common.Ad
 			Response:   err.Error(),
 		}
 
-		r.InOutLock.Unlock()
+		r.inOutLock.Unlock()
 		return nil
 	}
 
-	r.InOutLock.Unlock()
+	r.inOutLock.Unlock()
 
-	if !r.ChangeMemberLock.TryLock() {
+	if !r.changeMemberLock.TryLock() {
 		err = errors.New("another node is adding (removing) to the cluster")
 
 		*output = common.AddServerOutput{
@@ -139,7 +161,7 @@ func (r *RaftBrainImpl) AddServer(input common.AddServerInput, output *common.Ad
 
 		return nil
 	}
-	defer r.ChangeMemberLock.Unlock()
+	defer r.changeMemberLock.Unlock()
 	timeout := 5 * time.Second
 
 	if err := r.RpcProxy.ConnectToNewPeer(input.ID, input.NewServerRpcUrl, 5, timeout); err != nil {
@@ -170,14 +192,14 @@ func (r *RaftBrainImpl) AddServer(input common.AddServerInput, output *common.Ad
 			return nil
 		} else {
 			duration := time.Since(begin)
-			if duration < time.Duration(r.ElectionTimeOutMin*1000) {
+			if duration < time.Duration(r.electionTimeOutMin*1000) {
 				break
 			}
 		}
 		log.Info().Msgf("AddServer catchup end round %d", i)
 	}
 
-	r.appendLog(common.Log{
+	index := r.appendLog(common.Log{
 		Term:        r.CurrentTerm,
 		ClientID:    0,
 		SequenceNum: 0,
@@ -194,8 +216,16 @@ func (r *RaftBrainImpl) AddServer(input common.AddServerInput, output *common.Ad
 		log.Err(err).Msg("SendToVotingMember")
 	}
 
+	// wait for log to committed
+	msg := ""
+	err = r.WaitForLogCommited(30*time.Second, index)
+	if err != nil {
+		msg = fmt.Sprintf("log isn't commited, server %d isn't surely joined the cluster", input.ID)
+	}
+
 	*output = common.AddServerOutput{
-		Status: common.StatusOK,
+		Status:   common.StatusOK,
+		Response: msg,
 	}
 
 	return nil
@@ -218,13 +248,13 @@ func (r *RaftBrainImpl) catchUpWithNewMember(peerID int) error {
 		if nextIdx > 1 {
 			input.PrevLogIndex = nextIdx - 1
 
-			prevLog, err := r.getLog(nextIdx - 1)
+			prevLog, err := r.GetLog(nextIdx - 1)
 			if err == nil {
 				input.PrevLogTerm = prevLog.Term
 			}
 		}
 
-		logItem, err := r.getLog(nextIdx)
+		logItem, err := r.GetLog(nextIdx)
 		if err == nil {
 			input.Entries = []common.Log{logItem}
 		}
@@ -293,12 +323,12 @@ func (r *RaftBrainImpl) changeMember(command string) error {
 
 func (r *RaftBrainImpl) removeMember(id int, httpUrl, rpcUrl string) error {
 	tmp := []common.ClusterMember{}
-	for _, mem := range r.Members {
+	for _, mem := range r.members {
 		if mem.ID != id {
 			tmp = append(tmp, mem)
 		}
 	}
-	r.Members = tmp
+	r.members = tmp
 
 	if r.ID != id {
 		r.newMembers <- common.ClusterMemberChange{
@@ -320,7 +350,7 @@ func (r *RaftBrainImpl) removeMember(id int, httpUrl, rpcUrl string) error {
 }
 
 func (r *RaftBrainImpl) addMember(id int, httpUrl, rpcUrl string) error {
-	r.Members = append(r.Members, common.ClusterMember{
+	r.members = append(r.members, common.ClusterMember{
 		HttpUrl: httpUrl,
 		RpcUrl:  rpcUrl,
 		ID:      id,
@@ -348,7 +378,7 @@ func (r *RaftBrainImpl) addMember(id int, httpUrl, rpcUrl string) error {
 }
 
 func (r *RaftBrainImpl) restoreClusterMemberInfoFromLogs() (err error) {
-	r.Members = []common.ClusterMember{}
+	r.members = []common.ClusterMember{}
 
 	for _, log := range r.Logs {
 		err = r.changeMember(log.Command.(string))

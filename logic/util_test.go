@@ -9,7 +9,7 @@ import (
 )
 
 func Test_nodeImpl_DeleteFrom(t *testing.T) {
-	n := RaftBrainImpl{Logs: []common.Log{}, DB: persistance.NewPersistenceMock()}
+	n := RaftBrainImpl{Logs: []common.Log{}, db: persistance.NewPersistenceMock()}
 	err := n.deleteLogFrom(1)
 	assert.ErrorIs(t, err, ErrLogIsEmtpy)
 
@@ -19,26 +19,26 @@ func Test_nodeImpl_DeleteFrom(t *testing.T) {
 		{Term: 3, Command: "set x 3"},
 	}
 
-	n = RaftBrainImpl{Logs: make([]common.Log, 3), DB: persistance.NewPersistenceMock()}
+	n = RaftBrainImpl{Logs: make([]common.Log, 3), db: persistance.NewPersistenceMock()}
 	copy(n.Logs, data)
 	err = n.deleteLogFrom(4)
 	assert.ErrorIs(t, err, ErrIndexOutOfRange)
 	err = n.deleteLogFrom(0)
 	assert.ErrorIs(t, err, ErrIndexOutOfRange)
 
-	n = RaftBrainImpl{Logs: make([]common.Log, 3), DB: persistance.NewPersistenceMock()}
+	n = RaftBrainImpl{Logs: make([]common.Log, 3), db: persistance.NewPersistenceMock()}
 	copy(n.Logs, data)
 	err = n.deleteLogFrom(3)
 	assert.NoError(t, err)
 	assert.Equal(t, data[:2], n.Logs)
 
-	n = RaftBrainImpl{Logs: make([]common.Log, 3), DB: persistance.NewPersistenceMock()}
+	n = RaftBrainImpl{Logs: make([]common.Log, 3), db: persistance.NewPersistenceMock()}
 	copy(n.Logs, data)
 	err = n.deleteLogFrom(2)
 	assert.NoError(t, err)
 	assert.Equal(t, data[:1], n.Logs)
 
-	n = RaftBrainImpl{Logs: make([]common.Log, 3), DB: persistance.NewPersistenceMock()}
+	n = RaftBrainImpl{Logs: make([]common.Log, 3), db: persistance.NewPersistenceMock()}
 	copy(n.Logs, data)
 	err = n.deleteLogFrom(1)
 	assert.NoError(t, err)

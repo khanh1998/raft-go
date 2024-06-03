@@ -106,7 +106,7 @@ func (h *HttpProxy) cli(r *gin.Engine) {
 			responseData = common.ClientRequestOutput{
 				Status:     response.Status,
 				LeaderHint: response.LeaderHint,
-				Response:   response.ClientID,
+				Response:   response.Response,
 			}
 		case CommandTypeAddServer:
 			var (

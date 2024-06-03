@@ -47,6 +47,7 @@ const (
 	StateCandidate  RaftState = "candidate"
 	StateLeader     RaftState = "leader"
 	StateCatchingUp RaftState = "catching-up" // new node is catching up with current leader of the cluster, it can't vote
+	StateRemoved    RaftState = "removed"     // got removed from cluster
 )
 
 func (s RaftState) String() string {

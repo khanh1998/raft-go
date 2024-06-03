@@ -18,6 +18,9 @@ var (
 
 // AppendEntries Invoked by leader to replicate log entries (§5.3); also used as heartbeat (§5.2).
 func (n *RaftBrainImpl) AppendEntries(input *common.AppendEntriesInput, output *common.AppendEntriesOutput) (err error) {
+	n.inOutLock.Lock()
+	defer n.inOutLock.Unlock()
+
 	defer func() {
 		n.log().Info().
 			Interface("id", n.ID).
@@ -26,8 +29,11 @@ func (n *RaftBrainImpl) AppendEntries(input *common.AppendEntriesInput, output *
 			Msg("AppendEntries")
 	}()
 
-	n.InOutLock.Lock()
-	defer n.InOutLock.Unlock()
+	// if current leader get removed,
+	// if follower get removed, it won't get these inbound methods revoked.
+	if n.State == common.StateRemoved {
+		return nil
+	}
 
 	// 1. Reply false if term < currentTerm (§5.1)
 	if input.Term < n.CurrentTerm {
@@ -54,7 +60,7 @@ func (n *RaftBrainImpl) AppendEntries(input *common.AppendEntriesInput, output *
 	// WARN: log index start from 1, not 0
 	if input.PrevLogIndex > 0 {
 		// 2. Reply false if log doesn’t contain an entry at prevLogIndex whose term matches prevLogTerm (§5.3)
-		logItem, err := n.getLog(input.PrevLogIndex)
+		logItem, err := n.GetLog(input.PrevLogIndex)
 		switch err {
 		case ErrLogIsEmtpy:
 			*output = common.AppendEntriesOutput{Term: n.CurrentTerm, Success: false, Message: MsgTheResponderHasNoLog, NodeID: n.ID}
@@ -73,7 +79,7 @@ func (n *RaftBrainImpl) AppendEntries(input *common.AppendEntriesInput, output *
 		}
 
 		// 3. If an existing entry conflicts with a new one (same index but different terms), delete the existing entry and all that follow it (§5.3)
-		logItem, err = n.getLog(input.PrevLogIndex + 1)
+		logItem, err = n.GetLog(input.PrevLogIndex + 1)
 		if err == nil {
 			if logItem.Term != input.Term {
 				n.deleteLogFrom(input.PrevLogIndex + 1)
@@ -86,7 +92,7 @@ func (n *RaftBrainImpl) AppendEntries(input *common.AppendEntriesInput, output *
 
 	// 4. Append any new entries not already in the log
 	if len(input.Entries) > 0 {
-		_, err = n.getLog(input.PrevLogIndex + 1)
+		_, err = n.GetLog(input.PrevLogIndex + 1)
 		if err != nil { // entries are not already in the log
 			n.appendLogs(input.Entries)
 		}
@@ -106,6 +112,9 @@ func (n *RaftBrainImpl) AppendEntries(input *common.AppendEntriesInput, output *
 
 // Invoked by candidates to gather votes (§5.2).
 func (n *RaftBrainImpl) RequestVote(input *common.RequestVoteInput, output *common.RequestVoteOutput) (err error) {
+	n.inOutLock.Lock()
+	defer n.inOutLock.Unlock()
+
 	defer func() {
 		n.log().Info().
 			Interface("id", n.ID).
@@ -114,20 +123,37 @@ func (n *RaftBrainImpl) RequestVote(input *common.RequestVoteInput, output *comm
 			Msg("RequestVote")
 	}()
 
-	n.InOutLock.Lock()
-	defer n.InOutLock.Unlock()
+	if n.State == common.StateRemoved {
+		return nil
+	}
 
 	// when a follower is removed from the cluster, it will never aware of that,
 	// because the leader won't send update logs to removed follower after it receive the received command.
 	// this check is to prevent removed follower request vote from others.
-	if time.Since(n.lastHeartbeatReceivedTime) < time.Duration(n.ElectionTimeOutMax*1000000) {
-		output = &common.RequestVoteOutput{
-			Term:        n.CurrentTerm,
-			Message:     MsgTheLeaderIsStillAlive,
-			VoteGranted: false,
-			NodeID:      n.ID,
+	if n.State == common.StateFollower {
+		if time.Since(n.lastHeartbeatReceivedTime) < time.Duration(n.electionTimeOutMin*1000000) {
+			output = &common.RequestVoteOutput{
+				Term:        n.CurrentTerm,
+				Message:     MsgTheLeaderIsStillAlive,
+				VoteGranted: false,
+				NodeID:      n.ID,
+			}
+			return
 		}
-		return
+	}
+
+	if n.State == common.StateLeader {
+		// leader always have latest membership information,
+		// if the disrupt node is not a member of cluster, just reject it.
+		if !n.isMemberOfCluster(&input.CandidateID) {
+			output = &common.RequestVoteOutput{
+				Term:        n.CurrentTerm,
+				Message:     MsgTheLeaderIsStillAlive,
+				VoteGranted: false,
+				NodeID:      n.ID,
+			}
+			return
+		}
 	}
 
 	// 1. Reply false if term < currentTerm (§5.1)

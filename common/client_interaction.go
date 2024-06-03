@@ -25,8 +25,8 @@ type ClientRequestOutput struct {
 type RegisterClientInput struct{}
 type RegisterClientOutput struct {
 	Status     ClientRequestStatus `json:"status"`
-	ClientID   int                 `json:"client_id"`
 	LeaderHint string              `json:"leader_hint"`
+	Response   any                 `json:"response,omitempty"`
 }
 
 type ClientQueryInput struct {

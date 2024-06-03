@@ -1,6 +1,7 @@
 package node
 
 import (
+	"errors"
 	"fmt"
 	"khanh/raft-go/common"
 	"khanh/raft-go/http_proxy"
@@ -58,7 +59,12 @@ func (n *Node) Start(dynamicCluster bool, cachingUp bool) {
 	n.SetAccessible()
 }
 
+func (n *Node) Crash() error {
+	return errors.New("not implemented")
+}
+
 func (n *Node) Stop() error {
+	n.SetInaccessible()
 	n.rpc.Stop <- struct{}{}
 	n.http.Stop <- struct{}{}
 	n.brain.Stop <- struct{}{}

@@ -8,7 +8,7 @@ import (
 
 func (r *RaftBrainImpl) getLeaderHttpUrl() string {
 	leaderUrl := ""
-	for _, peer := range r.Members {
+	for _, peer := range r.members {
 		if peer.ID != r.ID && peer.ID == r.LeaderID {
 			leaderUrl = peer.HttpUrl
 
@@ -20,7 +20,7 @@ func (r *RaftBrainImpl) getLeaderHttpUrl() string {
 }
 
 func (r *RaftBrainImpl) ClientRequest(input *common.ClientRequestInput, output *common.ClientRequestOutput) (err error) {
-	r.InOutLock.Lock()
+	r.inOutLock.Lock()
 	if r.State != common.StateLeader {
 		leaderUrl := r.getLeaderHttpUrl()
 
@@ -30,7 +30,7 @@ func (r *RaftBrainImpl) ClientRequest(input *common.ClientRequestInput, output *
 			LeaderHint: leaderUrl,
 		}
 
-		r.InOutLock.Unlock()
+		r.inOutLock.Unlock()
 
 		return nil
 	}
@@ -42,13 +42,21 @@ func (r *RaftBrainImpl) ClientRequest(input *common.ClientRequestInput, output *
 		SequenceNum: input.SequenceNum,
 	})
 
-	r.InOutLock.Unlock()
+	r.inOutLock.Unlock()
 
 	var status common.ClientRequestStatus = common.StatusOK
 	var response any = nil
 
 	if err := r.ARM.Register(index); err != nil {
 		r.log().Err(err).Msg("ClientRequest_Register")
+
+		*output = common.ClientRequestOutput{
+			Status:     common.StatusNotOK,
+			Response:   "can't register for async response" + err.Error(),
+			LeaderHint: "",
+		}
+
+		return nil
 	}
 
 	response, err = r.ARM.TakeResponse(index, 30*time.Second)
@@ -71,7 +79,7 @@ func (r *RaftBrainImpl) ClientRequest(input *common.ClientRequestInput, output *
 }
 
 func (r *RaftBrainImpl) RegisterClient(input *common.RegisterClientInput, output *common.RegisterClientOutput) (err error) {
-	r.InOutLock.Lock()
+	r.inOutLock.Lock()
 
 	if r.State != common.StateLeader {
 		leaderUrl := r.getLeaderHttpUrl()
@@ -79,9 +87,10 @@ func (r *RaftBrainImpl) RegisterClient(input *common.RegisterClientInput, output
 		*output = common.RegisterClientOutput{
 			Status:     common.StatusNotOK,
 			LeaderHint: leaderUrl,
+			Response:   "error: connect to follower",
 		}
 
-		r.InOutLock.Unlock()
+		r.inOutLock.Unlock()
 
 		return nil
 	}
@@ -93,24 +102,37 @@ func (r *RaftBrainImpl) RegisterClient(input *common.RegisterClientInput, output
 		Command:     "register",
 	})
 
-	r.InOutLock.Unlock()
+	r.inOutLock.Unlock()
 
 	var status common.ClientRequestStatus = common.StatusOK
 
 	if err := r.ARM.Register(index); err != nil {
 		r.log().Err(err).Msg("RegisterClient_Register")
+		*output = common.RegisterClientOutput{
+			Status:     common.StatusNotOK,
+			LeaderHint: "",
+			Response:   "error: can't register for async response. " + err.Error(),
+		}
+
+		return nil
 	}
 
 	_, err = r.ARM.TakeResponse(index, 30*time.Second)
 	if err != nil {
 		r.log().Err(err).Msg("RegisterClient_TakeResponse")
 
-		status = common.StatusNotOK
+		*output = common.RegisterClientOutput{
+			Status:     common.StatusNotOK,
+			LeaderHint: "",
+			Response:   "timeout: wait for async response. " + err.Error(),
+		}
+
+		return nil
 	}
 
 	*output = common.RegisterClientOutput{
 		Status:     status,
-		ClientID:   index,
+		Response:   index,
 		LeaderHint: "",
 	}
 
@@ -138,9 +160,9 @@ func (r *RaftBrainImpl) ClientQuery(input *common.ClientQueryInput, output *comm
 	}
 	var ok bool
 	for i := 0; i < 100; i++ {
-		log, err := r.getLog(r.CommitIndex)
+		log, err := r.GetLog(r.CommitIndex)
 		if err != nil {
-			return err
+			break
 		}
 
 		if log.Term == r.CurrentTerm {
@@ -152,7 +174,13 @@ func (r *RaftBrainImpl) ClientQuery(input *common.ClientQueryInput, output *comm
 	}
 
 	if !ok {
-		return errors.New("client query: Timeout 1")
+		*output = common.ClientQueryOutput{
+			Status:     common.StatusNotOK,
+			Response:   "timeout: leader of current term haven't commit any log yet. " + err.Error(),
+			LeaderHint: "",
+		}
+
+		return nil
 	}
 
 	realIndex := r.CommitIndex
@@ -170,12 +198,24 @@ func (r *RaftBrainImpl) ClientQuery(input *common.ClientQueryInput, output *comm
 	}
 
 	if !ok {
-		return errors.New("client query: Timeout 2")
+		*output = common.ClientQueryOutput{
+			Status:     common.StatusNotOK,
+			Response:   "timeout: wait for log commiting",
+			LeaderHint: "",
+		}
+
+		return nil
 	}
 
 	res, err := r.StateMachine.Process(0, 0, input.Query, 0)
 	if err != nil {
-		return err
+		*output = common.ClientQueryOutput{
+			Status:     common.StatusNotOK,
+			Response:   err.Error(),
+			LeaderHint: "",
+		}
+
+		return nil
 	}
 
 	*output = common.ClientQueryOutput{

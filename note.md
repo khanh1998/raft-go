@@ -16,11 +16,6 @@ questions:
     after the node A, step down, it will request vote again and become leader again, as it has most up to date log.
 
 todos:
-- handle addtion and removal of servers
-- add validation before remove or add new server
-- support static cluster
-- fix dynamic cluster
-- use yaml as config file
 - write test :')
 - fix client interaction
 - support log compaction
@@ -28,8 +23,12 @@ todos:
 - using subscriber pattern
 - distributed lock
 - support viper to read config from cluster
+- shorten critical region in outbound
 
-- check why response is null when setting data, third node addded
-- check remove server
+- using observer design patter:
+    state machine -> committed log
+    client -> committed log
+    membership -> add/remove server
+    stop channel
 
-
+"{\n    \"status\": \"Not OK\",\n    \"response\": 0,\n    \"leader_hint\": \"\"\n}"

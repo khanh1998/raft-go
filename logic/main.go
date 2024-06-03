@@ -17,8 +17,8 @@ type MembershipManager interface {
 
 type RaftBrainImpl struct {
 	logger                    *zerolog.Logger
-	DB                        Persistence
-	Members                   []common.ClusterMember
+	db                        Persistence
+	members                   []common.ClusterMember
 	nextMemberId              int
 	State                     common.RaftState
 	ID                        int
@@ -26,17 +26,18 @@ type RaftBrainImpl struct {
 	StateMachine              SimpleStateMachine
 	ElectionTimeOut           *time.Timer
 	HeartBeatTimeOut          *time.Timer
-	HeartBeatTimeOutMin       int64 // millisecond
-	HeartBeatTimeOutMax       int64 // millisecond
-	ElectionTimeOutMin        int64 // millisecond
-	ElectionTimeOutMax        int64 // millisecond
+	heartBeatTimeOutMin       int64 // millisecond
+	heartBeatTimeOutMax       int64 // millisecond
+	electionTimeOutMin        int64 // millisecond
+	electionTimeOutMax        int64 // millisecond
 	RpcProxy                  RPCProxy
 	Session                   SessionManager
 	ARM                       AsyncResponseManager
 	Stop                      chan struct{}
 	newMembers                chan common.ClusterMemberChange
-	InOutLock                 sync.RWMutex // lock for inbound and outbound RPC methods and for client interaction
-	ChangeMemberLock          sync.Mutex   // lock for adding or removing a member from the cluster
+	inOutLock                 sync.RWMutex // this lock help to process requests in sequential order. requests are processed one after the other, not concurrently.
+	changeMemberLock          sync.Mutex   // lock for adding or removing a member from the cluster
+	dataLock                  sync.RWMutex // lock for reading or modifying internal data of the brain (consensus module)
 	lastHeartbeatReceivedTime time.Time
 	// Persistent state on all servers:
 	// Updated on stable storage before responding to RPCs
@@ -123,22 +124,22 @@ func NewRaftBrain(params NewRaftBrainParams) (*RaftBrainImpl, error) {
 			return common.StateFollower
 		}(),
 		VotedFor:     0,
-		DB:           params.DB,
+		db:           params.DB,
 		StateMachine: params.StateMachine,
 		ARM:          NewAsyncResponseManager(100),
 		Stop:         make(chan struct{}),
 		newMembers:   make(chan common.ClusterMemberChange, 10),
 		nextMemberId: params.ID + 1,
 
-		HeartBeatTimeOutMin: params.HeartBeatTimeOutMin,
-		HeartBeatTimeOutMax: params.HeartBeatTimeOutMax,
-		ElectionTimeOutMin:  params.ElectionTimeOutMin,
-		ElectionTimeOutMax:  params.ElectionTimeOutMax,
+		heartBeatTimeOutMin: params.HeartBeatTimeOutMin,
+		heartBeatTimeOutMax: params.HeartBeatTimeOutMax,
+		electionTimeOutMin:  params.ElectionTimeOutMin,
+		electionTimeOutMax:  params.ElectionTimeOutMax,
 
 		lastHeartbeatReceivedTime: time.Now(),
 
 		logger:     params.Log,
-		Members:    []common.ClusterMember{},
+		members:    []common.ClusterMember{},
 		NextIndex:  make(map[int]int),
 		MatchIndex: make(map[int]int),
 	}
@@ -199,7 +200,7 @@ func (n *RaftBrainImpl) Start() {
 	go n.loop()
 
 	n.log().Info().
-		Interface("members", n.Members).
+		Interface("members", n.members).
 		Msg("Brain start")
 }
 

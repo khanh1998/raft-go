@@ -19,7 +19,7 @@ func (n *RaftBrainImpl) toLeader() {
 	n.NextIndex = make(map[int]int)
 	n.MatchIndex = make(map[int]int)
 
-	for _, peer := range n.Members {
+	for _, peer := range n.members {
 		if peer.ID != n.ID {
 			n.NextIndex[peer.ID] = len(n.Logs) + 1
 			n.MatchIndex[peer.ID] = 0
@@ -46,8 +46,8 @@ func (n *RaftBrainImpl) toFollower() {
 // this will transition the node from non-voting to voting member (follower),
 // trigger the election timeout and heartbeat timeout timer.
 func (n *RaftBrainImpl) ToVotingMember() error {
-	n.InOutLock.Lock()
-	defer n.InOutLock.Unlock()
+	n.inOutLock.Lock()
+	defer n.inOutLock.Unlock()
 
 	n.log().Info().Msg("ToVotingMember")
 

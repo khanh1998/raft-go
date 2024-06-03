@@ -59,7 +59,7 @@ func readCmdArgsForDynamic() (id *int, catchingUp *bool, httpPort *int, rpcPort 
 }
 
 func main() {
-	config, err := common.ReadConfigFromFile()
+	config, err := common.ReadConfigFromFile(nil)
 	if err != nil {
 		log.Panic(err)
 	}
@@ -79,15 +79,15 @@ func main() {
 
 		for _, server := range config.Cluster.Servers {
 			if server.ID == *_id {
-				httpUrl = fmt.Sprintf("localhost:%d", server.HttpPort)
-				rpcUrl = fmt.Sprintf("localhost:%d", server.RpcPort)
+				httpUrl = fmt.Sprintf("%s:%d", server.Host, server.HttpPort)
+				rpcUrl = fmt.Sprintf("%s:%d", server.Host, server.RpcPort)
 				id = server.ID
 			}
 
 			clusterMembers = append(clusterMembers, common.ClusterMember{
 				ID:      server.ID,
-				RpcUrl:  fmt.Sprintf("localhost:%d", server.RpcPort),
-				HttpUrl: fmt.Sprintf("localhost:%d", server.HttpPort),
+				RpcUrl:  fmt.Sprintf("%s:%d", server.Host, server.RpcPort),
+				HttpUrl: fmt.Sprintf("%s:%d", server.Host, server.HttpPort),
 			})
 		}
 	}

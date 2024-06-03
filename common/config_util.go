@@ -5,8 +5,12 @@ import (
 	"github.com/spf13/viper"
 )
 
-func ReadConfigFromFile() (*Config, error) {
-	viper.SetConfigFile("config.yml")
+func ReadConfigFromFile(filePath *string) (*Config, error) {
+	if filePath != nil {
+		viper.SetConfigFile(*filePath)
+	} else {
+		viper.SetConfigFile("config.yml")
+	}
 	if err := viper.ReadInConfig(); err != nil {
 		return nil, err
 	}

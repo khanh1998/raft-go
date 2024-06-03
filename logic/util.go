@@ -6,9 +6,13 @@ import (
 	"time"
 )
 
-func (n *RaftBrainImpl) isMemberOfCluster() bool {
-	for _, mem := range n.Members {
-		if mem.ID == n.ID {
+func (n *RaftBrainImpl) isMemberOfCluster(id *int) bool {
+	if id == nil {
+		id = &n.ID
+	}
+
+	for _, mem := range n.members {
+		if mem.ID == *id {
 			return true
 		}
 	}
@@ -18,7 +22,7 @@ func (n *RaftBrainImpl) isMemberOfCluster() bool {
 func (n *RaftBrainImpl) deleteLogFrom(index int) error {
 	defer func() {
 		data := n.serialize(true, true, "DeleteLogFrom")
-		if err := n.DB.AppendLog(data); err != nil {
+		if err := n.db.AppendLog(data); err != nil {
 			n.log().Err(err).Msg("DeleteLogFrom save to db error: ")
 		}
 	}()
@@ -51,7 +55,7 @@ func (n *RaftBrainImpl) deleteLogFrom(index int) error {
 func (n *RaftBrainImpl) appendLogs(logItems []common.Log) {
 	defer func() {
 		data := n.serialize(true, true, "AppendLogs")
-		if err := n.DB.AppendLog(data); err != nil {
+		if err := n.db.AppendLog(data); err != nil {
 			n.log().Err(err).Msg("AppendLogs save to db error: ")
 		}
 	}()
@@ -66,9 +70,12 @@ func (n *RaftBrainImpl) appendLogs(logItems []common.Log) {
 }
 
 func (n *RaftBrainImpl) appendLog(logItem common.Log) int {
+	n.dataLock.Lock()
+	defer n.dataLock.Unlock()
+
 	defer func() {
 		data := n.serialize(true, true, "AppendLog")
-		if err := n.DB.AppendLog(data); err != nil {
+		if err := n.db.AppendLog(data); err != nil {
 			n.log().Err(err).Msg("AppendLog save to db error: ")
 		}
 	}()
@@ -85,7 +92,16 @@ func (n *RaftBrainImpl) appendLog(logItem common.Log) int {
 	return index
 }
 
-func (n *RaftBrainImpl) getLog(index int) (common.Log, error) {
+func (n *RaftBrainImpl) GetLogLen() int {
+	n.dataLock.RLock()
+	defer n.dataLock.RUnlock()
+	return len(n.Logs)
+}
+
+func (n *RaftBrainImpl) GetLog(index int) (common.Log, error) {
+	n.dataLock.RLock()
+	defer n.dataLock.RUnlock()
+
 	if len(n.Logs) == 0 {
 		return common.Log{}, ErrLogIsEmtpy
 	}
@@ -102,7 +118,7 @@ func (n *RaftBrainImpl) getLog(index int) (common.Log, error) {
 func (n *RaftBrainImpl) setLeaderID(leaderId int) {
 	defer func() {
 		data := n.serialize(true, true, "SetLeaderID")
-		if err := n.DB.AppendLog(data); err != nil {
+		if err := n.db.AppendLog(data); err != nil {
 			n.log().Err(err).Msg("SetLeaderID save to db error: ")
 		}
 	}()
@@ -113,7 +129,7 @@ func (n *RaftBrainImpl) setLeaderID(leaderId int) {
 func (n *RaftBrainImpl) setCurrentTerm(term int) {
 	defer func() {
 		data := n.serialize(true, true, "SetCurrentTerm")
-		if err := n.DB.AppendLog(data); err != nil {
+		if err := n.db.AppendLog(data); err != nil {
 			n.log().Err(err).Msg("SetCurrentTerm save to db error: ")
 		}
 	}()
@@ -124,7 +140,7 @@ func (n *RaftBrainImpl) setCurrentTerm(term int) {
 func (n *RaftBrainImpl) setVotedFor(nodeID int) {
 	defer func() {
 		data := n.serialize(true, true, "SetVotedFor")
-		if err := n.DB.AppendLog(data); err != nil {
+		if err := n.db.AppendLog(data); err != nil {
 			n.log().Err(err).Msg("SetVotedFor save to db error: ")
 		}
 	}()
@@ -153,7 +169,7 @@ func (n *RaftBrainImpl) applyLog() {
 	for n.CommitIndex > n.LastApplied {
 		n.LastApplied += 1
 
-		log, err := n.getLog(n.LastApplied)
+		log, err := n.GetLog(n.LastApplied)
 		if err != nil {
 			break
 		}
@@ -178,7 +194,7 @@ func (n *RaftBrainImpl) applyLog() {
 }
 
 func (r *RaftBrainImpl) Quorum() int {
-	return int(math.Floor(float64(len(r.Members))/2.0)) + 1
+	return int(math.Floor(float64(len(r.members))/2.0)) + 1
 }
 
 func (n *RaftBrainImpl) lastLogInfo() (index, term int) {
@@ -190,10 +206,6 @@ func (n *RaftBrainImpl) lastLogInfo() (index, term int) {
 	}
 
 	return 0, -1
-}
-
-func (r *RaftBrainImpl) GetMembers() []common.ClusterMember {
-	return r.Members
 }
 
 func (r *RaftBrainImpl) GetNewMembersChannel() <-chan common.ClusterMemberChange {

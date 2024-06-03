@@ -1,4 +1,4 @@
-package intergration_test
+package integration_testing
 
 import (
 	"errors"
@@ -11,18 +11,18 @@ import (
 	"github.com/rs/zerolog"
 )
 
-type RPCProxyImpl struct {
+type RpcAgentImpl struct {
 	Log        *zerolog.Logger
 	peers      map[int]common.PeerRPCProxy
 	peerParams []common.ClusterMember
 }
 
-type PeerRPCProxyConnectInfo struct {
+type RpcServerConnectionInfo struct {
 	ID  int
 	URL string
 }
 
-func (r RPCProxyImpl) log() *zerolog.Logger {
+func (r RpcAgentImpl) log() *zerolog.Logger {
 	l := r.Log.With().Int("RPC_ID", 0).Str("RPC_URL", "test").Logger()
 	return &l
 }
@@ -32,15 +32,15 @@ type NewRPCImplParams struct {
 	Log   *zerolog.Logger
 }
 
-func NewRPCImpl(params NewRPCImplParams) (*RPCProxyImpl, error) {
-	r := RPCProxyImpl{Log: params.Log, peerParams: params.Peers}
+func NewRPCImpl(params NewRPCImplParams) (*RpcAgentImpl, error) {
+	r := RpcAgentImpl{Log: params.Log, peerParams: params.Peers}
 
 	r.ConnectToPeers(params.Peers)
 
 	return &r, nil
 }
 
-func (r *RPCProxyImpl) ConnectToPeer(peerID int, peerURL string, retry int, retryDelay time.Duration) error {
+func (r *RpcAgentImpl) ConnectToPeer(peerID int, peerURL string, retry int, retryDelay time.Duration) error {
 	if r.peers == nil {
 		r.peers = map[int]common.PeerRPCProxy{}
 	}
@@ -58,15 +58,16 @@ func (r *RPCProxyImpl) ConnectToPeer(peerID int, peerURL string, retry int, retr
 				URL:  peerURL,
 			}
 
-			var message string
-
-			timeout := 5 * time.Second
-
-			err := r.SendPing(peerID, &timeout)
+			timeout := 500 * time.Millisecond
+			res, err := r.SendPing(peerID, &timeout)
 			if err != nil {
 				r.log().Err(err).Str("url", peerURL).Msg("ConnectToPeer: cannot ping")
 			} else {
-				r.log().Info().Msg(message)
+				r.log().Info().Interface("res", res).Msg("SendPing")
+				if res.ID != peerID {
+					r.log().Err(nil).Msg("connect to wrong server")
+					return errors.New("connect to wrong server, input value is incorrect")
+				}
 			}
 
 			break
@@ -76,7 +77,7 @@ func (r *RPCProxyImpl) ConnectToPeer(peerID int, peerURL string, retry int, retr
 	return nil
 }
 
-func (r *RPCProxyImpl) ConnectToPeers(params []common.ClusterMember) {
+func (r *RpcAgentImpl) ConnectToPeers(params []common.ClusterMember) {
 	r.peers = make(map[int]common.PeerRPCProxy)
 
 	var count sync.WaitGroup
@@ -84,7 +85,7 @@ func (r *RPCProxyImpl) ConnectToPeers(params []common.ClusterMember) {
 	for _, peer := range params {
 		count.Add(1)
 		go func(peerURL string, peerID int) {
-			r.ConnectToPeer(peerID, peerURL, 5, 3*time.Second)
+			r.ConnectToPeer(peerID, peerURL, 5, 150*time.Millisecond)
 			count.Done()
 		}(peer.RpcUrl, peer.ID)
 	}
@@ -92,7 +93,7 @@ func (r *RPCProxyImpl) ConnectToPeers(params []common.ClusterMember) {
 	count.Wait()
 }
 
-func (r *RPCProxyImpl) Disconnect(peerId int) error {
+func (r *RpcAgentImpl) Disconnect(peerId int) error {
 	peer, ok := r.peers[peerId]
 	if !ok {
 		return ErrPeerIdDoesNotExist
@@ -107,7 +108,7 @@ func (r *RPCProxyImpl) Disconnect(peerId int) error {
 	return nil
 }
 
-func (r RPCProxyImpl) Reconnect(peerId int) error {
+func (r RpcAgentImpl) Reconnect(peerId int) error {
 	var peer *common.ClusterMember
 	for _, p := range r.peerParams {
 		if peerId == p.ID {
@@ -126,14 +127,16 @@ func (r RPCProxyImpl) Reconnect(peerId int) error {
 		return err
 	}
 
-	var message string
-	err = client.Call("RPCProxyImpl.Ping", fmt.Sprintf("Node %v", 0), &message)
+	timeout := 500 * time.Millisecond
+	res, err := r.SendPing(peerId, &timeout)
 	if err != nil {
-		r.log().Err(err).Str("url", targetUrl).Msg("Reconnect: cannot ping")
-
-		return err
+		r.log().Err(err).Str("url", peer.RpcUrl).Msg("ConnectToPeer: cannot ping")
 	} else {
-		r.log().Info().Msg(message)
+		r.log().Info().Interface("res", res).Msg("SendPing")
+		if res.ID != peerId {
+			r.log().Err(nil).Msg("connect to wrong server")
+			return errors.New("connect to wrong server, input value is incorrect")
+		}
 	}
 
 	r.peers[peerId] = common.PeerRPCProxy{
@@ -149,7 +152,7 @@ var (
 	ErrRpcPeerConnectionIsNull = errors.New("rpc peer connection is nil")
 )
 
-func (r RPCProxyImpl) CallWithTimeout(peerID int, serviceMethod string, args any, reply any, timeout time.Duration) error {
+func (r RpcAgentImpl) CallWithTimeout(peerID int, serviceMethod string, args any, reply any, timeout time.Duration) error {
 	var (
 		peer common.PeerRPCProxy
 		ok   bool
@@ -180,19 +183,19 @@ func (r RPCProxyImpl) CallWithTimeout(peerID int, serviceMethod string, args any
 	return nil
 }
 
-func (r RPCProxyImpl) SendPing(peerId int, timeout *time.Duration) (err error) {
+func (r RpcAgentImpl) SendPing(peerId int, timeout *time.Duration) (responseMsg common.PingResponse, err error) {
 	serviceMethod := "RPCProxyImpl.Ping"
 
 	senderName := fmt.Sprintf("hello from Node %d", 0)
-	responseMsg := ""
 
 	if err := r.CallWithTimeout(peerId, serviceMethod, senderName, &responseMsg, *timeout); err != nil {
-		return err
+		return responseMsg, err
 	}
-	return nil
+
+	return responseMsg, nil
 }
 
-func (r RPCProxyImpl) GetInfo(peerId int, timeout *time.Duration) (info common.GetStatusResponse, err error) {
+func (r RpcAgentImpl) GetInfo(peerId int, timeout *time.Duration) (info common.GetStatusResponse, err error) {
 	serviceMethod := "RPCProxyImpl.GetInfo"
 
 	responseMsg := common.GetStatusResponse{}

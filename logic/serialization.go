@@ -72,7 +72,7 @@ func (n *RaftBrainImpl) deserialize(data map[string]string) error {
 }
 
 func (n *RaftBrainImpl) getPersistanceKeyList() ([]string, error) {
-	data, err := n.DB.ReadNewestLog([]string{"log_count"})
+	data, err := n.db.ReadNewestLog([]string{"log_count"})
 	if err != nil {
 		return nil, err
 	}
@@ -108,7 +108,7 @@ func (n *RaftBrainImpl) restoreRaftStateFromFile() error {
 		return err
 	}
 
-	data, err := n.DB.ReadNewestLog(keys)
+	data, err := n.db.ReadNewestLog(keys)
 	if err != nil {
 		return err
 	}
