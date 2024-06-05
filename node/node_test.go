@@ -26,14 +26,14 @@ func TestStop(t *testing.T) {
 			HeartBeatTimeOutMax: 300,
 			ElectionTimeOutMin:  300,
 			ElectionTimeOutMax:  500,
-			Log:                 &zerolog.Logger{},
+			Logger:              &zerolog.Logger{},
 			DB:                  persistance.NewPersistenceMock(),
 			StateMachine:        common.NewKeyValueStateMachine(),
 		},
 		RPCProxy: rpc_proxy.NewRPCImplParams{
 			HostID:  1,
 			HostURL: ":1234",
-			Log:     &zerolog.Logger{},
+			Logger:  &zerolog.Logger{},
 		},
 		HTTPProxy: http_proxy.NewHttpProxyParams{
 			URL: "localhost:8080",

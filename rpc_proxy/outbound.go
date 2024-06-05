@@ -10,7 +10,7 @@ import (
 var ErrInaccessible = errors.New("rpc proxy is in accessible")
 
 func (r *RPCProxyImpl) SendAppendEntries(peerId int, timeout *time.Duration, input common.AppendEntriesInput) (output common.AppendEntriesOutput, err error) {
-	if !r.Accessible {
+	if !r.accessible {
 		return output, ErrInaccessible
 	}
 
@@ -30,7 +30,7 @@ func (r *RPCProxyImpl) SendAppendEntries(peerId int, timeout *time.Duration, inp
 }
 
 func (r *RPCProxyImpl) SendRequestVote(peerId int, timeout *time.Duration, input common.RequestVoteInput) (output common.RequestVoteOutput, err error) {
-	if !r.Accessible {
+	if !r.accessible {
 		return output, ErrInaccessible
 	}
 	serviceMethod := "RPCProxyImpl.RequestVote"
@@ -49,7 +49,7 @@ func (r *RPCProxyImpl) SendRequestVote(peerId int, timeout *time.Duration, input
 }
 
 func (r *RPCProxyImpl) SendPing(peerId int, timeout *time.Duration) (responseMsg common.PingResponse, err error) {
-	if !r.Accessible {
+	if !r.accessible {
 		return responseMsg, ErrInaccessible
 	}
 	serviceMethod := "RPCProxyImpl.Ping"
@@ -70,7 +70,7 @@ func (r *RPCProxyImpl) SendPing(peerId int, timeout *time.Duration) (responseMsg
 }
 
 func (r *RPCProxyImpl) SendToVotingMember(peerId int, timeout *time.Duration) (err error) {
-	if !r.Accessible {
+	if !r.accessible {
 		return ErrInaccessible
 	}
 	serviceMethod := "RPCProxyImpl.ToVotingMember"

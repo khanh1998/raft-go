@@ -21,28 +21,28 @@ func Test_nodeImpl_RequestVote(t *testing.T) {
 	testCases := []TestCase{
 		{
 			name: "1. Reply false if term < currentTerm (§5.1)",
-			n:    RaftBrainImpl{CurrentTerm: 3, logger: &log.Logger},
+			n:    RaftBrainImpl{currentTerm: 3, logger: &log.Logger},
 			in:   common.RequestVoteInput{Term: 2},
 			out:  common.RequestVoteOutput{Term: 3, VoteGranted: false, Message: MsgRequesterTermIsOutDated},
 		},
 		{
 			name: "2. If votedFor is null or candidateId, and candidate’s log is at least as up-to-date as receiver’s log, grant vote (§5.2, §5.4)",
-			n:    RaftBrainImpl{CurrentTerm: 3, VotedFor: 4, db: persistance.NewPersistenceMock(), logger: &log.Logger},
+			n:    RaftBrainImpl{currentTerm: 3, votedFor: 4, db: persistance.NewPersistenceMock(), logger: &log.Logger},
 			in:   common.RequestVoteInput{Term: 4},
 			out:  common.RequestVoteOutput{Term: 3, VoteGranted: false, Message: MsgTheResponderAlreadyMakeAVote},
 		},
 		{
 			name: "2. If votedFor is null or candidateId, and candidate’s log is at least as up-to-date as receiver’s log, grant vote (§5.2, §5.4)",
-			n:    RaftBrainImpl{CurrentTerm: 3, VotedFor: 0, Logs: []common.Log{{Term: 1}, {Term: 2}, {Term: 3}}, db: persistance.NewPersistenceMock(), logger: &log.Logger},
+			n:    RaftBrainImpl{currentTerm: 3, votedFor: 0, logs: []common.Log{{Term: 1}, {Term: 2}, {Term: 3}}, db: persistance.NewPersistenceMock(), logger: &log.Logger},
 			in:   common.RequestVoteInput{Term: 4, LastLogIndex: 4, LastLogTerm: 2},
 			out:  common.RequestVoteOutput{Term: 3, VoteGranted: false, Message: MsgTheRequesterLogsAreOutOfDate},
 		},
 		{
 			name: "2. If votedFor is null or candidateId, and candidate’s log is at least as up-to-date as receiver’s log, grant vote (§5.2, §5.4)",
 			n: RaftBrainImpl{
-				CurrentTerm:         3,
-				VotedFor:            0,
-				Logs:                []common.Log{{Term: 1}, {Term: 2}, {Term: 3}},
+				currentTerm:         3,
+				votedFor:            0,
+				logs:                []common.Log{{Term: 1}, {Term: 2}, {Term: 3}},
 				db:                  persistance.NewPersistenceMock(),
 				logger:              &log.Logger,
 				heartBeatTimeOutMin: 100,
@@ -80,7 +80,7 @@ func Test_nodeImpl_AppendEntries(t *testing.T) {
 		{
 			name: "1. Reply false if term < currentTerm (§5.1)",
 			n: RaftBrainImpl{
-				CurrentTerm:         5,
+				currentTerm:         5,
 				logger:              &log.Logger,
 				db:                  persistance.NewPersistenceMock(),
 				heartBeatTimeOutMin: 100,
@@ -100,8 +100,8 @@ func Test_nodeImpl_AppendEntries(t *testing.T) {
 		{
 			name: "2. Reply false if log doesn’t contain an entry at prevLogIndex whose term matches prevLogTerm (§5.3)",
 			n: RaftBrainImpl{
-				CurrentTerm:         2,
-				Logs:                []common.Log{{Term: 1}, {Term: 1}},
+				currentTerm:         2,
+				logs:                []common.Log{{Term: 1}, {Term: 1}},
 				db:                  persistance.NewPersistenceMock(),
 				logger:              &log.Logger,
 				heartBeatTimeOutMin: 100,
@@ -123,8 +123,8 @@ func Test_nodeImpl_AppendEntries(t *testing.T) {
 		{
 			name: "2. Reply false if log doesn’t contain an entry at prevLogIndex whose term matches prevLogTerm (§5.3)",
 			n: RaftBrainImpl{
-				CurrentTerm:         2,
-				Logs:                []common.Log{},
+				currentTerm:         2,
+				logs:                []common.Log{},
 				logger:              &log.Logger,
 				db:                  persistance.NewPersistenceMock(),
 				heartBeatTimeOutMin: 100,
@@ -146,8 +146,8 @@ func Test_nodeImpl_AppendEntries(t *testing.T) {
 		{
 			name: "2. Reply false if log doesn’t contain an entry at prevLogIndex whose term matches prevLogTerm (§5.3)",
 			n: RaftBrainImpl{
-				CurrentTerm:         2,
-				Logs:                []common.Log{{Term: 1}},
+				currentTerm:         2,
+				logs:                []common.Log{{Term: 1}},
 				logger:              &log.Logger,
 				db:                  persistance.NewPersistenceMock(),
 				heartBeatTimeOutMin: 100,
@@ -169,9 +169,9 @@ func Test_nodeImpl_AppendEntries(t *testing.T) {
 		{
 			name: "3. If an existing entry conflicts with a new one (same index but different terms), delete the existing entry and all that follow it (§5.3)",
 			n: RaftBrainImpl{
-				VotedFor:    5,
-				CurrentTerm: 3,
-				Logs: []common.Log{
+				votedFor:    5,
+				currentTerm: 3,
+				logs: []common.Log{
 					{Term: 1, Command: "set x 5"},
 					{Term: 2, Command: "set x 5"},
 					{Term: 2, Command: "set x 5"},
@@ -198,9 +198,9 @@ func Test_nodeImpl_AppendEntries(t *testing.T) {
 		{
 			name: "4. Append any new entries not already in the log",
 			n: RaftBrainImpl{
-				VotedFor:            5,
-				CurrentTerm:         3,
-				Logs:                []common.Log{},
+				votedFor:            5,
+				currentTerm:         3,
+				logs:                []common.Log{},
 				db:                  persistance.NewPersistenceMock(),
 				logger:              &log.Logger,
 				heartBeatTimeOutMin: 100,
@@ -226,9 +226,9 @@ func Test_nodeImpl_AppendEntries(t *testing.T) {
 		{
 			name: "4. Append any new entries not already in the log",
 			n: RaftBrainImpl{
-				VotedFor:    5,
-				CurrentTerm: 3,
-				Logs: []common.Log{
+				votedFor:    5,
+				currentTerm: 3,
+				logs: []common.Log{
 					{Term: 1, Command: "set x 5"},
 					{Term: 2, Command: "set y 5"},
 				},
@@ -257,9 +257,9 @@ func Test_nodeImpl_AppendEntries(t *testing.T) {
 		{
 			name: "5. If leaderCommit > commitIndex, set commitIndex = min(leaderCommit, index of last new entry)",
 			n: RaftBrainImpl{
-				VotedFor:    5,
-				CurrentTerm: 3,
-				Logs: []common.Log{
+				votedFor:    5,
+				currentTerm: 3,
+				logs: []common.Log{
 					{Term: 1, Command: "set x 5"},
 					{Term: 2, Command: "set y 5"},
 				},
@@ -269,7 +269,7 @@ func Test_nodeImpl_AppendEntries(t *testing.T) {
 				heartBeatTimeOutMax: 150,
 				electionTimeOutMin:  300,
 				electionTimeOutMax:  500,
-				StateMachine:        common.NewKeyValueStateMachine(),
+				stateMachine:        common.NewKeyValueStateMachine(),
 			},
 			in: common.AppendEntriesInput{
 				Term:         3,
@@ -286,9 +286,9 @@ func Test_nodeImpl_AppendEntries(t *testing.T) {
 		{
 			name: "5. If leaderCommit > commitIndex, set commitIndex = min(leaderCommit, index of last new entry)",
 			n: RaftBrainImpl{
-				VotedFor:            1,
-				CurrentTerm:         1,
-				Logs:                []common.Log{},
+				votedFor:            1,
+				currentTerm:         1,
+				logs:                []common.Log{},
 				db:                  persistance.NewPersistenceMock(),
 				logger:              &log.Logger,
 				heartBeatTimeOutMin: 100,
@@ -337,10 +337,10 @@ func Test_nodeImpl_AppendEntries(t *testing.T) {
 
 			assert.NoError(t, err)
 
-			assert.Equal(t, testCase.n.CurrentTerm, n2.CurrentTerm)
-			assert.Equal(t, testCase.n.VotedFor, n2.VotedFor)
-			assert.Equal(t, testCase.n.Logs, n2.Logs)
-			assert.Equal(t, testCase.persist.logCount, len(n2.Logs))
+			assert.Equal(t, testCase.n.currentTerm, n2.currentTerm)
+			assert.Equal(t, testCase.n.votedFor, n2.votedFor)
+			assert.Equal(t, testCase.n.logs, n2.logs)
+			assert.Equal(t, testCase.persist.logCount, len(n2.logs))
 		}
 	}
 }

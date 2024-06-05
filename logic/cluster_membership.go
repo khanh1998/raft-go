@@ -40,7 +40,7 @@ func (r *RaftBrainImpl) WaitForLogCommited(dur time.Duration, index int) error {
 		case <-timeout:
 			return errors.New("timeout: wait for log commited")
 		default:
-			if r.CommitIndex >= index {
+			if r.commitIndex >= index {
 				stop = true
 			}
 			time.Sleep(100 * time.Millisecond)
@@ -53,7 +53,7 @@ func (r *RaftBrainImpl) RemoveServer(input common.RemoveServerInput, output *com
 	r.inOutLock.Lock()
 	_ = output // to disable the warning: argument output is overwritten before first use
 
-	isLeader := r.State == common.StateLeader
+	isLeader := r.state == common.StateLeader
 	if !isLeader {
 		*output = common.RemoveServerOutput{
 			Status:     common.StatusNotOK,
@@ -92,7 +92,7 @@ func (r *RaftBrainImpl) RemoveServer(input common.RemoveServerInput, output *com
 	defer r.changeMemberLock.Unlock()
 
 	index := r.appendLog(common.Log{
-		Term:        r.CurrentTerm,
+		Term:        r.currentTerm,
 		ClientID:    0,
 		SequenceNum: 0,
 		Command:     common.ComposeRemoveServerCommand(input.ID, input.NewServerHttpUrl, input.NewServerRpcUrl),
@@ -104,10 +104,10 @@ func (r *RaftBrainImpl) RemoveServer(input common.RemoveServerInput, output *com
 		msg = fmt.Sprintf("log isn't commited, server %d can't be shut down", input.ID)
 	}
 
-	isLeaderRemoved := isLeader && input.ID == r.ID
+	isLeaderRemoved := isLeader && input.ID == r.id
 	if isLeaderRemoved {
-		r.State = common.StateRemoved
-		r.Stop <- struct{}{}
+		r.state = common.StateRemoved
+		r.stop <- struct{}{}
 		r.log().Info().Msg("the server will be shut down in 5s")
 		time.AfterFunc(5*time.Second, func() {
 			pid := os.Getpid()
@@ -126,7 +126,7 @@ func (r *RaftBrainImpl) RemoveServer(input common.RemoveServerInput, output *com
 
 func (r *RaftBrainImpl) AddServer(input common.AddServerInput, output *common.AddServerOutput) (err error) {
 	r.inOutLock.Lock()
-	if r.State != common.StateLeader {
+	if r.state != common.StateLeader {
 		*output = common.AddServerOutput{
 			Status:     common.StatusNotOK,
 			LeaderHint: r.getLeaderHttpUrl(),
@@ -164,7 +164,7 @@ func (r *RaftBrainImpl) AddServer(input common.AddServerInput, output *common.Ad
 	defer r.changeMemberLock.Unlock()
 	timeout := 5 * time.Second
 
-	if err := r.RpcProxy.ConnectToNewPeer(input.ID, input.NewServerRpcUrl, 5, timeout); err != nil {
+	if err := r.rpcProxy.ConnectToNewPeer(input.ID, input.NewServerRpcUrl, 5, timeout); err != nil {
 		*output = common.AddServerOutput{
 			Status:     common.StatusNotOK,
 			LeaderHint: r.getLeaderHttpUrl(),
@@ -200,7 +200,7 @@ func (r *RaftBrainImpl) AddServer(input common.AddServerInput, output *common.Ad
 	}
 
 	index := r.appendLog(common.Log{
-		Term:        r.CurrentTerm,
+		Term:        r.currentTerm,
 		ClientID:    0,
 		SequenceNum: 0,
 		Command:     common.ComposeAddServerCommand(input.ID, input.NewServerHttpUrl, input.NewServerRpcUrl),
@@ -211,7 +211,7 @@ func (r *RaftBrainImpl) AddServer(input common.AddServerInput, output *common.Ad
 	r.nextMemberId = input.ID + 1
 
 	// allow new server to become follower
-	err = r.RpcProxy.SendToVotingMember(input.ID, &timeout)
+	err = r.rpcProxy.SendToVotingMember(input.ID, &timeout)
 	if err != nil {
 		log.Err(err).Msg("SendToVotingMember")
 	}
@@ -232,17 +232,17 @@ func (r *RaftBrainImpl) AddServer(input common.AddServerInput, output *common.Ad
 }
 
 func (r *RaftBrainImpl) catchUpWithNewMember(peerID int) error {
-	initNextIdx := len(r.Logs)
+	initNextIdx := len(r.logs)
 	nextIdx := initNextIdx
-	currentTerm := r.CurrentTerm
+	currentTerm := r.currentTerm
 	matchIndex := 0
 
 	for matchIndex < initNextIdx {
 
 		input := common.AppendEntriesInput{
 			Term:         currentTerm,
-			LeaderID:     r.ID,
-			LeaderCommit: r.CommitIndex,
+			LeaderID:     r.id,
+			LeaderCommit: r.commitIndex,
 		}
 
 		if nextIdx > 1 {
@@ -261,7 +261,7 @@ func (r *RaftBrainImpl) catchUpWithNewMember(peerID int) error {
 
 		timeout := 5 * time.Second
 
-		output, err := r.RpcProxy.SendAppendEntries(peerID, &timeout, input)
+		output, err := r.rpcProxy.SendAppendEntries(peerID, &timeout, input)
 		r.log().Debug().Interface("output", output).Msg("r.RpcProxy.SendAppendEntries")
 		if err != nil {
 			r.log().Err(err).Msg("BroadcastAppendEntries: ")
@@ -273,7 +273,7 @@ func (r *RaftBrainImpl) catchUpWithNewMember(peerID int) error {
 
 				nextIdx = common.Min(nextIdx+1, initNextIdx+1)
 			} else {
-				if output.Term <= r.CurrentTerm {
+				if output.Term <= r.currentTerm {
 					nextIdx = common.Max(0, nextIdx-1)
 				} else {
 					// the appendEntries request is failed,
@@ -330,7 +330,7 @@ func (r *RaftBrainImpl) removeMember(id int, httpUrl, rpcUrl string) error {
 	}
 	r.members = tmp
 
-	if r.ID != id {
+	if r.id != id {
 		r.newMembers <- common.ClusterMemberChange{
 			ClusterMember: common.ClusterMember{
 				ID:      id,
@@ -340,9 +340,9 @@ func (r *RaftBrainImpl) removeMember(id int, httpUrl, rpcUrl string) error {
 			Add: false,
 		}
 
-		if r.State == common.StateLeader {
-			delete(r.NextIndex, id)
-			delete(r.MatchIndex, id)
+		if r.state == common.StateLeader {
+			delete(r.nextIndex, id)
+			delete(r.matchIndex, id)
 		}
 	}
 
@@ -358,7 +358,7 @@ func (r *RaftBrainImpl) addMember(id int, httpUrl, rpcUrl string) error {
 
 	r.nextMemberId = common.Max(r.nextMemberId, id+1)
 
-	if r.ID != id {
+	if r.id != id {
 		r.newMembers <- common.ClusterMemberChange{
 			ClusterMember: common.ClusterMember{
 				ID:      id,
@@ -368,9 +368,9 @@ func (r *RaftBrainImpl) addMember(id int, httpUrl, rpcUrl string) error {
 			Add: true,
 		}
 
-		if r.State == common.StateLeader {
-			r.NextIndex[id] = len(r.Logs) + 1 // data race
-			r.MatchIndex[id] = 0
+		if r.state == common.StateLeader {
+			r.nextIndex[id] = len(r.logs) + 1 // data race
+			r.matchIndex[id] = 0
 		}
 	}
 
@@ -380,7 +380,7 @@ func (r *RaftBrainImpl) addMember(id int, httpUrl, rpcUrl string) error {
 func (r *RaftBrainImpl) restoreClusterMemberInfoFromLogs() (err error) {
 	r.members = []common.ClusterMember{}
 
-	for _, log := range r.Logs {
+	for _, log := range r.logs {
 		err = r.changeMember(log.Command.(string))
 		if err != nil {
 			r.log().Err(err).Msg("restoreClusterMemberInfoFromLogs")

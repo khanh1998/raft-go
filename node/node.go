@@ -2,21 +2,21 @@ package node
 
 import (
 	"errors"
-	"fmt"
 	"khanh/raft-go/common"
 	"khanh/raft-go/http_proxy"
 	"khanh/raft-go/logic"
 	"khanh/raft-go/rpc_proxy"
 
+	"github.com/rs/zerolog"
 	"github.com/rs/zerolog/log"
 )
 
 type Node struct {
-	ID         int
-	brain      *logic.RaftBrainImpl
-	rpc        *rpc_proxy.RPCProxyImpl
-	http       *http_proxy.HttpProxy
-	accessible bool
+	ID     int
+	brain  *logic.RaftBrainImpl
+	rpc    *rpc_proxy.RPCProxyImpl
+	http   *http_proxy.HttpProxy
+	logger *zerolog.Logger
 }
 
 type NewNodeParams struct {
@@ -24,6 +24,7 @@ type NewNodeParams struct {
 	Brain     logic.NewRaftBrainParams
 	RPCProxy  rpc_proxy.NewRPCImplParams
 	HTTPProxy http_proxy.NewHttpProxyParams
+	Logger    *zerolog.Logger
 }
 
 func NewNode(params NewNodeParams) *Node {
@@ -44,7 +45,7 @@ func NewNode(params NewNodeParams) *Node {
 	httpProxy.SetBrain(brain)
 	brain.SetRpcProxy(rpcProxy)
 
-	n := &Node{ID: params.ID, brain: brain, rpc: rpcProxy, http: httpProxy}
+	n := &Node{ID: params.ID, brain: brain, rpc: rpcProxy, http: httpProxy, logger: params.Logger}
 
 	return n
 }
@@ -65,34 +66,22 @@ func (n *Node) Crash() error {
 
 func (n *Node) Stop() error {
 	n.SetInaccessible()
-	select {
-	case n.rpc.Stop <- struct{}{}:
-	default:
-	}
-	select {
-	case n.http.Stop <- struct{}{}:
-	default:
-	}
-	select {
-	case n.brain.Stop <- struct{}{}:
-	default:
-	}
-
+	n.rpc.Stop()
+	n.http.Stop()
+	n.brain.Stop()
 	return nil
 }
 
 func (n *Node) SetInaccessible() {
-	n.accessible = false
 	n.http.SetInaccessible()
-	n.rpc.Accessible = false
-	fmt.Println("the node now is inaccessible", n.http.Accessible)
+	n.rpc.SetInaccessible()
+	n.log().Info().Msg("the node now is inaccessible")
 }
 
 func (n *Node) SetAccessible() {
-	n.accessible = true
 	n.http.SetAccessible()
-	n.rpc.Accessible = true
-	fmt.Println("the node now is accessible", n.http.Accessible)
+	n.rpc.SetAccessible()
+	n.log().Info().Msg("the node now is accessible")
 }
 
 func (n *Node) Restart() error {
@@ -101,9 +90,17 @@ func (n *Node) Restart() error {
 
 func (n *Node) GetStatus() (res common.GetStatusResponse) {
 	res = common.GetStatusResponse{
-		ID:    n.brain.ID,
-		State: n.brain.State,
-		Term:  n.brain.CurrentTerm,
+		ID:    n.brain.GetId(),
+		State: n.brain.GetState(),
+		Term:  n.brain.GetCurrentTerm(),
 	}
 	return
+}
+
+func (n *Node) log() *zerolog.Logger {
+	// data race
+	sub := n.logger.With().
+		Int("id", n.ID).
+		Logger()
+	return &sub
 }

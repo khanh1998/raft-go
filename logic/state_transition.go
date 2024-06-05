@@ -8,33 +8,33 @@ import (
 
 func (n *RaftBrainImpl) toCandidate() {
 	n.log().Info().Msg("to candidate")
-	n.State = common.StateCandidate
+	n.state = common.StateCandidate
 }
 
 func (n *RaftBrainImpl) toLeader() {
 	n.log().Info().Msg("to leader")
-	n.State = common.StateLeader
-	n.LeaderID = n.ID
+	n.state = common.StateLeader
+	n.leaderID = n.id
 
-	n.NextIndex = make(map[int]int)
-	n.MatchIndex = make(map[int]int)
+	n.nextIndex = make(map[int]int)
+	n.matchIndex = make(map[int]int)
 
 	for _, peer := range n.members {
-		if peer.ID != n.ID {
-			n.NextIndex[peer.ID] = len(n.Logs) + 1
-			n.MatchIndex[peer.ID] = 0
+		if peer.ID != n.id {
+			n.nextIndex[peer.ID] = len(n.logs) + 1
+			n.matchIndex[peer.ID] = 0
 		}
 	}
 
 	n.appendLog(common.Log{
-		Term:    n.CurrentTerm,
+		Term:    n.currentTerm,
 		Command: common.NoOperation,
 	})
 }
 
 func (n *RaftBrainImpl) toFollower() {
-	if n.State != common.StateCatchingUp {
-		n.State = common.StateFollower
+	if n.state != common.StateCatchingUp {
+		n.state = common.StateFollower
 		n.log().Info().Msg("toFollower")
 	} else {
 		// if the current node's status is catching-up, i can't call this function to become a follower by itself,
@@ -51,11 +51,11 @@ func (n *RaftBrainImpl) ToVotingMember() error {
 
 	n.log().Info().Msg("ToVotingMember")
 
-	if n.State == common.StateCatchingUp {
-		n.State = common.StateFollower
+	if n.state == common.StateCatchingUp {
+		n.state = common.StateFollower
 		n.Start()
 	} else {
-		return fmt.Errorf("current status is %s", n.State)
+		return fmt.Errorf("current status is %s", n.state)
 	}
 	return nil
 }

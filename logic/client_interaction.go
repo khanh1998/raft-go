@@ -9,7 +9,7 @@ import (
 func (r *RaftBrainImpl) getLeaderHttpUrl() string {
 	leaderUrl := ""
 	for _, peer := range r.members {
-		if peer.ID != r.ID && peer.ID == r.LeaderID {
+		if peer.ID != r.id && peer.ID == r.leaderID {
 			leaderUrl = peer.HttpUrl
 
 			break
@@ -21,7 +21,7 @@ func (r *RaftBrainImpl) getLeaderHttpUrl() string {
 
 func (r *RaftBrainImpl) ClientRequest(input *common.ClientRequestInput, output *common.ClientRequestOutput) (err error) {
 	r.inOutLock.Lock()
-	if r.State != common.StateLeader {
+	if r.state != common.StateLeader {
 		leaderUrl := r.getLeaderHttpUrl()
 
 		*output = common.ClientRequestOutput{
@@ -36,7 +36,7 @@ func (r *RaftBrainImpl) ClientRequest(input *common.ClientRequestInput, output *
 	}
 
 	index := r.appendLog(common.Log{
-		Term:        r.CurrentTerm,
+		Term:        r.currentTerm,
 		Command:     input.Command,
 		ClientID:    input.ClientID,
 		SequenceNum: input.SequenceNum,
@@ -47,7 +47,7 @@ func (r *RaftBrainImpl) ClientRequest(input *common.ClientRequestInput, output *
 	var status common.ClientRequestStatus = common.StatusOK
 	var response any = nil
 
-	if err := r.ARM.Register(index); err != nil {
+	if err := r.arm.Register(index); err != nil {
 		r.log().Err(err).Msg("ClientRequest_Register")
 
 		*output = common.ClientRequestOutput{
@@ -59,7 +59,7 @@ func (r *RaftBrainImpl) ClientRequest(input *common.ClientRequestInput, output *
 		return nil
 	}
 
-	response, err = r.ARM.TakeResponse(index, 30*time.Second)
+	response, err = r.arm.TakeResponse(index, 30*time.Second)
 	if err != nil {
 		status = common.StatusNotOK
 
@@ -81,7 +81,7 @@ func (r *RaftBrainImpl) ClientRequest(input *common.ClientRequestInput, output *
 func (r *RaftBrainImpl) RegisterClient(input *common.RegisterClientInput, output *common.RegisterClientOutput) (err error) {
 	r.inOutLock.Lock()
 
-	if r.State != common.StateLeader {
+	if r.state != common.StateLeader {
 		leaderUrl := r.getLeaderHttpUrl()
 
 		*output = common.RegisterClientOutput{
@@ -96,7 +96,7 @@ func (r *RaftBrainImpl) RegisterClient(input *common.RegisterClientInput, output
 	}
 
 	index := r.appendLog(common.Log{
-		Term:        r.CurrentTerm,
+		Term:        r.currentTerm,
 		ClientID:    0,
 		SequenceNum: 0,
 		Command:     "register",
@@ -106,7 +106,7 @@ func (r *RaftBrainImpl) RegisterClient(input *common.RegisterClientInput, output
 
 	var status common.ClientRequestStatus = common.StatusOK
 
-	if err := r.ARM.Register(index); err != nil {
+	if err := r.arm.Register(index); err != nil {
 		r.log().Err(err).Msg("RegisterClient_Register")
 		*output = common.RegisterClientOutput{
 			Status:     common.StatusNotOK,
@@ -117,7 +117,7 @@ func (r *RaftBrainImpl) RegisterClient(input *common.RegisterClientInput, output
 		return nil
 	}
 
-	_, err = r.ARM.TakeResponse(index, 30*time.Second)
+	_, err = r.arm.TakeResponse(index, 30*time.Second)
 	if err != nil {
 		r.log().Err(err).Msg("RegisterClient_TakeResponse")
 
@@ -147,7 +147,7 @@ func (r *RaftBrainImpl) ClientQuery(input *common.ClientQueryInput, output *comm
 		}
 	}()
 
-	if r.State != common.StateLeader {
+	if r.state != common.StateLeader {
 		leaderUrl := r.getLeaderHttpUrl()
 
 		*output = common.ClientQueryOutput{
@@ -160,12 +160,12 @@ func (r *RaftBrainImpl) ClientQuery(input *common.ClientQueryInput, output *comm
 	}
 	var ok bool
 	for i := 0; i < 100; i++ {
-		log, err := r.GetLog(r.CommitIndex)
+		log, err := r.GetLog(r.commitIndex)
 		if err != nil {
 			break
 		}
 
-		if log.Term == r.CurrentTerm {
+		if log.Term == r.currentTerm {
 			ok = true
 			break
 		}
@@ -183,13 +183,13 @@ func (r *RaftBrainImpl) ClientQuery(input *common.ClientQueryInput, output *comm
 		return nil
 	}
 
-	realIndex := r.CommitIndex
+	realIndex := r.commitIndex
 
 	r.BroadcastAppendEntries() // TODO: heartbeat only
 
 	ok = false
 	for i := 0; i < 100; i++ {
-		if r.CommitIndex >= realIndex {
+		if r.commitIndex >= realIndex {
 			ok = true
 			break
 		}
@@ -207,7 +207,7 @@ func (r *RaftBrainImpl) ClientQuery(input *common.ClientQueryInput, output *comm
 		return nil
 	}
 
-	res, err := r.StateMachine.Process(0, 0, input.Query, 0)
+	res, err := r.stateMachine.Process(0, 0, input.Query, 0)
 	if err != nil {
 		*output = common.ClientQueryOutput{
 			Status:     common.StatusNotOK,

@@ -78,7 +78,7 @@ func (c *Cluster) init(filePath string) {
 					HeartBeatTimeOutMax: config.MaxHeartbeatTimeoutMs,
 					ElectionTimeOutMin:  config.MinElectionTimeoutMs,
 					ElectionTimeOutMax:  config.MaxElectionTimeoutMs,
-					Log:                 &log,
+					Logger:              &log,
 					Members:             peers,
 					// DB:                persistance.NewPersistence(fmt.Sprintf("test.log.%d.dat", id+i)),
 					DB:           persistance.NewPersistenceMock(),
@@ -86,12 +86,14 @@ func (c *Cluster) init(filePath string) {
 				},
 				RPCProxy: rpc_proxy.NewRPCImplParams{
 					HostURL: mem.RpcUrl,
-					Log:     &log,
+					Logger:  &log,
 					HostID:  mem.ID,
 				},
 				HTTPProxy: http_proxy.NewHttpProxyParams{
-					URL: mem.HttpUrl,
+					URL:    mem.HttpUrl,
+					Logger: &log,
 				},
+				Logger: &log,
 			}
 
 			n := node.NewNode(param)

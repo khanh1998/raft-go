@@ -9,7 +9,7 @@ import (
 	"regexp"
 
 	"github.com/gin-gonic/gin"
-	"github.com/rs/zerolog/log"
+	"github.com/rs/zerolog"
 )
 
 type RaftBrain interface {
@@ -24,26 +24,48 @@ type RaftBrain interface {
 type HttpProxy struct {
 	brain      RaftBrain
 	host       string
-	Stop       chan struct{}
-	Accessible bool
+	stop       chan struct{}
+	accessible bool
+	logger     *zerolog.Logger
 }
 
 type NewHttpProxyParams struct {
-	URL string
+	URL    string
+	Logger *zerolog.Logger
 }
 
 func NewHttpProxy(params NewHttpProxyParams) *HttpProxy {
-	h := HttpProxy{host: params.URL, Stop: make(chan struct{}), Accessible: true}
+	h := HttpProxy{
+		host:       params.URL,
+		stop:       make(chan struct{}),
+		accessible: true,
+		logger:     params.Logger,
+	}
 
 	return &h
 }
 
+func (h *HttpProxy) log() *zerolog.Logger {
+	// data race
+	sub := h.logger.With().
+		Str("origin", "HttpProxy").
+		Logger()
+	return &sub
+}
+
+func (h *HttpProxy) Stop() {
+	select {
+	case h.stop <- struct{}{}:
+	default:
+	}
+}
+
 func (h *HttpProxy) SetAccessible() {
-	h.Accessible = true
+	h.accessible = true
 }
 
 func (h *HttpProxy) SetInaccessible() {
-	h.Accessible = false
+	h.accessible = false
 }
 
 func (h *HttpProxy) SetBrain(brain RaftBrain) {
@@ -52,8 +74,7 @@ func (h *HttpProxy) SetBrain(brain RaftBrain) {
 
 func (h *HttpProxy) cli(r *gin.Engine) {
 	r.POST("/cli", func(c *gin.Context) {
-		fmt.Println("receive a request ", h.Accessible)
-		if !h.Accessible {
+		if !h.accessible {
 			c.Status(http.StatusRequestTimeout)
 
 			return
@@ -241,15 +262,15 @@ func (h *HttpProxy) Start() {
 
 	go func() {
 		if err := httpServer.ListenAndServe(); err != nil {
-			log.Err(err).Msg("HTTP Proxy Start")
+			h.log().Err(err).Msg("HTTP Proxy Start")
 		}
 	}()
 
 	go func() {
-		<-h.Stop
+		<-h.stop
 		httpServer.Shutdown(context.Background())
-		log.Info().Msg("HTTP Proxy stop")
+		h.log().Info().Msg("HTTP Proxy stop")
 	}()
 
-	log.Info().Msg("HTTP start")
+	h.log().Info().Msg("HTTP start")
 }

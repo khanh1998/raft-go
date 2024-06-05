@@ -9,7 +9,7 @@ import (
 )
 
 func Test_nodeImpl_DeleteFrom(t *testing.T) {
-	n := RaftBrainImpl{Logs: []common.Log{}, db: persistance.NewPersistenceMock()}
+	n := RaftBrainImpl{logs: []common.Log{}, db: persistance.NewPersistenceMock()}
 	err := n.deleteLogFrom(1)
 	assert.ErrorIs(t, err, ErrLogIsEmtpy)
 
@@ -19,30 +19,30 @@ func Test_nodeImpl_DeleteFrom(t *testing.T) {
 		{Term: 3, Command: "set x 3"},
 	}
 
-	n = RaftBrainImpl{Logs: make([]common.Log, 3), db: persistance.NewPersistenceMock()}
-	copy(n.Logs, data)
+	n = RaftBrainImpl{logs: make([]common.Log, 3), db: persistance.NewPersistenceMock()}
+	copy(n.logs, data)
 	err = n.deleteLogFrom(4)
 	assert.ErrorIs(t, err, ErrIndexOutOfRange)
 	err = n.deleteLogFrom(0)
 	assert.ErrorIs(t, err, ErrIndexOutOfRange)
 
-	n = RaftBrainImpl{Logs: make([]common.Log, 3), db: persistance.NewPersistenceMock()}
-	copy(n.Logs, data)
+	n = RaftBrainImpl{logs: make([]common.Log, 3), db: persistance.NewPersistenceMock()}
+	copy(n.logs, data)
 	err = n.deleteLogFrom(3)
 	assert.NoError(t, err)
-	assert.Equal(t, data[:2], n.Logs)
+	assert.Equal(t, data[:2], n.logs)
 
-	n = RaftBrainImpl{Logs: make([]common.Log, 3), db: persistance.NewPersistenceMock()}
-	copy(n.Logs, data)
+	n = RaftBrainImpl{logs: make([]common.Log, 3), db: persistance.NewPersistenceMock()}
+	copy(n.logs, data)
 	err = n.deleteLogFrom(2)
 	assert.NoError(t, err)
-	assert.Equal(t, data[:1], n.Logs)
+	assert.Equal(t, data[:1], n.logs)
 
-	n = RaftBrainImpl{Logs: make([]common.Log, 3), db: persistance.NewPersistenceMock()}
-	copy(n.Logs, data)
+	n = RaftBrainImpl{logs: make([]common.Log, 3), db: persistance.NewPersistenceMock()}
+	copy(n.logs, data)
 	err = n.deleteLogFrom(1)
 	assert.NoError(t, err)
-	assert.Equal(t, []common.Log{}, n.Logs)
+	assert.Equal(t, []common.Log{}, n.logs)
 }
 
 func Test_nodeImpl_isLogUpToDate(t *testing.T) {
@@ -59,42 +59,42 @@ func Test_nodeImpl_isLogUpToDate(t *testing.T) {
 			name:         "lastLogTerm > term",
 			lastLogIndex: 3,
 			lastLogTerm:  5,
-			n:            RaftBrainImpl{Logs: []common.Log{}},
+			n:            RaftBrainImpl{logs: []common.Log{}},
 			output:       true,
 		},
 		{
 			name:         "lastLogTerm > term",
 			lastLogIndex: 3,
 			lastLogTerm:  5,
-			n:            RaftBrainImpl{Logs: []common.Log{{Term: 1}, {Term: 2}}},
+			n:            RaftBrainImpl{logs: []common.Log{{Term: 1}, {Term: 2}}},
 			output:       true,
 		},
 		{
 			name:         "lastLogTerm == term && lastLogIndex = index",
 			lastLogIndex: 3,
 			lastLogTerm:  5,
-			n:            RaftBrainImpl{Logs: []common.Log{{Term: 1}, {Term: 2}, {Term: 5}}},
+			n:            RaftBrainImpl{logs: []common.Log{{Term: 1}, {Term: 2}, {Term: 5}}},
 			output:       true,
 		},
 		{
 			name:         "lastLogTerm == term && lastLogIndex > index",
 			lastLogIndex: 3,
 			lastLogTerm:  5,
-			n:            RaftBrainImpl{Logs: []common.Log{{Term: 1}, {Term: 5}}},
+			n:            RaftBrainImpl{logs: []common.Log{{Term: 1}, {Term: 5}}},
 			output:       true,
 		},
 		{
 			name:         "lastLogTerm == term && lastLogIndex < index",
 			lastLogIndex: 1,
 			lastLogTerm:  5,
-			n:            RaftBrainImpl{Logs: []common.Log{{Term: 1}, {Term: 5}}},
+			n:            RaftBrainImpl{logs: []common.Log{{Term: 1}, {Term: 5}}},
 			output:       false,
 		},
 		{
 			name:         "lastLogTerm < term",
 			lastLogIndex: 3,
 			lastLogTerm:  3,
-			n:            RaftBrainImpl{Logs: []common.Log{{Term: 3}, {Term: 4}}},
+			n:            RaftBrainImpl{logs: []common.Log{{Term: 3}, {Term: 4}}},
 			output:       false,
 		},
 	}

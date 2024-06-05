@@ -23,7 +23,7 @@ func (n *RaftBrainImpl) AppendEntries(input *common.AppendEntriesInput, output *
 
 	defer func() {
 		n.log().Info().
-			Interface("id", n.ID).
+			Interface("id", n.id).
 			Interface("input", input).
 			Interface("output", output).
 			Msg("AppendEntries")
@@ -31,13 +31,13 @@ func (n *RaftBrainImpl) AppendEntries(input *common.AppendEntriesInput, output *
 
 	// if current leader get removed,
 	// if follower get removed, it won't get these inbound methods revoked.
-	if n.State == common.StateRemoved {
+	if n.state == common.StateRemoved {
 		return nil
 	}
 
 	// 1. Reply false if term < currentTerm (§5.1)
-	if input.Term < n.CurrentTerm {
-		*output = common.AppendEntriesOutput{Term: n.CurrentTerm, Success: false, Message: MsgRequesterTermIsOutDated, NodeID: n.ID}
+	if input.Term < n.currentTerm {
+		*output = common.AppendEntriesOutput{Term: n.currentTerm, Success: false, Message: MsgRequesterTermIsOutDated, NodeID: n.id}
 
 		return nil
 	}
@@ -46,14 +46,14 @@ func (n *RaftBrainImpl) AppendEntries(input *common.AppendEntriesInput, output *
 	n.resetElectionTimeout()
 
 	// If RPC request or response contains term T > currentTerm: set currentTerm = T, convert to follower (§5.1)
-	if input.Term > n.CurrentTerm {
+	if input.Term > n.currentTerm {
 		n.toFollower()
 		n.setLeaderID(input.LeaderID)
 		n.setCurrentTerm(input.Term)
 		n.setVotedFor(0)
 	}
 
-	if input.Term == n.CurrentTerm {
+	if input.Term == n.currentTerm {
 		n.setLeaderID(input.LeaderID)
 	}
 
@@ -63,16 +63,16 @@ func (n *RaftBrainImpl) AppendEntries(input *common.AppendEntriesInput, output *
 		logItem, err := n.GetLog(input.PrevLogIndex)
 		switch err {
 		case ErrLogIsEmtpy:
-			*output = common.AppendEntriesOutput{Term: n.CurrentTerm, Success: false, Message: MsgTheResponderHasNoLog, NodeID: n.ID}
+			*output = common.AppendEntriesOutput{Term: n.currentTerm, Success: false, Message: MsgTheResponderHasNoLog, NodeID: n.id}
 
 			return nil
 		case ErrIndexOutOfRange:
-			*output = common.AppendEntriesOutput{Term: n.CurrentTerm, Success: false, Message: MsgTheResponderHasFewerLogThanRequester, NodeID: n.ID}
+			*output = common.AppendEntriesOutput{Term: n.currentTerm, Success: false, Message: MsgTheResponderHasFewerLogThanRequester, NodeID: n.id}
 
 			return nil
 		case nil:
 			if logItem.Term != input.PrevLogTerm {
-				*output = common.AppendEntriesOutput{Term: n.CurrentTerm, Success: false, Message: MsgPreviousLogTermsAreNotMatched, NodeID: n.ID}
+				*output = common.AppendEntriesOutput{Term: n.currentTerm, Success: false, Message: MsgPreviousLogTermsAreNotMatched, NodeID: n.id}
 
 				return nil
 			}
@@ -83,7 +83,7 @@ func (n *RaftBrainImpl) AppendEntries(input *common.AppendEntriesInput, output *
 		if err == nil {
 			if logItem.Term != input.Term {
 				n.deleteLogFrom(input.PrevLogIndex + 1)
-				*output = common.AppendEntriesOutput{Term: n.CurrentTerm, Success: false, Message: MsgCurrentLogTermsAreNotMatched, NodeID: n.ID}
+				*output = common.AppendEntriesOutput{Term: n.currentTerm, Success: false, Message: MsgCurrentLogTermsAreNotMatched, NodeID: n.id}
 
 				return nil
 			}
@@ -99,13 +99,13 @@ func (n *RaftBrainImpl) AppendEntries(input *common.AppendEntriesInput, output *
 	}
 
 	// 5. If leaderCommit > commitIndex, set commitIndex = min(leaderCommit, index of last new entry)
-	if input.LeaderCommit > n.CommitIndex {
-		n.CommitIndex = common.Min(input.LeaderCommit, len(n.Logs)) // data race
+	if input.LeaderCommit > n.commitIndex {
+		n.commitIndex = common.Min(input.LeaderCommit, len(n.logs)) // data race
 	}
 
 	n.applyLog()
 
-	*output = common.AppendEntriesOutput{Term: n.CurrentTerm, Success: true, Message: "", NodeID: n.ID}
+	*output = common.AppendEntriesOutput{Term: n.currentTerm, Success: true, Message: "", NodeID: n.id}
 
 	return nil
 }
@@ -117,54 +117,54 @@ func (n *RaftBrainImpl) RequestVote(input *common.RequestVoteInput, output *comm
 
 	defer func() {
 		n.log().Info().
-			Interface("id", n.ID).
+			Interface("id", n.id).
 			Interface("input", input).
 			Interface("output", output).
 			Msg("RequestVote")
 	}()
 
-	if n.State == common.StateRemoved {
+	if n.state == common.StateRemoved {
 		return nil
 	}
 
 	// when a follower is removed from the cluster, it will never aware of that,
 	// because the leader won't send update logs to removed follower after it receive the received command.
 	// this check is to prevent removed follower request vote from others.
-	if n.State == common.StateFollower {
+	if n.state == common.StateFollower {
 		if time.Since(n.lastHeartbeatReceivedTime) < time.Duration(n.electionTimeOutMin*1000000) {
 			output = &common.RequestVoteOutput{
-				Term:        n.CurrentTerm,
+				Term:        n.currentTerm,
 				Message:     MsgTheLeaderIsStillAlive,
 				VoteGranted: false,
-				NodeID:      n.ID,
+				NodeID:      n.id,
 			}
 			return
 		}
 	}
 
-	if n.State == common.StateLeader {
+	if n.state == common.StateLeader {
 		// leader always have latest membership information,
 		// if the disrupt node is not a member of cluster, just reject it.
 		if !n.isMemberOfCluster(&input.CandidateID) {
 			output = &common.RequestVoteOutput{
-				Term:        n.CurrentTerm,
+				Term:        n.currentTerm,
 				Message:     MsgTheLeaderIsStillAlive,
 				VoteGranted: false,
-				NodeID:      n.ID,
+				NodeID:      n.id,
 			}
 			return
 		}
 	}
 
 	// 1. Reply false if term < currentTerm (§5.1)
-	if input.Term < n.CurrentTerm {
-		*output = common.RequestVoteOutput{Term: n.CurrentTerm, VoteGranted: false, Message: MsgRequesterTermIsOutDated, NodeID: n.ID}
+	if input.Term < n.currentTerm {
+		*output = common.RequestVoteOutput{Term: n.currentTerm, VoteGranted: false, Message: MsgRequesterTermIsOutDated, NodeID: n.id}
 
 		return nil
 	}
 
 	// If RPC request or response contains term T > currentTerm: set currentTerm = T, convert to follower (§5.1)
-	if input.Term > n.CurrentTerm {
+	if input.Term > n.currentTerm {
 		n.setCurrentTerm(input.Term)
 		n.setLeaderID(0)
 		n.setVotedFor(0)
@@ -175,22 +175,22 @@ func (n *RaftBrainImpl) RequestVote(input *common.RequestVoteInput, output *comm
 	}
 
 	// 2. If votedFor is null or candidateId, and candidate’s log is at least as up-to-date as receiver’s log, grant vote (§5.2, §5.4)
-	if n.VotedFor == 0 || n.VotedFor == input.CandidateID {
+	if n.votedFor == 0 || n.votedFor == input.CandidateID {
 		// Retry Mechanisms: However, in a distributed system, network partitions, retries due to lost messages, or other anomalies might lead to a scenario where the same candidate might end up re-sending a RequestVote RPC, or where a follower might process a duplicate RequestVote.
 		if n.isLogUpToDate(input.LastLogIndex, input.LastLogTerm) {
 			n.setVotedFor(input.CandidateID)
 			n.resetElectionTimeout()
 
-			*output = common.RequestVoteOutput{Term: n.CurrentTerm, VoteGranted: true, Message: "", NodeID: n.ID}
+			*output = common.RequestVoteOutput{Term: n.currentTerm, VoteGranted: true, Message: "", NodeID: n.id}
 
 			return nil
 		} else {
-			*output = common.RequestVoteOutput{Term: n.CurrentTerm, VoteGranted: false, Message: MsgTheRequesterLogsAreOutOfDate, NodeID: n.ID}
+			*output = common.RequestVoteOutput{Term: n.currentTerm, VoteGranted: false, Message: MsgTheRequesterLogsAreOutOfDate, NodeID: n.id}
 
 			return nil
 		}
 	} else {
-		*output = common.RequestVoteOutput{Term: n.CurrentTerm, VoteGranted: false, Message: MsgTheResponderAlreadyMakeAVote, NodeID: n.ID}
+		*output = common.RequestVoteOutput{Term: n.currentTerm, VoteGranted: false, Message: MsgTheResponderAlreadyMakeAVote, NodeID: n.id}
 
 		return nil
 	}

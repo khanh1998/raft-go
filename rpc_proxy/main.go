@@ -32,8 +32,8 @@ type RPCProxyImpl struct {
 	brain       RaftBrain
 	rpcServer   *rpc.Server
 	logger      *zerolog.Logger
-	Stop        chan struct{}
-	Accessible  bool
+	stop        chan struct{}
+	accessible  bool
 	listener    net.Listener
 	lock        sync.RWMutex
 	connections []net.Conn // TODO: unsafe, memory leak
@@ -78,16 +78,16 @@ func (r *RPCProxyImpl) deletePeer(peerId int) {
 type NewRPCImplParams struct {
 	HostID  int
 	HostURL string
-	Log     *zerolog.Logger
+	Logger  *zerolog.Logger
 }
 
 func NewRPCImpl(params NewRPCImplParams) (*RPCProxyImpl, error) {
 	r := RPCProxyImpl{
 		hostID:     params.HostID,
 		hostURL:    params.HostURL,
-		logger:     params.Log,
-		Stop:       make(chan struct{}),
-		Accessible: true,
+		logger:     params.Logger,
+		stop:       make(chan struct{}),
+		accessible: true,
 		peers:      make(map[int]common.PeerRPCProxy),
 	}
 
@@ -199,7 +199,7 @@ func (r *RPCProxyImpl) initServer(url string) error {
 	r.listener = listener
 
 	go func() {
-		<-r.Stop
+		<-r.stop
 		err := r.listener.Close()
 		if err != nil {
 			r.log().Err(err).Msg("RPC Proxy stopping triggered")
@@ -365,4 +365,19 @@ func (r *RPCProxyImpl) callWithTimeout(peerID int, serviceMethod string, args an
 		return nil
 	}
 	return ErrRpcPeerConnectionIsNull
+}
+
+func (r *RPCProxyImpl) SetAccessible() {
+	r.accessible = true
+}
+
+func (r *RPCProxyImpl) SetInaccessible() {
+	r.accessible = false
+}
+
+func (r *RPCProxyImpl) Stop() {
+	select {
+	case r.stop <- struct{}{}:
+	default:
+	}
 }

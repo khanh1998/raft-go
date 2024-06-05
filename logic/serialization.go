@@ -21,10 +21,10 @@ func (n *RaftBrainImpl) serialize(delimiter bool, createdAt bool, source string)
 		data["time"] = time.Now().Format(time.RFC3339)
 	}
 
-	data["current_term"] = strconv.FormatInt(int64(n.CurrentTerm), 10)
-	data["voted_for"] = strconv.FormatInt(int64(n.VotedFor), 10)
-	data["log_count"] = strconv.FormatInt(int64(len(n.Logs)), 10)
-	for index, log := range n.Logs {
+	data["current_term"] = strconv.FormatInt(int64(n.currentTerm), 10)
+	data["voted_for"] = strconv.FormatInt(int64(n.votedFor), 10)
+	data["log_count"] = strconv.FormatInt(int64(len(n.logs)), 10)
+	for index, log := range n.logs {
 		key := fmt.Sprintf("log_%d", index)
 		data[key] = log.ToString()
 	}
@@ -37,20 +37,20 @@ func (n *RaftBrainImpl) deserialize(data map[string]string) error {
 		return err
 	}
 
-	n.CurrentTerm = int(currentTerm)
+	n.currentTerm = int(currentTerm)
 	votedFor, err := strconv.ParseInt(data["voted_for"], 10, 32)
 	if err != nil {
 		return err
 	}
 
-	n.VotedFor = int(votedFor)
+	n.votedFor = int(votedFor)
 
 	logCount, err := strconv.ParseInt(data["log_count"], 10, 32)
 	if err != nil {
 		return err
 	}
 
-	n.Logs = []common.Log{}
+	n.logs = []common.Log{}
 	for i := 0; i < int(logCount); i++ {
 		key := fmt.Sprintf("log_%d", i)
 
@@ -61,7 +61,7 @@ func (n *RaftBrainImpl) deserialize(data map[string]string) error {
 
 				return err
 			} else {
-				n.Logs = append(n.Logs, logItem)
+				n.logs = append(n.logs, logItem)
 			}
 		} else {
 			return errors.New("missing value to deserialize value of node")

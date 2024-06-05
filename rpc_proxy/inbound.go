@@ -6,22 +6,21 @@ import (
 )
 
 func (r *RPCProxyImpl) AppendEntries(input *common.AppendEntriesInput, output *common.AppendEntriesOutput) (err error) {
-	if !r.Accessible {
-		// TODO: make this timeout
+	if !r.accessible {
 		return ErrInaccessible
 	}
 	return r.brain.AppendEntries(input, output)
 }
 
 func (r *RPCProxyImpl) RequestVote(input *common.RequestVoteInput, output *common.RequestVoteOutput) (err error) {
-	if !r.Accessible {
+	if !r.accessible {
 		return ErrInaccessible
 	}
 	return r.brain.RequestVote(input, output)
 }
 
 func (r *RPCProxyImpl) Ping(name string, message *common.PingResponse) (err error) {
-	if !r.Accessible {
+	if !r.accessible {
 		return ErrInaccessible
 	}
 
@@ -39,7 +38,7 @@ func (r *RPCProxyImpl) Ping(name string, message *common.PingResponse) (err erro
 }
 
 func (r *RPCProxyImpl) GetInfo(_ *struct{}, info *common.GetStatusResponse) (err error) {
-	if !r.Accessible {
+	if !r.accessible {
 		return ErrInaccessible
 	}
 

@@ -20,20 +20,19 @@ type RaftBrainImpl struct {
 	db                        Persistence
 	members                   []common.ClusterMember
 	nextMemberId              int
-	State                     common.RaftState
-	ID                        int
-	LeaderID                  int
-	StateMachine              SimpleStateMachine
-	ElectionTimeOut           *time.Timer
-	HeartBeatTimeOut          *time.Timer
+	state                     common.RaftState
+	id                        int
+	leaderID                  int
+	stateMachine              SimpleStateMachine
+	electionTimeOut           *time.Timer
+	heartBeatTimeOut          *time.Timer
 	heartBeatTimeOutMin       int64 // millisecond
 	heartBeatTimeOutMax       int64 // millisecond
 	electionTimeOutMin        int64 // millisecond
 	electionTimeOutMax        int64 // millisecond
-	RpcProxy                  RPCProxy
-	Session                   SessionManager
-	ARM                       AsyncResponseManager
-	Stop                      chan struct{}
+	rpcProxy                  RPCProxy
+	arm                       AsyncResponseManager
+	stop                      chan struct{}
 	newMembers                chan common.ClusterMemberChange
 	inOutLock                 sync.RWMutex // this lock help to process requests in sequential order. requests are processed one after the other, not concurrently.
 	changeMemberLock          sync.Mutex   // lock for adding or removing a member from the cluster
@@ -41,18 +40,18 @@ type RaftBrainImpl struct {
 	lastHeartbeatReceivedTime time.Time
 	// Persistent state on all servers:
 	// Updated on stable storage before responding to RPCs
-	CurrentTerm int          // latest term server has seen (initialized to 0 on first boot, increases monotonically)
-	VotedFor    int          // candidateId that received vote in current term (or null if none)
-	Logs        []common.Log // log entries; each entry contains command for state machine, and term when entry was received by leader (first index is 1)
+	currentTerm int          // latest term server has seen (initialized to 0 on first boot, increases monotonically)
+	votedFor    int          // candidateId that received vote in current term (or null if none)
+	logs        []common.Log // log entries; each entry contains command for state machine, and term when entry was received by leader (first index is 1)
 
 	// Volatile state on all servers:
-	CommitIndex int // index of highest log entry known to be committed (initialized to 0, increases monotonically)
-	LastApplied int // index of highest log entry applied to state machine (initialized to 0, increases monotonically)
+	commitIndex int // index of highest log entry known to be committed (initialized to 0, increases monotonically)
+	lastApplied int // index of highest log entry applied to state machine (initialized to 0, increases monotonically)
 
 	// Volatile state on leaders:
 	// Reinitialized after election
-	NextIndex  map[int]int // for each server, index of the next log entry to send to that server (initialized to leader last log index + 1)
-	MatchIndex map[int]int // for each server, index of highest log entry known to be replicated on server (initialized to 0, increases monotonically)
+	nextIndex  map[int]int // for each server, index of the next log entry to send to that server (initialized to leader last log index + 1)
+	matchIndex map[int]int // for each server, index of highest log entry known to be replicated on server (initialized to 0, increases monotonically)
 }
 
 type AsyncResponseItem struct {
@@ -108,7 +107,7 @@ type NewRaftBrainParams struct {
 	HeartBeatTimeOutMax int64
 	ElectionTimeOutMin  int64
 	ElectionTimeOutMax  int64
-	Log                 *zerolog.Logger
+	Logger              *zerolog.Logger
 	DB                  Persistence
 	StateMachine        SimpleStateMachine
 	CachingUp           bool // will be ignored if the cluster mode is STATIC
@@ -116,18 +115,18 @@ type NewRaftBrainParams struct {
 
 func NewRaftBrain(params NewRaftBrainParams) (*RaftBrainImpl, error) {
 	n := &RaftBrainImpl{
-		ID: params.ID,
-		State: func() common.RaftState {
+		id: params.ID,
+		state: func() common.RaftState {
 			if params.CachingUp {
 				return common.StateCatchingUp
 			}
 			return common.StateFollower
 		}(),
-		VotedFor:     0,
+		votedFor:     0,
 		db:           params.DB,
-		StateMachine: params.StateMachine,
-		ARM:          NewAsyncResponseManager(100),
-		Stop:         make(chan struct{}),
+		stateMachine: params.StateMachine,
+		arm:          NewAsyncResponseManager(100),
+		stop:         make(chan struct{}),
 		newMembers:   make(chan common.ClusterMemberChange, 10),
 		nextMemberId: params.ID + 1,
 
@@ -138,10 +137,10 @@ func NewRaftBrain(params NewRaftBrainParams) (*RaftBrainImpl, error) {
 
 		lastHeartbeatReceivedTime: time.Now(),
 
-		logger:     params.Log,
+		logger:     params.Logger,
 		members:    []common.ClusterMember{},
-		NextIndex:  make(map[int]int),
-		MatchIndex: make(map[int]int),
+		nextIndex:  make(map[int]int),
+		matchIndex: make(map[int]int),
 	}
 
 	err := n.restoreRaftStateFromFile()
@@ -163,7 +162,7 @@ func NewRaftBrain(params NewRaftBrainParams) (*RaftBrainImpl, error) {
 
 			// if this is the first node of cluster and the first time the node get boosted up,
 			// initialy add members to the cluster. otherwise, it's already in the log.
-			if len(n.Logs) == 0 {
+			if len(n.logs) == 0 {
 				mem := params.Members[0]
 
 				n.appendLog(common.Log{
@@ -193,6 +192,13 @@ func NewRaftBrain(params NewRaftBrainParams) (*RaftBrainImpl, error) {
 	return n, nil
 }
 
+func (n *RaftBrainImpl) Stop() {
+	select {
+	case n.stop <- struct{}{}:
+	default:
+	}
+}
+
 func (n *RaftBrainImpl) Start() {
 	n.resetElectionTimeout()
 	n.resetHeartBeatTimeout()
@@ -207,24 +213,15 @@ func (n *RaftBrainImpl) Start() {
 func (n *RaftBrainImpl) log() *zerolog.Logger {
 	// data race
 	sub := n.logger.With().
-		Int("id", n.ID).
-		Str("state", n.State.String()).
-		Int("votedFor", n.VotedFor).
-		Int("leaderId", n.VotedFor).
-		Int("term", n.CurrentTerm).
-		Int("commitIndex", n.CommitIndex).
-		Int("lastApplied", n.LastApplied).
-		Interface("nextIndex", n.NextIndex).
-		Interface("matchIndex", n.MatchIndex).
+		Int("id", n.id).
+		Str("state", n.state.String()).
+		Int("votedFor", n.votedFor).
+		Int("leaderId", n.votedFor).
+		Int("term", n.currentTerm).
+		Int("commitIndex", n.commitIndex).
+		Int("lastApplied", n.lastApplied).
+		Interface("nextIndex", n.nextIndex).
+		Interface("matchIndex", n.matchIndex).
 		Logger()
 	return &sub
-}
-
-func (n *RaftBrainImpl) GetInfo() common.GetStatusResponse {
-	return common.GetStatusResponse{
-		ID:       n.ID,
-		State:    n.State,
-		Term:     n.CurrentTerm,
-		LeaderId: n.LeaderID,
-	}
 }

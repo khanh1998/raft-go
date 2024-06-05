@@ -46,7 +46,7 @@ func (c *Cluster) createNewNode(id int) error {
 			HeartBeatTimeOutMax: c.config.MaxHeartbeatTimeoutMs,
 			ElectionTimeOutMin:  c.config.MinElectionTimeoutMs,
 			ElectionTimeOutMax:  c.config.MaxElectionTimeoutMs,
-			Log:                 c.log,
+			Logger:              c.log,
 			Members: func() []common.ClusterMember {
 				if id == 1 {
 					return []common.ClusterMember{{ID: id, RpcUrl: rpcUrl, HttpUrl: httpUrl}}
@@ -59,12 +59,14 @@ func (c *Cluster) createNewNode(id int) error {
 		},
 		RPCProxy: rpc_proxy.NewRPCImplParams{
 			HostURL: rpcUrl,
-			Log:     c.log,
+			Logger:  c.log,
 			HostID:  id,
 		},
 		HTTPProxy: http_proxy.NewHttpProxyParams{
-			URL: httpUrl,
+			URL:    httpUrl,
+			Logger: c.log,
 		},
+		Logger: c.log,
 	}
 
 	n := node.NewNode(param)

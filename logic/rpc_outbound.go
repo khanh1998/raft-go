@@ -12,7 +12,7 @@ func (n *RaftBrainImpl) BroadCastRequestVote() {
 
 	n.resetElectionTimeout()
 
-	if n.State != common.StateFollower {
+	if n.state != common.StateFollower {
 		return
 	}
 	// On conversion to candidate, start election:
@@ -20,14 +20,14 @@ func (n *RaftBrainImpl) BroadCastRequestVote() {
 	// Vote for self
 	// Reset election timer
 	// Send RequestVote RPCs to all other servers
-	n.setCurrentTerm(n.CurrentTerm + 1)
+	n.setCurrentTerm(n.currentTerm + 1)
 	n.toCandidate()
-	n.setVotedFor(n.ID)
+	n.setVotedFor(n.id)
 
 	lastLogIndex, lastLogTerm := n.lastLogInfo()
 	input := common.RequestVoteInput{
-		Term:         n.CurrentTerm,
-		CandidateID:  n.ID,
+		Term:         n.currentTerm,
+		CandidateID:  n.id,
 		LastLogIndex: lastLogIndex,
 		LastLogTerm:  lastLogTerm,
 	}
@@ -36,15 +36,15 @@ func (n *RaftBrainImpl) BroadCastRequestVote() {
 	responsesMutex := sync.Mutex{}
 
 	voteGrantedCount := 1 // voted for itself first
-	maxTerm := n.CurrentTerm
-	maxTermID := n.ID
+	maxTerm := n.currentTerm
+	maxTermID := n.id
 
 	var count sync.WaitGroup
 
 	timeout := 150 * time.Millisecond
 
 	for _, peer := range n.members {
-		if peer.ID == n.ID {
+		if peer.ID == n.id {
 			continue
 		}
 
@@ -52,7 +52,7 @@ func (n *RaftBrainImpl) BroadCastRequestVote() {
 		go func(peerID int) {
 			defer count.Done()
 
-			output, err := n.RpcProxy.SendRequestVote(peerID, &timeout, input)
+			output, err := n.rpcProxy.SendRequestVote(peerID, &timeout, input)
 			if err != nil {
 				n.log().Err(err).Msg("Client invocation error: ")
 			} else {
@@ -103,14 +103,14 @@ func (n *RaftBrainImpl) BroadcastAppendEntries() (majorityOK bool) {
 	n.inOutLock.Lock()
 	defer n.inOutLock.Unlock()
 
-	if n.State != common.StateLeader {
+	if n.state != common.StateLeader {
 		return false
 	}
 
 	n.resetHeartBeatTimeout()
 	successCount := 1 // count how many servers it can communicate to
-	maxTerm := n.CurrentTerm
-	maxTermID := n.ID
+	maxTerm := n.currentTerm
+	maxTermID := n.id
 	m := map[int]common.AppendEntriesOutput{}
 	responseLock := sync.Mutex{}
 
@@ -122,7 +122,7 @@ func (n *RaftBrainImpl) BroadcastAppendEntries() (majorityOK bool) {
 
 	var count sync.WaitGroup
 	for _, peer := range n.members {
-		if peer.ID == n.ID {
+		if peer.ID == n.id {
 			continue
 		}
 
@@ -130,11 +130,11 @@ func (n *RaftBrainImpl) BroadcastAppendEntries() (majorityOK bool) {
 		go func(peerID int) {
 			defer count.Done()
 
-			nextIdx := n.NextIndex[peerID]
+			nextIdx := n.nextIndex[peerID]
 			input := common.AppendEntriesInput{
-				Term:         n.CurrentTerm,
-				LeaderID:     n.ID,
-				LeaderCommit: n.CommitIndex,
+				Term:         n.currentTerm,
+				LeaderID:     n.id,
+				LeaderCommit: n.commitIndex,
 			}
 
 			if nextIdx > 1 {
@@ -153,7 +153,7 @@ func (n *RaftBrainImpl) BroadcastAppendEntries() (majorityOK bool) {
 
 			timeout := 150 * time.Millisecond
 
-			output, err := n.RpcProxy.SendAppendEntries(peerID, &timeout, input)
+			output, err := n.rpcProxy.SendAppendEntries(peerID, &timeout, input)
 			if err != nil {
 				n.log().Err(err).Msg("BroadcastAppendEntries: ")
 			} else {
@@ -165,11 +165,11 @@ func (n *RaftBrainImpl) BroadcastAppendEntries() (majorityOK bool) {
 				successCount += 1
 
 				if output.Success {
-					n.MatchIndex[peerID] = common.Min(n.NextIndex[peerID], len(n.Logs))
-					n.NextIndex[peerID] = common.Min(n.NextIndex[peerID]+1, len(n.Logs)+1) // data race
+					n.matchIndex[peerID] = common.Min(n.nextIndex[peerID], len(n.logs))
+					n.nextIndex[peerID] = common.Min(n.nextIndex[peerID]+1, len(n.logs)+1) // data race
 				} else {
-					if output.Term <= n.CurrentTerm {
-						n.NextIndex[peerID] = common.Max(0, n.NextIndex[peerID]-1) // data race
+					if output.Term <= n.currentTerm {
+						n.nextIndex[peerID] = common.Max(0, n.nextIndex[peerID]-1) // data race
 					} else {
 						// the appendEntries request is failed,
 						// because current leader is outdated
@@ -183,7 +183,7 @@ func (n *RaftBrainImpl) BroadcastAppendEntries() (majorityOK bool) {
 
 	count.Wait()
 
-	if maxTerm > n.CurrentTerm {
+	if maxTerm > n.currentTerm {
 		// If RPC request or response contains term T > currentTerm: set currentTerm = T, convert to follower (§5.1)
 		n.setCurrentTerm(maxTerm)
 		n.setVotedFor(0)
@@ -193,21 +193,21 @@ func (n *RaftBrainImpl) BroadcastAppendEntries() (majorityOK bool) {
 		majorityOK = true
 		// If there exists an N such that N > commitIndex, a majority
 		// of matchIndex[i] ≥ N, and log[N].term == currentTerm: set commitIndex = N (§5.3, §5.4).
-		for N := n.GetLogLen(); N > n.CommitIndex; N-- {
+		for N := len(n.logs); N > n.commitIndex; N-- {
 			log, err := n.GetLog(N)
 			if err != nil {
 				break
 			}
 
 			count := 1 // count for itself
-			for _, matchIndex := range n.MatchIndex {
+			for _, matchIndex := range n.matchIndex {
 				if matchIndex >= N {
 					count += 1
 				}
 			}
 
-			if count >= n.Quorum() && log.Term == n.CurrentTerm {
-				n.CommitIndex = N
+			if count >= n.Quorum() && log.Term == n.currentTerm {
+				n.commitIndex = N
 
 				break
 			}

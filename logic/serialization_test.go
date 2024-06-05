@@ -50,9 +50,9 @@ func Test_nodeImpl_Serialize(t *testing.T) {
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
 			n := RaftBrainImpl{
-				CurrentTerm: tt.fields.CurrentTerm,
-				VotedFor:    tt.fields.VotedFor,
-				Logs:        tt.fields.Logs,
+				currentTerm: tt.fields.CurrentTerm,
+				votedFor:    tt.fields.VotedFor,
+				logs:        tt.fields.Logs,
 			}
 			if got := n.serialize(false, false, ""); !reflect.DeepEqual(got, tt.want) {
 				t.Errorf("nodeImpl.Serialize() = %v, want %v", got, tt.want)
@@ -119,20 +119,20 @@ func Test_nodeImpl_Deserialize(t *testing.T) {
 				t.Errorf("nodeImpl.Deserialize() error = %v, wantErr %v", err, tt.wantErr)
 			}
 
-			if n.CurrentTerm != tt.want.CurrentTerm {
-				t.Errorf("current term val = %v, want wal %v", n.CurrentTerm, tt.want.CurrentTerm)
+			if n.currentTerm != tt.want.CurrentTerm {
+				t.Errorf("current term val = %v, want wal %v", n.currentTerm, tt.want.CurrentTerm)
 			}
 
-			if n.VotedFor != tt.want.VotedFor {
-				t.Errorf("current term val = %v, want wal %v", n.VotedFor, tt.want.VotedFor)
+			if n.votedFor != tt.want.VotedFor {
+				t.Errorf("current term val = %v, want wal %v", n.votedFor, tt.want.VotedFor)
 			}
 
 			if !reflect.DeepEqual(n.serialize(false, false, ""), tt.args.data) {
 				t.Errorf("current term val = %v, want wal %v", n.serialize(false, false, ""), tt.args.data)
 			}
 
-			if !reflect.DeepEqual(n.Logs, tt.want.Logs) {
-				t.Errorf("current term val = %v, want wal %v", n.Logs, tt.want.Logs)
+			if !reflect.DeepEqual(n.logs, tt.want.Logs) {
+				t.Errorf("current term val = %v, want wal %v", n.logs, tt.want.Logs)
 			}
 		})
 	}

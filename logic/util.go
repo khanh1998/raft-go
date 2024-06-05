@@ -8,7 +8,7 @@ import (
 
 func (n *RaftBrainImpl) isMemberOfCluster(id *int) bool {
 	if id == nil {
-		id = &n.ID
+		id = &n.id
 	}
 
 	for _, mem := range n.members {
@@ -27,23 +27,23 @@ func (n *RaftBrainImpl) deleteLogFrom(index int) error {
 		}
 	}()
 
-	if len(n.Logs) == 0 {
+	if len(n.logs) == 0 {
 		return ErrLogIsEmtpy
 	}
 
-	if index > len(n.Logs) || index <= 0 {
+	if index > len(n.logs) || index <= 0 {
 		return ErrIndexOutOfRange
 	}
 
 	realIndex := int(index - 1)
-	deletedLogs := n.Logs[realIndex:]
-	n.Logs = n.Logs[:realIndex]
+	deletedLogs := n.logs[realIndex:]
+	n.logs = n.logs[:realIndex]
 
 	// these two numbers will be calculated again later.
-	n.LastApplied = 0
-	n.CommitIndex = 0
+	n.lastApplied = 0
+	n.commitIndex = 0
 	// clear all data in state machine, so logs can be applied from beginning later.
-	n.StateMachine = common.NewKeyValueStateMachine()
+	n.stateMachine = common.NewKeyValueStateMachine()
 
 	for i := len(deletedLogs) - 1; i >= 0; i-- {
 		n.revertChangeMember(deletedLogs[i].Command.(string))
@@ -60,7 +60,7 @@ func (n *RaftBrainImpl) appendLogs(logItems []common.Log) {
 		}
 	}()
 
-	n.Logs = append(n.Logs, logItems...)
+	n.logs = append(n.logs, logItems...)
 
 	// we need to update cluster membership infomation as soon as we receive the log,
 	// don't need to wait until it get commited.
@@ -70,9 +70,6 @@ func (n *RaftBrainImpl) appendLogs(logItems []common.Log) {
 }
 
 func (n *RaftBrainImpl) appendLog(logItem common.Log) int {
-	n.dataLock.Lock()
-	defer n.dataLock.Unlock()
-
 	defer func() {
 		data := n.serialize(true, true, "AppendLog")
 		if err := n.db.AppendLog(data); err != nil {
@@ -80,8 +77,8 @@ func (n *RaftBrainImpl) appendLog(logItem common.Log) int {
 		}
 	}()
 
-	n.Logs = append(n.Logs, logItem)
-	index := len(n.Logs)
+	n.logs = append(n.logs, logItem)
+	index := len(n.logs)
 
 	n.log().Info().Interface("log", logItem).Msg("AppendLog")
 
@@ -92,27 +89,18 @@ func (n *RaftBrainImpl) appendLog(logItem common.Log) int {
 	return index
 }
 
-func (n *RaftBrainImpl) GetLogLen() int {
-	n.dataLock.RLock()
-	defer n.dataLock.RUnlock()
-	return len(n.Logs)
-}
-
 func (n *RaftBrainImpl) GetLog(index int) (common.Log, error) {
-	n.dataLock.RLock()
-	defer n.dataLock.RUnlock()
-
-	if len(n.Logs) == 0 {
+	if len(n.logs) == 0 {
 		return common.Log{}, ErrLogIsEmtpy
 	}
 
-	if index > len(n.Logs) || index <= 0 {
+	if index > len(n.logs) || index <= 0 {
 		return common.Log{}, ErrIndexOutOfRange
 	}
 
 	realIndex := index - 1
 
-	return n.Logs[realIndex], nil
+	return n.logs[realIndex], nil
 }
 
 func (n *RaftBrainImpl) setLeaderID(leaderId int) {
@@ -123,7 +111,7 @@ func (n *RaftBrainImpl) setLeaderID(leaderId int) {
 		}
 	}()
 
-	n.LeaderID = leaderId
+	n.leaderID = leaderId
 }
 
 func (n *RaftBrainImpl) setCurrentTerm(term int) {
@@ -134,7 +122,7 @@ func (n *RaftBrainImpl) setCurrentTerm(term int) {
 		}
 	}()
 
-	n.CurrentTerm = term
+	n.currentTerm = term
 }
 
 func (n *RaftBrainImpl) setVotedFor(nodeID int) {
@@ -145,11 +133,11 @@ func (n *RaftBrainImpl) setVotedFor(nodeID int) {
 		}
 	}()
 
-	n.VotedFor = nodeID
+	n.votedFor = nodeID
 }
 
 func (n *RaftBrainImpl) SetRpcProxy(rpc RPCProxy) {
-	n.RpcProxy = rpc
+	n.rpcProxy = rpc
 }
 
 func (n *RaftBrainImpl) isLogUpToDate(lastLogIndex int, lastLogTerm int) bool {
@@ -166,22 +154,22 @@ func (n *RaftBrainImpl) isLogUpToDate(lastLogIndex int, lastLogTerm int) bool {
 // All servers: If commitIndex > lastApplied: increment lastApplied,
 // apply log[lastApplied] to state machine (§5.3)
 func (n *RaftBrainImpl) applyLog() {
-	for n.CommitIndex > n.LastApplied {
-		n.LastApplied += 1
+	for n.commitIndex > n.lastApplied {
+		n.lastApplied += 1
 
-		log, err := n.GetLog(n.LastApplied)
+		log, err := n.GetLog(n.lastApplied)
 		if err != nil {
 			break
 		}
 
-		res, err := n.StateMachine.Process(log.ClientID, log.SequenceNum, log.Command, n.LastApplied)
+		res, err := n.stateMachine.Process(log.ClientID, log.SequenceNum, log.Command, n.lastApplied)
 		if err != nil {
 			n.log().Err(err).Msg("applyLog_Process")
 			continue
 		}
 
-		if n.State == common.StateLeader {
-			err = n.ARM.PutResponse(n.LastApplied, res, err, 30*time.Second)
+		if n.state == common.StateLeader {
+			err = n.arm.PutResponse(n.lastApplied, res, err, 30*time.Second)
 			if err != nil {
 				n.log().Err(err).Msg("ApplyLog_PutResponse")
 			} else {
@@ -198,9 +186,9 @@ func (r *RaftBrainImpl) Quorum() int {
 }
 
 func (n *RaftBrainImpl) lastLogInfo() (index, term int) {
-	if len(n.Logs) > 0 {
-		index = len(n.Logs) - 1
-		term = n.Logs[index].Term
+	if len(n.logs) > 0 {
+		index = len(n.logs) - 1
+		term = n.logs[index].Term
 
 		return index + 1, term
 	}

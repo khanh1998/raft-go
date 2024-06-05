@@ -118,9 +118,9 @@ func main() {
 
 	output := zerolog.ConsoleWriter{Out: os.Stdout, TimeFormat: time.RFC3339Nano}
 
-	log := zerolog.New(output).With().Timestamp().Logger()
+	logger := zerolog.New(output).With().Timestamp().Logger()
 
-	log.Info().Interface("config", config).Msg("config")
+	logger.Info().Interface("config", config).Msg("config")
 
 	fileName := fmt.Sprintf("log.%d.dat", id)
 
@@ -134,7 +134,7 @@ func main() {
 			HeartBeatTimeOutMax: config.MaxHeartbeatTimeoutMs,
 			ElectionTimeOutMin:  config.MinElectionTimeoutMs,
 			ElectionTimeOutMax:  config.MaxElectionTimeoutMs,
-			Log:                 &log,
+			Logger:              &logger,
 			Members:             clusterMembers,
 			DB:                  persistance.NewPersistence(fileName),
 			StateMachine:        common.NewKeyValueStateMachine(),
@@ -142,11 +142,13 @@ func main() {
 		},
 		RPCProxy: rpc_proxy.NewRPCImplParams{
 			HostURL: rpcUrl,
-			Log:     &log,
+			Logger:  &logger,
 		},
 		HTTPProxy: http_proxy.NewHttpProxyParams{
-			URL: httpUrl,
+			URL:    httpUrl,
+			Logger: &logger,
 		},
+		Logger: &logger,
 	}
 
 	n := node.NewNode(params)
@@ -155,5 +157,5 @@ func main() {
 	signChan := make(chan os.Signal, 1)
 	signal.Notify(signChan, os.Interrupt, syscall.SIGTERM)
 	<-signChan
-	log.Info().Msg("Shut down")
+	logger.Info().Msg("Shut down")
 }
