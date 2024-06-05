@@ -47,9 +47,9 @@ func (c *Cluster) init(filePath string) {
 	c.MaxHeartbeatTimeout = time.Duration(config.MaxHeartbeatTimeoutMs * 1000 * 1000)
 
 	zerolog.TimeFieldFormat = time.RFC3339Nano
-	output := zerolog.ConsoleWriter{Out: os.Stdout, TimeFormat: time.RFC3339Nano}
+	stdOutput := zerolog.ConsoleWriter{Out: os.Stdout, TimeFormat: time.RFC3339Nano}
 
-	log := zerolog.New(output).With().Timestamp().Logger()
+	log := zerolog.New(stdOutput).With().Timestamp().Logger()
 
 	peers := []common.ClusterMember{}
 	for _, mem := range config.Cluster.Servers {
@@ -140,26 +140,51 @@ func (c *Cluster) DisconnectLeader() error {
 	return nil
 }
 
-func (c *Cluster) StopLeader() error {
+func (c *Cluster) StopLeader() (nodeId int, err error) {
 	status, err := c.HasOneLeader()
 	if err != nil {
-		return err
+		return 0, err
 	}
 
-	c.StopNode(status.ID)
-	return nil
+	return status.ID, c.StopNode(status.ID)
 }
 
-func (c *Cluster) StopNode(nodeId int) {
+func (c *Cluster) StopAll() {
+	for _, node := range c.Nodes {
+		node.Stop()
+	}
+}
+
+func (c *Cluster) StopNode(nodeId int) error {
 	for _, node := range c.Nodes {
 		if node == nil {
 			continue
 		}
 		if node.ID == nodeId {
 			node.Stop()
+			err := c.RpcAgent.Disconnect(nodeId)
+			if err != nil {
+				return err
+			}
 			break
 		}
 	}
+	return nil
+}
+
+// for static cluster only
+func (c *Cluster) StartNode(nodeId int) error {
+	for _, node := range c.Nodes {
+		if node == nil {
+			continue
+		}
+		if node.ID == nodeId {
+			node.Start(false, false)
+			break
+		}
+	}
+
+	return nil
 }
 
 func (c *Cluster) RestartNode(nodeId int, sleep time.Duration) {
@@ -177,6 +202,19 @@ func (c *Cluster) RestartNode(nodeId int, sleep time.Duration) {
 			break
 		}
 	}
+}
+
+func (c *Cluster) CountLiveNode() (count int, err error) {
+	timeout := 50 * time.Millisecond
+	for _, n := range c.Nodes {
+		_, err = c.RpcAgent.SendPing(n.ID, &timeout)
+		if err != nil {
+			continue
+		}
+
+		count += 1
+	}
+	return count, nil
 }
 
 func (c *Cluster) HasOneLeader() (common.GetStatusResponse, error) {
@@ -215,7 +253,9 @@ func (c *Cluster) HasOneLeader() (common.GetStatusResponse, error) {
 }
 
 func (c Cluster) Clean() {
-	for i := 0; i < len(c.Nodes); i++ {
-		os.Remove(fmt.Sprintf("test.log.%d.dat", i+1))
+	for id, node := range c.Nodes {
+		node.Stop()
+		os.Remove(fmt.Sprintf("test.log.%d.dat", id))
+		delete(c.Nodes, id)
 	}
 }

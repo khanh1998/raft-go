@@ -65,9 +65,19 @@ func (n *Node) Crash() error {
 
 func (n *Node) Stop() error {
 	n.SetInaccessible()
-	n.rpc.Stop <- struct{}{}
-	n.http.Stop <- struct{}{}
-	n.brain.Stop <- struct{}{}
+	select {
+	case n.rpc.Stop <- struct{}{}:
+	default:
+	}
+	select {
+	case n.http.Stop <- struct{}{}:
+	default:
+	}
+	select {
+	case n.brain.Stop <- struct{}{}:
+	default:
+	}
+
 	return nil
 }
 

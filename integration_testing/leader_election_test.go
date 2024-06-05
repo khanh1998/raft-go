@@ -14,9 +14,16 @@ func AssertHavingNoLeader(t *testing.T, c *Cluster) {
 	assert.ErrorIs(t, err, ErrThereIsNoLeader, "expect no leader in cluster")
 }
 
-func AssertHavingOneLeader(t *testing.T, c *Cluster) common.GetStatusResponse {
-	time.Sleep(3 * c.MaxElectionTimeout)
-	status, err := c.HasOneLeader()
+func AssertHavingOneLeader(t *testing.T, c *Cluster) (status common.GetStatusResponse) {
+	var err error
+
+	for i := 0; i < 5; i++ {
+		time.Sleep(c.MaxElectionTimeout)
+		status, err = c.HasOneLeader()
+		if err == nil || err != ErrThereIsNoLeader {
+			break
+		}
+	}
 
 	assert.NoError(t, err, "expect one leader int the cluster")
 	assert.Greater(t, status.Term, 0)
@@ -46,9 +53,25 @@ func TestReLeaderElection(t *testing.T) {
 	status1 := AssertHavingOneLeader(t, c)
 
 	// stop the leader, and check status immediately
-	c.StopNode(status1.ID)
+	err := c.StopNode(status1.ID)
+	assert.NoError(t, err)
 	AssertHavingNoLeader(t, c)
 
 	// re-elect new leader
 	AssertHavingOneLeader(t, c)
+}
+
+func TestStopAndStartNode(t *testing.T) {
+	c := NewCluster("3-nodes.yml")
+	defer c.Clean()
+	AssertHavingOneLeader(t, c)
+	AssertLiveNode(t, c, 3)
+
+	stopNodeId, err := c.StopLeader()
+	assert.NoError(t, err)
+	AssertLiveNode(t, c, 2)
+	AssertHavingOneLeader(t, c)
+
+	c.StartNode(stopNodeId)
+	AssertLiveNode(t, c, 3)
 }

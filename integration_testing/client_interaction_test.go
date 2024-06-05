@@ -24,17 +24,39 @@ func TestWithoutLeaderCrashed(t *testing.T) {
 
 	for i := 0; i < 50; i++ {
 		key, value := "count", strconv.Itoa(i)
-		SetAndGet(t, c, key, value)
+		AssertSetAndGet(t, c, key, value)
 	}
 }
 
-func Get(t *testing.T, c *Cluster, key, expectedValue string) {
+func AssertGet(t *testing.T, c *Cluster, key, expectedValue string) {
 	value, err := c.HttpAgent.ClientQuery(key)
 	assert.NoError(t, err)
 	assert.Equal(t, expectedValue, value)
 }
 
-func SetAndGet(t *testing.T, c *Cluster, key, value string) {
+func AssertSetAndGetRange(t *testing.T, c *Cluster, key string, from int, to int) {
+	for i := from; i < to; i++ {
+		value := strconv.Itoa(i)
+		AssertSetAndGet(t, c, key, value)
+	}
+}
+
+func IncreaseByOne(t *testing.T, c *Cluster, key string) {
+	value, err := c.HttpAgent.ClientQuery(key)
+	if err != nil {
+		err = c.HttpAgent.ClientRequest(key, "0")
+		assert.NoError(t, err)
+		value, err = c.HttpAgent.ClientQuery(key)
+	}
+	assert.NoError(t, err)
+	intVal, err := strconv.Atoi(value)
+	assert.NoError(t, err)
+	nextVal := strconv.Itoa(intVal + 1)
+	err = c.HttpAgent.ClientRequest(key, nextVal)
+	assert.NoError(t, err)
+}
+
+func AssertSetAndGet(t *testing.T, c *Cluster, key, value string) {
 	setValue := value
 
 	seqNum := c.HttpAgent.sequenceNum
@@ -47,24 +69,49 @@ func SetAndGet(t *testing.T, c *Cluster, key, value string) {
 	assert.Greater(t, c.HttpAgent.sequenceNum, seqNum)
 }
 
+func AssertRegister(t *testing.T, c *Cluster) {
+	assert.Equal(t, c.HttpAgent.clientId, 0)
+	err := c.HttpAgent.RegisterClient()
+	assert.NoError(t, err)
+	assert.Greater(t, c.HttpAgent.clientId, 0)
+}
+
+func TestCoutingInStaticCluster(t *testing.T) {
+	c := NewCluster("3-nodes.yml")
+	defer c.Clean()
+	AssertHavingOneLeader(t, c)
+	AssertRegister(t, c)
+	for i := 0; i < 10; i++ {
+		IncreaseByOne(t, c, "count")
+	}
+	AssertGet(t, c, "count", "10")
+}
+
+func AssertLiveNode(t *testing.T, c *Cluster, expectCount int) {
+	count, err := c.CountLiveNode()
+	assert.NoError(t, err)
+	assert.Equal(t, expectCount, count)
+}
+
 func TestWithLeaderCrashed(t *testing.T) {
 	c := NewCluster("3-nodes.yml")
 	defer c.Clean()
 
 	AssertHavingOneLeader(t, c)
+	AssertLiveNode(t, c, 3)
+	AssertRegister(t, c)
+	IncreaseByOne(t, c, "count")
 
-	assert.Equal(t, c.HttpAgent.clientId, 0)
-	err := c.HttpAgent.RegisterClient()
+	stopNodeId, err := c.StopLeader()
 	assert.NoError(t, err)
-	assert.Greater(t, c.HttpAgent.clientId, 0)
 
-	SetAndGet(t, c, "count", "1")
-	c.StopLeader()
+	AssertLiveNode(t, c, 2)
 	AssertHavingOneLeader(t, c)
 
-	Get(t, c, "count", "1")
-	SetAndGet(t, c, "count", "2")
+	AssertGet(t, c, "count", "1")
+	IncreaseByOne(t, c, "count")
+	AssertGet(t, c, "count", "2")
 
-}
-func TestClientsConcurrentlyRequest(t *testing.T) {
+	c.StartNode(stopNodeId)
+	AssertLiveNode(t, c, 3)
 }

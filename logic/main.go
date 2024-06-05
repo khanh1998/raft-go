@@ -222,8 +222,9 @@ func (n *RaftBrainImpl) log() *zerolog.Logger {
 
 func (n *RaftBrainImpl) GetInfo() common.GetStatusResponse {
 	return common.GetStatusResponse{
-		ID:    n.ID,
-		State: n.State,
-		Term:  n.CurrentTerm,
+		ID:       n.ID,
+		State:    n.State,
+		Term:     n.CurrentTerm,
+		LeaderId: n.LeaderID,
 	}
 }

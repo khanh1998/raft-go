@@ -55,9 +55,10 @@ func (s RaftState) String() string {
 }
 
 type GetStatusResponse struct {
-	ID    int
-	State RaftState
-	Term  int
+	ID       int
+	State    RaftState
+	Term     int
+	LeaderId int
 }
 
 type PeerRPCProxy struct {
@@ -66,7 +67,10 @@ type PeerRPCProxy struct {
 }
 
 type PingResponse struct {
-	ID      int
-	RpcUrl  string
-	Message string
+	ID       int
+	LeaderId int
+	RpcUrl   string
+	Message  string
+	State    RaftState
+	Term     int
 }

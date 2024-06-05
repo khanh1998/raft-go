@@ -66,6 +66,46 @@ func NewHttpAgent(args HttpAgentArgs) *HttpAgent {
 	}
 }
 
+func (h *HttpAgent) RemoveServer(id int, httpUrl, rpcUrl string) (err error) {
+	h.sequenceNum += 1
+	payload := Request{
+		Command:     fmt.Sprintf("removeServer %d %s %s", id, httpUrl, rpcUrl),
+		ClientId:    h.clientId,
+		SequenceNum: h.sequenceNum,
+	}
+
+	result, err := h.findLeaderAndDo(payload)
+	if err != nil {
+		return err
+	}
+
+	if result.Status == common.StatusNotOK {
+		return fmt.Errorf("response is not ok: %v", result.Response)
+	}
+
+	return nil
+}
+
+func (h *HttpAgent) AddServer(id int, httpUrl, rpcUrl string) (err error) {
+	h.sequenceNum += 1
+	payload := Request{
+		Command:     fmt.Sprintf("addServer %d %s %s", id, httpUrl, rpcUrl),
+		ClientId:    h.clientId,
+		SequenceNum: h.sequenceNum,
+	}
+
+	result, err := h.findLeaderAndDo(payload)
+	if err != nil {
+		return err
+	}
+
+	if result.Status == common.StatusNotOK {
+		return fmt.Errorf("response is not ok: %v", result.Response)
+	}
+
+	return nil
+}
+
 func (h *HttpAgent) ClientRequest(key string, value string) (err error) {
 	h.sequenceNum += 1
 	payload := Request{

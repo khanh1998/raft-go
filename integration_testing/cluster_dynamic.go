@@ -22,7 +22,18 @@ func NewDynamicCluster(filePath string) *Cluster {
 	return &c
 }
 
-func (c *Cluster) createNewNode(id int, rpcUrl, httpUrl string) error {
+func (c *Cluster) AddServer(id int) error {
+	params := c.createNodeParams[id]
+	return c.HttpAgent.AddServer(id, params.HTTPProxy.URL, params.RPCProxy.HostURL)
+}
+
+func (c *Cluster) RemoveServer(id int) error {
+	params := c.createNodeParams[id]
+	return c.HttpAgent.RemoveServer(id, params.HTTPProxy.URL, params.HTTPProxy.URL)
+}
+
+func (c *Cluster) createNewNode(id int) error {
+	rpcUrl, httpUrl := fmt.Sprintf("localhost:%d", 1233+id), fmt.Sprintf("localhost:%d", 8079+id)
 	catchingUp := id > 1
 	param := node.NewNodeParams{
 		ID: id,
@@ -66,7 +77,7 @@ func (c *Cluster) createNewNode(id int, rpcUrl, httpUrl string) error {
 		Url: httpUrl,
 	})
 	c.HttpAgent.serverUrls[id] = httpUrl
-	return c.RpcAgent.ConnectToPeer(id, rpcUrl, 5, 1*time.Second)
+	return c.RpcAgent.ConnectToRpcServer(id, rpcUrl, 5, 150*time.Millisecond)
 }
 
 func (c *Cluster) initDynamic(filePath string) {
@@ -113,9 +124,10 @@ func (c *Cluster) initDynamic(filePath string) {
 
 	c.RpcAgent = *rpcAgent
 	c.HttpAgent = *httpAgent
+	c.HttpAgent.leaderId = 1 // initially, the leader is the first node, which is 1
 
 	// create first node of cluster
-	err = c.createNewNode(id, rpcUrl, httpUrl)
+	err = c.createNewNode(id)
 	if err != nil {
 		panic(err)
 	}

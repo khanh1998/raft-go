@@ -35,12 +35,12 @@ type NewRPCImplParams struct {
 func NewRPCImpl(params NewRPCImplParams) (*RpcAgentImpl, error) {
 	r := RpcAgentImpl{Log: params.Log, peerParams: params.Peers}
 
-	r.ConnectToPeers(params.Peers)
+	r.ConnectToRpcServers(params.Peers)
 
 	return &r, nil
 }
 
-func (r *RpcAgentImpl) ConnectToPeer(peerID int, peerURL string, retry int, retryDelay time.Duration) error {
+func (r *RpcAgentImpl) ConnectToRpcServer(peerID int, peerURL string, retry int, retryDelay time.Duration) error {
 	if r.peers == nil {
 		r.peers = map[int]common.PeerRPCProxy{}
 	}
@@ -50,18 +50,18 @@ func (r *RpcAgentImpl) ConnectToPeer(peerID int, peerURL string, retry int, retr
 		if err != nil {
 			time.Sleep(retryDelay)
 
-			r.log().Err(err).Msg("ConnectToPeer: Client connection error: ")
+			r.log().Err(err).Msg("ConnectToRpcServer: Client connection error: ")
 		} else {
-			r.log().Info().Msgf("ConnectToPeer: connect to %s successfully", peerURL)
+			r.log().Info().Msgf("ConnectToRpcServer: connect to %s successfully", peerURL)
 			r.peers[peerID] = common.PeerRPCProxy{
 				Conn: client,
 				URL:  peerURL,
 			}
 
-			timeout := 500 * time.Millisecond
+			timeout := 100 * time.Millisecond
 			res, err := r.SendPing(peerID, &timeout)
 			if err != nil {
-				r.log().Err(err).Str("url", peerURL).Msg("ConnectToPeer: cannot ping")
+				r.log().Err(err).Str("url", peerURL).Msg("ConnectToRpcServer: cannot ping")
 			} else {
 				r.log().Info().Interface("res", res).Msg("SendPing")
 				if res.ID != peerID {
@@ -77,7 +77,7 @@ func (r *RpcAgentImpl) ConnectToPeer(peerID int, peerURL string, retry int, retr
 	return nil
 }
 
-func (r *RpcAgentImpl) ConnectToPeers(params []common.ClusterMember) {
+func (r *RpcAgentImpl) ConnectToRpcServers(params []common.ClusterMember) {
 	r.peers = make(map[int]common.PeerRPCProxy)
 
 	var count sync.WaitGroup
@@ -85,7 +85,7 @@ func (r *RpcAgentImpl) ConnectToPeers(params []common.ClusterMember) {
 	for _, peer := range params {
 		count.Add(1)
 		go func(peerURL string, peerID int) {
-			r.ConnectToPeer(peerID, peerURL, 5, 150*time.Millisecond)
+			r.ConnectToRpcServer(peerID, peerURL, 1, 150*time.Millisecond)
 			count.Done()
 		}(peer.RpcUrl, peer.ID)
 	}
@@ -98,58 +98,21 @@ func (r *RpcAgentImpl) Disconnect(peerId int) error {
 	if !ok {
 		return ErrPeerIdDoesNotExist
 	}
+	r.log().Info().Str("serverUrl", peer.URL).Msg("Disconnect: rpc local agent")
+
+	r.peers[peerId] = common.PeerRPCProxy{URL: peer.URL, Conn: nil}
 
 	if err := peer.Conn.Close(); err != nil {
 		return err
-	}
-
-	r.peers[peerId] = common.PeerRPCProxy{URL: peer.URL}
-
-	return nil
-}
-
-func (r RpcAgentImpl) Reconnect(peerId int) error {
-	var peer *common.ClusterMember
-	for _, p := range r.peerParams {
-		if peerId == p.ID {
-			peer = &p
-		}
-	}
-
-	if peer == nil {
-		return ErrPeerIdDoesNotExist
-	}
-
-	targetUrl := peer.RpcUrl
-
-	client, err := rpc.Dial("tcp", targetUrl)
-	if err != nil {
-		return err
-	}
-
-	timeout := 500 * time.Millisecond
-	res, err := r.SendPing(peerId, &timeout)
-	if err != nil {
-		r.log().Err(err).Str("url", peer.RpcUrl).Msg("ConnectToPeer: cannot ping")
-	} else {
-		r.log().Info().Interface("res", res).Msg("SendPing")
-		if res.ID != peerId {
-			r.log().Err(nil).Msg("connect to wrong server")
-			return errors.New("connect to wrong server, input value is incorrect")
-		}
-	}
-
-	r.peers[peerId] = common.PeerRPCProxy{
-		Conn: client,
-		URL:  targetUrl,
 	}
 
 	return nil
 }
 
 var (
-	ErrPeerIdDoesNotExist      = errors.New("rpc peer id does not exist")
-	ErrRpcPeerConnectionIsNull = errors.New("rpc peer connection is nil")
+	ErrPeerIdDoesNotExist         = errors.New("rpc peer id does not exist")
+	ErrRpcPeerConnectionIsNull    = errors.New("rpc peer connection is nil")
+	ErrNoConnectionInfoCanBeFound = errors.New("no connection info can be found")
 )
 
 func (r RpcAgentImpl) CallWithTimeout(peerID int, serviceMethod string, args any, reply any, timeout time.Duration) error {
@@ -158,10 +121,18 @@ func (r RpcAgentImpl) CallWithTimeout(peerID int, serviceMethod string, args any
 		ok   bool
 	)
 
-	peer, ok = r.peers[peerID]
-	if !ok || peer.Conn == nil {
-		if err := r.Reconnect(peerID); err != nil {
-			return errors.Join(err, ErrPeerIdDoesNotExist)
+	for i := 0; i < 2; i++ {
+		peer, ok = r.peers[peerID]
+		if !ok {
+			return ErrNoConnectionInfoCanBeFound
+		}
+
+		if peer.Conn == nil {
+			if err := r.ConnectToRpcServer(peerID, peer.URL, 1, 100*time.Millisecond); err != nil {
+				return errors.Join(err, ErrPeerIdDoesNotExist)
+			}
+		} else {
+			break
 		}
 	}
 
@@ -172,10 +143,11 @@ func (r RpcAgentImpl) CallWithTimeout(peerID int, serviceMethod string, args any
 	call := peer.Conn.Go(serviceMethod, args, reply, nil)
 	select {
 	case <-time.After(timeout):
+		r.Disconnect(peerID)
 		return errors.New("RPC timeout")
 	case resp := <-call.Done:
 		if resp != nil && resp.Error != nil {
-			// r.Reconnect(peerID)
+			r.Disconnect(peerID)
 			return resp.Error
 		}
 	}

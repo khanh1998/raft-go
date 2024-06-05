@@ -25,10 +25,15 @@ func (r *RPCProxyImpl) Ping(name string, message *common.PingResponse) (err erro
 		return ErrInaccessible
 	}
 
+	info := r.brain.GetInfo()
+
 	*message = common.PingResponse{
-		ID:      r.hostID,
-		RpcUrl:  r.hostURL,
-		Message: fmt.Sprintf("Hello %s, from node ID: %d, URL: %s", name, r.hostID, r.hostURL),
+		ID:       r.hostID,
+		RpcUrl:   r.hostURL,
+		Message:  fmt.Sprintf("Hello %s, from node ID: %d, URL: %s", name, r.hostID, r.hostURL),
+		LeaderId: info.LeaderId,
+		State:    info.State,
+		Term:     info.Term,
 	}
 	return nil
 }

@@ -31,4 +31,5 @@ todos:
     membership -> add/remove server
     stop channel
 
-"{\n    \"status\": \"Not OK\",\n    \"response\": 0,\n    \"leader_hint\": \"\"\n}"
+- use env variable for rpc and http timeout
+- write a db engine
