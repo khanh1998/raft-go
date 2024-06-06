@@ -58,7 +58,7 @@ func (r *RaftBrainImpl) RemoveServer(input common.RemoveServerInput, output *com
 		*output = common.RemoveServerOutput{
 			Status:     common.StatusNotOK,
 			LeaderHint: r.getLeaderHttpUrl(),
-			Response:   "not leader",
+			Response:   common.NotLeader,
 		}
 
 		r.inOutLock.Unlock()
@@ -130,7 +130,7 @@ func (r *RaftBrainImpl) AddServer(input common.AddServerInput, output *common.Ad
 		*output = common.AddServerOutput{
 			Status:     common.StatusNotOK,
 			LeaderHint: r.getLeaderHttpUrl(),
-			Response:   "not leader",
+			Response:   common.NotLeader,
 		}
 
 		r.inOutLock.Unlock()

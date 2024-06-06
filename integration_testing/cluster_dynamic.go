@@ -15,6 +15,7 @@ import (
 	"github.com/rs/zerolog"
 )
 
+// after a cluster is created, need to wait a moment so a follower can win a election and become leader
 func NewDynamicCluster(filePath string) *Cluster {
 	c := Cluster{}
 	c.initDynamic(filePath)
@@ -22,14 +23,29 @@ func NewDynamicCluster(filePath string) *Cluster {
 	return &c
 }
 
+// dynamic cluster
 func (c *Cluster) AddServer(id int) error {
 	params := c.createNodeParams[id]
 	return c.HttpAgent.AddServer(id, params.HTTPProxy.URL, params.RPCProxy.HostURL)
 }
 
+// dynamic cluster
+func (c *Cluster) RemoveServerLeader() error {
+	status, err := c.HasOneLeader()
+	if err != nil {
+		return err
+	}
+
+	id := status.ID
+
+	params := c.createNodeParams[id]
+	return c.HttpAgent.RemoveServer(id, params.HTTPProxy.URL, params.RPCProxy.HostURL)
+}
+
+// dynamic cluster
 func (c *Cluster) RemoveServer(id int) error {
 	params := c.createNodeParams[id]
-	return c.HttpAgent.RemoveServer(id, params.HTTPProxy.URL, params.HTTPProxy.URL)
+	return c.HttpAgent.RemoveServer(id, params.HTTPProxy.URL, params.RPCProxy.HostURL)
 }
 
 func (c *Cluster) createNewNode(id int) error {

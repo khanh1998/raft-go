@@ -119,7 +119,7 @@ func (h *HttpAgent) ClientRequest(key string, value string) (err error) {
 		return err
 	}
 
-	if result.Status == common.StatusNotOK {
+	if result.Status == "" || result.Status == common.StatusNotOK {
 		return fmt.Errorf("response is not ok: %v", result.Response)
 	}
 
@@ -173,12 +173,10 @@ func (h *HttpAgent) RegisterClient() (err error) {
 }
 
 func (h *HttpAgent) findLeaderAndDo(payload Request) (result Response, err error) {
-	tried := map[int]struct{}{
-		h.leaderId: {},
-	}
+	tried := map[int]struct{}{0: {}}
 
 	for i := 0; i < len(h.serverInfos); i++ {
-		if h.leaderId == 0 { // it is assigned zero from the constructor
+		if h.leaderId == 0 {
 			// find a random server that we've never tried and send request to get leader hint
 			randIndex, leaderId := -1, 0
 			min, max := int64(0), int64(len(h.serverInfos))
@@ -192,30 +190,36 @@ func (h *HttpAgent) findLeaderAndDo(payload Request) (result Response, err error
 				}
 			}
 			h.leaderId = leaderId
-			tried[h.leaderId] = struct{}{}
 		}
+
+		tried[h.leaderId] = struct{}{}
 
 		url := "http://" + h.serverUrls[h.leaderId] + "/cli"
 		// try with current leader id (id can be outdated)
 		result, err = h.do(url, payload)
 		if err != nil {
-			log.Err(err).Msg("findLeaderAndDo_do")
-			// can't connect to current server, try others
-			tried[h.leaderId] = struct{}{}
+			h.log.Err(err).Msg("findLeaderAndDo_do")
 			h.leaderId = 0
 			continue
 		}
 
 		// hit leader
-		if result.Hint == "" {
+		if result.Status == common.StatusOK || result.Response != common.NotLeader {
 			return result, nil
 		}
 
-		// didn't hit leader, find leader id from the hint
+		// hit follower
+		h.leaderId = 0
+
+		// follwer server can't provide hint, try other server
+		if result.Hint == "" {
+			continue
+		}
+
+		// find leader id from the hint
 		for id, serverUrl := range h.serverUrls {
 			if result.Hint == serverUrl {
 				h.leaderId = id
-				tried[h.leaderId] = struct{}{}
 				break
 			}
 		}

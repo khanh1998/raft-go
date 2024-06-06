@@ -87,7 +87,7 @@ func (r *RaftBrainImpl) RegisterClient(input *common.RegisterClientInput, output
 		*output = common.RegisterClientOutput{
 			Status:     common.StatusNotOK,
 			LeaderHint: leaderUrl,
-			Response:   "error: connect to follower",
+			Response:   common.NotLeader,
 		}
 
 		r.inOutLock.Unlock()

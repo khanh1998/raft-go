@@ -119,6 +119,24 @@ func AssertHavingNoLeader(t *testing.T, c *Cluster) {
 	assert.ErrorIs(t, err, ErrThereIsNoLeader, "expect no leader in cluster")
 }
 
+func AssertLeaderChanged(t *testing.T, c *Cluster, prevLeaderId int, prevTerm int) (status common.GetStatusResponse) {
+	var err error
+
+	for i := 0; i < 5; i++ {
+		time.Sleep(c.MaxElectionTimeout)
+		status, err = c.HasOneLeader()
+		if err == nil || err != ErrThereIsNoLeader {
+			break
+		}
+	}
+
+	assert.NoError(t, err, "expect one leader int the cluster")
+	assert.Greater(t, status.Term, prevTerm)
+	assert.NotEqual(t, status.ID, prevLeaderId)
+
+	return status
+}
+
 func AssertHavingOneLeader(t *testing.T, c *Cluster) (status common.GetStatusResponse) {
 	var err error
 

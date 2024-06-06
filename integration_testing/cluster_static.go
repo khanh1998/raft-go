@@ -28,6 +28,7 @@ type Cluster struct {
 	config              *common.Config
 }
 
+// after a cluster is created, need to wait a moment so a follower can win a election and become leader
 func NewCluster(filePath string) *Cluster {
 	c := Cluster{}
 	c.init(filePath)
@@ -142,6 +143,15 @@ func (c *Cluster) DisconnectLeader() error {
 	return nil
 }
 
+func (c *Cluster) StopFollower() (nodeId int, err error) {
+	status, err := c.FindFirstFollower()
+	if err != nil {
+		return 0, err
+	}
+
+	return status.ID, c.StopNode(status.ID)
+}
+
 func (c *Cluster) StopLeader() (nodeId int, err error) {
 	status, err := c.HasOneLeader()
 	if err != nil {
@@ -164,7 +174,7 @@ func (c *Cluster) StopNode(nodeId int) error {
 		}
 		if node.ID == nodeId {
 			node.Stop()
-			err := c.RpcAgent.Disconnect(nodeId)
+			err := c.RpcAgent.disconnect(nodeId)
 			if err != nil {
 				return err
 			}
@@ -219,6 +229,26 @@ func (c *Cluster) CountLiveNode() (count int, err error) {
 	return count, nil
 }
 
+func (c *Cluster) FindFirstFollower() (status common.GetStatusResponse, err error) {
+	timeout := 100 * time.Millisecond
+	for _, n := range c.Nodes {
+		if n == nil {
+			continue
+		}
+		status, err = c.RpcAgent.GetInfo(n.ID, &timeout)
+		if err != nil {
+			c.log.Err(err).Msg("HasOneLeader_GetInfo")
+
+			continue
+		}
+
+		if status.State == common.StateFollower {
+			return
+		}
+	}
+
+	return status, errors.New("can't found any follower")
+}
 func (c *Cluster) HasOneLeader() (common.GetStatusResponse, error) {
 	leaderCount := 0
 	var leaderStatus common.GetStatusResponse
@@ -235,7 +265,7 @@ func (c *Cluster) HasOneLeader() (common.GetStatusResponse, error) {
 			continue
 		}
 
-		c.log.Info().Interface("status", status).Msgf("status node")
+		c.log.Info().Interface("status", status).Msgf("HasOneLeader")
 
 		if status.State == common.StateLeader {
 			if leaderCount == 0 {

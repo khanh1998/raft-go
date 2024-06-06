@@ -40,6 +40,20 @@ func NewRPCImpl(params NewRPCImplParams) (*RpcAgentImpl, error) {
 	return &r, nil
 }
 
+func (r *RpcAgentImpl) reconnectToRpcServer(peerID int, peerURL string) error {
+	client, err := rpc.Dial("tcp", peerURL)
+	if err != nil {
+		return err
+	} else {
+		r.peers[peerID] = common.PeerRPCProxy{
+			Conn: client,
+			URL:  peerURL,
+		}
+	}
+
+	return nil
+}
+
 func (r *RpcAgentImpl) ConnectToRpcServer(peerID int, peerURL string, retry int, retryDelay time.Duration) error {
 	if r.peers == nil {
 		r.peers = map[int]common.PeerRPCProxy{}
@@ -93,7 +107,7 @@ func (r *RpcAgentImpl) ConnectToRpcServers(params []common.ClusterMember) {
 	count.Wait()
 }
 
-func (r *RpcAgentImpl) Disconnect(peerId int) error {
+func (r *RpcAgentImpl) disconnect(peerId int) error {
 	peer, ok := r.peers[peerId]
 	if !ok {
 		return ErrPeerIdDoesNotExist
@@ -113,9 +127,10 @@ var (
 	ErrPeerIdDoesNotExist         = errors.New("rpc peer id does not exist")
 	ErrRpcPeerConnectionIsNull    = errors.New("rpc peer connection is nil")
 	ErrNoConnectionInfoCanBeFound = errors.New("no connection info can be found")
+	ErrCannotReconnectToServer    = errors.New("cannot reconnect to server")
 )
 
-func (r RpcAgentImpl) CallWithTimeout(peerID int, serviceMethod string, args any, reply any, timeout time.Duration) error {
+func (r RpcAgentImpl) callWithTimeout(peerID int, serviceMethod string, args any, reply any, timeout time.Duration) error {
 	var (
 		peer common.PeerRPCProxy
 		ok   bool
@@ -128,8 +143,8 @@ func (r RpcAgentImpl) CallWithTimeout(peerID int, serviceMethod string, args any
 		}
 
 		if peer.Conn == nil {
-			if err := r.ConnectToRpcServer(peerID, peer.URL, 1, 100*time.Millisecond); err != nil {
-				return errors.Join(err, ErrPeerIdDoesNotExist)
+			if err := r.reconnectToRpcServer(peerID, peer.URL); err != nil {
+				return errors.Join(err, ErrCannotReconnectToServer)
 			}
 		} else {
 			break
@@ -143,11 +158,11 @@ func (r RpcAgentImpl) CallWithTimeout(peerID int, serviceMethod string, args any
 	call := peer.Conn.Go(serviceMethod, args, reply, nil)
 	select {
 	case <-time.After(timeout):
-		r.Disconnect(peerID)
+		r.disconnect(peerID)
 		return errors.New("RPC timeout")
 	case resp := <-call.Done:
 		if resp != nil && resp.Error != nil {
-			r.Disconnect(peerID)
+			r.disconnect(peerID)
 			return resp.Error
 		}
 	}
@@ -155,12 +170,15 @@ func (r RpcAgentImpl) CallWithTimeout(peerID int, serviceMethod string, args any
 	return nil
 }
 
+func (r RpcAgentImpl) sendPingForInternalUse() {
+}
+
 func (r RpcAgentImpl) SendPing(peerId int, timeout *time.Duration) (responseMsg common.PingResponse, err error) {
 	serviceMethod := "RPCProxyImpl.Ping"
 
 	senderName := fmt.Sprintf("hello from Node %d", 0)
 
-	if err := r.CallWithTimeout(peerId, serviceMethod, senderName, &responseMsg, *timeout); err != nil {
+	if err := r.callWithTimeout(peerId, serviceMethod, senderName, &responseMsg, *timeout); err != nil {
 		return responseMsg, err
 	}
 
@@ -172,7 +190,7 @@ func (r RpcAgentImpl) GetInfo(peerId int, timeout *time.Duration) (info common.G
 
 	responseMsg := common.GetStatusResponse{}
 
-	if err := r.CallWithTimeout(peerId, serviceMethod, new(struct{}), &responseMsg, *timeout); err != nil {
+	if err := r.callWithTimeout(peerId, serviceMethod, new(struct{}), &responseMsg, *timeout); err != nil {
 		return info, err
 	}
 	return responseMsg, nil
