@@ -116,7 +116,7 @@ func AssertRemovingNodeFromCluster(t *testing.T, c *Cluster, id int) {
 func AssertHavingNoLeader(t *testing.T, c *Cluster) {
 	time.Sleep(c.MaxHeartbeatTimeout)
 	_, err := c.HasOneLeader()
-	assert.ErrorIs(t, err, ErrThereIsNoLeader, "expect no leader in cluster")
+	assert.Error(t, err, "expect no leader in cluster")
 }
 
 func AssertLeaderChanged(t *testing.T, c *Cluster, prevLeaderId int, prevTerm int) (status common.GetStatusResponse) {

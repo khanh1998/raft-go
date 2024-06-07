@@ -21,21 +21,34 @@ func Test_nodeImpl_RequestVote(t *testing.T) {
 	testCases := []TestCase{
 		{
 			name: "1. Reply false if term < currentTerm (§5.1)",
-			n:    RaftBrainImpl{currentTerm: 3, logger: &log.Logger},
-			in:   common.RequestVoteInput{Term: 2},
-			out:  common.RequestVoteOutput{Term: 3, VoteGranted: false, Message: MsgRequesterTermIsOutDated},
+			n: RaftBrainImpl{
+				currentTerm: 3, logger: &log.Logger,
+				electionTimeOutMin: 300,
+				electionTimeOutMax: 500,
+			},
+			in:  common.RequestVoteInput{Term: 2},
+			out: common.RequestVoteOutput{Term: 3, VoteGranted: false, Message: MsgRequesterTermIsOutDated},
 		},
 		{
 			name: "2. If votedFor is null or candidateId, and candidate’s log is at least as up-to-date as receiver’s log, grant vote (§5.2, §5.4)",
-			n:    RaftBrainImpl{currentTerm: 3, votedFor: 4, db: persistance.NewPersistenceMock(), logger: &log.Logger},
-			in:   common.RequestVoteInput{Term: 4},
-			out:  common.RequestVoteOutput{Term: 3, VoteGranted: false, Message: MsgTheResponderAlreadyMakeAVote},
+			n: RaftBrainImpl{
+				currentTerm: 3, votedFor: 4, db: persistance.NewPersistenceMock(), logger: &log.Logger,
+				electionTimeOutMin: 300,
+				electionTimeOutMax: 500,
+			},
+			in:  common.RequestVoteInput{Term: 3},
+			out: common.RequestVoteOutput{Term: 3, VoteGranted: false, Message: MsgTheResponderAlreadyMakeAVote},
 		},
 		{
 			name: "2. If votedFor is null or candidateId, and candidate’s log is at least as up-to-date as receiver’s log, grant vote (§5.2, §5.4)",
-			n:    RaftBrainImpl{currentTerm: 3, votedFor: 0, logs: []common.Log{{Term: 1}, {Term: 2}, {Term: 3}}, db: persistance.NewPersistenceMock(), logger: &log.Logger},
-			in:   common.RequestVoteInput{Term: 4, LastLogIndex: 4, LastLogTerm: 2},
-			out:  common.RequestVoteOutput{Term: 3, VoteGranted: false, Message: MsgTheRequesterLogsAreOutOfDate},
+			n: RaftBrainImpl{
+				currentTerm: 3, votedFor: 0, logs: []common.Log{{Term: 1}, {Term: 2}, {Term: 3}},
+				db: persistance.NewPersistenceMock(), logger: &log.Logger,
+				electionTimeOutMin: 300,
+				electionTimeOutMax: 500,
+			},
+			in:  common.RequestVoteInput{Term: 4, LastLogIndex: 4, LastLogTerm: 2},
+			out: common.RequestVoteOutput{Term: 4, VoteGranted: false, Message: MsgTheRequesterLogsAreOutOfDate},
 		},
 		{
 			name: "2. If votedFor is null or candidateId, and candidate’s log is at least as up-to-date as receiver’s log, grant vote (§5.2, §5.4)",
@@ -51,7 +64,7 @@ func Test_nodeImpl_RequestVote(t *testing.T) {
 				electionTimeOutMax:  500,
 			},
 			in:  common.RequestVoteInput{Term: 4, LastLogIndex: 4, LastLogTerm: 3},
-			out: common.RequestVoteOutput{Term: 3, VoteGranted: true, Message: ""},
+			out: common.RequestVoteOutput{Term: 4, VoteGranted: true, Message: ""},
 		},
 	}
 

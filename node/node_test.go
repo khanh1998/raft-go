@@ -17,9 +17,15 @@ import (
 func TestStop(t *testing.T) {
 	n := NewNode(NewNodeParams{
 		Brain: logic.NewRaftBrainParams{
-			ID:                  1,
-			Mode:                common.Static,
-			Members:             []common.ClusterMember{},
+			ID:   1,
+			Mode: common.Dynamic,
+			Members: []common.ClusterMember{
+				{
+					ID:      1,
+					RpcUrl:  "localhost:1234",
+					HttpUrl: "localhost:8080",
+				},
+			},
 			CachingUp:           false,
 			DataFileName:        "logs.dat",
 			HeartBeatTimeOutMin: 150,
@@ -32,12 +38,14 @@ func TestStop(t *testing.T) {
 		},
 		RPCProxy: rpc_proxy.NewRPCImplParams{
 			HostID:  1,
-			HostURL: ":1234",
+			HostURL: "localhost:1234",
 			Logger:  &zerolog.Logger{},
 		},
 		HTTPProxy: http_proxy.NewHttpProxyParams{
-			URL: "localhost:8080",
+			URL:    "localhost:8080",
+			Logger: &zerolog.Logger{},
 		},
+		Logger: &zerolog.Logger{},
 	})
 	n.Start(false, false)
 

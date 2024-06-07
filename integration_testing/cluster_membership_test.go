@@ -81,6 +81,4 @@ func TestAddServerAndRemoveServer(t *testing.T) {
 	AssertGet(t, c, "count", "50")
 }
 
-func TestRemoveNode(t *testing.T) {
-
-}
+// todo: test uncommit configuration get roll back

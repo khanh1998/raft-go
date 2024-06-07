@@ -56,7 +56,7 @@ func TestStopAndStartNode(t *testing.T) {
 func TestMajorityOfClusterIsCrashed(t *testing.T) {
 	c := NewCluster("config/3-nodes.yml")
 	defer c.Clean()
-	AssertHavingOneLeader(t, c)
+	l1 := AssertHavingOneLeader(t, c)
 	AssertLiveNode(t, c, 3)
 
 	// one leader, two followers
@@ -67,7 +67,7 @@ func TestMajorityOfClusterIsCrashed(t *testing.T) {
 	AssertLiveNode(t, c, 2)
 
 	// one leader, one follower
-	AssertHavingOneLeader(t, c)
+	AssertLeaderChanged(t, c, l1.ID, l1.Term)
 	IncreaseBy(t, c, "count", 10)
 	AssertGet(t, c, "count", "20")
 
@@ -79,4 +79,34 @@ func TestMajorityOfClusterIsCrashed(t *testing.T) {
 	// the leader need to step down as it can't make a successful round of heartbeat to majority
 	time.Sleep(c.MaxElectionTimeout)
 	AssertHavingNoLeader(t, c)
+
+}
+
+func TestStartStopFollower(t *testing.T) {
+	c := NewCluster("config/3-nodes.yml")
+	defer c.Clean()
+	l1 := AssertHavingOneLeader(t, c)
+	AssertLiveNode(t, c, 3)
+
+	// one leader, two followers
+	IncreaseBy(t, c, "count", 10)
+
+	// one leader, one follower
+	f1, err := c.StopFollower()
+	assert.NoError(t, err)
+	AssertLiveNode(t, c, 2)
+
+	IncreaseBy(t, c, "count", 10)
+
+	// one leader
+	_, err = c.StopFollower()
+	assert.NoError(t, err)
+	AssertLiveNode(t, c, 1)
+	// leader -> follower
+	time.Sleep(c.MaxElectionTimeout)
+	// restart dead node
+	err = c.StartNode(f1)
+	assert.NoError(t, err)
+
+	AssertLeaderChanged(t, c, 0, l1.Term) // id can be same, but term must be bigger
 }
