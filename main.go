@@ -7,8 +7,8 @@ import (
 	"khanh/raft-go/http_proxy"
 	"khanh/raft-go/logic"
 	"khanh/raft-go/node"
-	"khanh/raft-go/persistance"
 	"khanh/raft-go/rpc_proxy"
+	"khanh/raft-go/state_machine"
 	"log"
 	"os"
 	"os/signal"
@@ -122,22 +122,21 @@ func main() {
 
 	logger.Info().Interface("config", config).Msg("config")
 
-	fileName := fmt.Sprintf("log.%d.dat", id)
+	walFileName := fmt.Sprintf("log.%d.dat", id)
+	dataFolder := fmt.Sprintf("%s/%d/", config.DataFolder, id)
 
 	params := node.NewNodeParams{
 		ID: id,
 		Brain: logic.NewRaftBrainParams{
 			ID:                  id,
 			Mode:                config.Cluster.Mode,
-			DataFileName:        fileName,
 			HeartBeatTimeOutMin: config.MinHeartbeatTimeoutMs,
 			HeartBeatTimeOutMax: config.MaxHeartbeatTimeoutMs,
 			ElectionTimeOutMin:  config.MinElectionTimeoutMs,
 			ElectionTimeOutMax:  config.MaxElectionTimeoutMs,
 			Logger:              &logger,
 			Members:             clusterMembers,
-			DB:                  persistance.NewPersistence(fileName),
-			StateMachine:        common.NewKeyValueStateMachine(),
+			DB:                  common.NewPersistence(dataFolder, walFileName),
 			CachingUp:           catchingUp,
 		},
 		RPCProxy: rpc_proxy.NewRPCImplParams{
@@ -148,7 +147,12 @@ func main() {
 			URL:    httpUrl,
 			Logger: &logger,
 		},
-		Logger: &logger,
+		StateMachine: state_machine.NewKeyValueStateMachineParams{
+			DB:         common.NewPersistence(dataFolder, ""),
+			DoSnapshot: config.StateMachineSnapshot,
+		},
+		Logger:     &logger,
+		DataFolder: dataFolder,
 	}
 
 	n := node.NewNode(params)

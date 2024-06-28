@@ -1,30 +1,42 @@
-package persistance
+package common
 
 import (
 	"sort"
 	"strings"
 )
 
-type PersistenceMock interface {
-	AppendLog(data map[string]string) error
-	ReadNewestLog(keys []string) (map[string]string, error)
-	Data() []string
-	SetData([]string)
-}
-
 // this Persistence should be shared among goroutine
 type PersistenceMockImpl struct {
-	data []string
+	fileNames []string
+	data      []string
 }
 
-func NewPersistenceMock() PersistenceMock {
+func NewPersistenceMock() *PersistenceMockImpl {
 	return &PersistenceMockImpl{
-		data: []string{},
+		data:      []string{},
+		fileNames: []string{},
 	}
+}
+
+func (p *PersistenceMockImpl) CreateNewFile(fileName string) error {
+	p.data = []string{}
+	return nil
+}
+
+func (p *PersistenceMockImpl) GetFileNames() ([]string, error) {
+	return p.fileNames, nil
+}
+
+func (p *PersistenceMockImpl) OpenFile(fileName string) error {
+	return nil
 }
 
 func (p PersistenceMockImpl) Data() []string {
 	return p.data
+}
+
+func (p *PersistenceMockImpl) SetFileNames(fileNames []string) {
+	p.fileNames = fileNames
 }
 
 func (p *PersistenceMockImpl) SetData(data []string) {

@@ -6,8 +6,8 @@ import (
 	"khanh/raft-go/http_proxy"
 	"khanh/raft-go/logic"
 	"khanh/raft-go/node"
-	"khanh/raft-go/persistance"
 	"khanh/raft-go/rpc_proxy"
+	"khanh/raft-go/state_machine"
 	"log"
 	"os"
 	"time"
@@ -51,13 +51,16 @@ func (c *Cluster) RemoveServer(id int) error {
 func (c *Cluster) createNewNode(id int) error {
 	rpcUrl, httpUrl := fmt.Sprintf("localhost:%d", 1233+id), fmt.Sprintf("localhost:%d", 8079+id)
 	catchingUp := id > 1
+
+	dataFolder := fmt.Sprintf("%s%d/", c.config.DataFolder, id)
+	common.CreateFolderIfNotExists(dataFolder)
+
 	param := node.NewNodeParams{
 		ID: id,
 		Brain: logic.NewRaftBrainParams{
 			ID:                  id,
 			Mode:                common.Dynamic,
 			CachingUp:           catchingUp,
-			DataFileName:        fmt.Sprintf("test.log.%d.dat", id),
 			HeartBeatTimeOutMin: c.config.MinHeartbeatTimeoutMs,
 			HeartBeatTimeOutMax: c.config.MaxHeartbeatTimeoutMs,
 			ElectionTimeOutMin:  c.config.MinElectionTimeoutMs,
@@ -69,9 +72,7 @@ func (c *Cluster) createNewNode(id int) error {
 				}
 				return []common.ClusterMember{}
 			}(),
-			// DB:                persistance.NewPersistence(fmt.Sprintf("test.log.%d.dat", id+i)),
-			DB:           persistance.NewPersistenceMock(),
-			StateMachine: common.NewKeyValueStateMachine(),
+			DB: common.NewPersistenceMock(),
 		},
 		RPCProxy: rpc_proxy.NewRPCImplParams{
 			HostURL: rpcUrl,
@@ -82,7 +83,12 @@ func (c *Cluster) createNewNode(id int) error {
 			URL:    httpUrl,
 			Logger: c.log,
 		},
-		Logger: c.log,
+		StateMachine: state_machine.NewKeyValueStateMachineParams{
+			DB:         common.NewPersistence(dataFolder, ""),
+			DoSnapshot: c.config.StateMachineSnapshot,
+		},
+		Logger:     c.log,
+		DataFolder: dataFolder,
 	}
 
 	n := node.NewNode(param)
@@ -110,6 +116,8 @@ func (c *Cluster) initDynamic(filePath string) {
 
 	zerolog.TimeFieldFormat = time.RFC3339Nano
 	output := zerolog.ConsoleWriter{Out: os.Stdout, TimeFormat: time.RFC3339Nano}
+
+	common.CreateFolderIfNotExists(config.DataFolder)
 
 	log := zerolog.New(output).With().Timestamp().Logger()
 	c.log = &log

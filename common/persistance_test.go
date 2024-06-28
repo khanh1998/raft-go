@@ -1,4 +1,4 @@
-package persistance
+package common
 
 import (
 	"bufio"
@@ -17,7 +17,7 @@ func TestPersistence_ReadNewestLog(t *testing.T) {
 		keys[1]: "25",
 	}
 
-	p := NewPersistence(dataFileName)
+	p := NewPersistence("", dataFileName)
 	output, err := p.ReadNewestLog(keys)
 	assert.ErrorIs(t, err, ErrEmptyData)
 	assert.Equal(t, map[string]string(map[string]string(nil)), output)
@@ -56,7 +56,7 @@ func TestPersistence_AppendLog(t *testing.T) {
 		keys[1]: "25",
 	}
 
-	p := NewPersistence(dataFileName)
+	p := NewPersistence("", dataFileName)
 
 	err := p.AppendLog(data)
 	assert.NoError(t, err)

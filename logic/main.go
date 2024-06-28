@@ -16,6 +16,7 @@ type MembershipManager interface {
 }
 
 type RaftBrainImpl struct {
+	dataFolder                string
 	logger                    *zerolog.Logger
 	db                        Persistence
 	members                   []common.ClusterMember
@@ -74,7 +75,9 @@ type LogAppliedEvent struct {
 }
 
 type SimpleStateMachine interface {
+	Reset() error
 	Process(clientID int, sequenceNum int, commandIn any, logIndex int) (result any, err error)
+	GetBase() (lastIndex int, lastTerm int)
 }
 
 type RPCProxy interface {
@@ -102,15 +105,13 @@ type NewRaftBrainParams struct {
 	// list of member servers for STATIC cluster mode.
 	// if cluster mode is DYNAMIC, list contains only one member - is the first node of cluster.
 	Members             []common.ClusterMember
-	DataFileName        string
 	HeartBeatTimeOutMin int64
 	HeartBeatTimeOutMax int64
 	ElectionTimeOutMin  int64
 	ElectionTimeOutMax  int64
 	Logger              *zerolog.Logger
-	DB                  Persistence
-	StateMachine        SimpleStateMachine
-	CachingUp           bool // will be ignored if the cluster mode is STATIC
+	DB                  Persistence // help to persist raft server's state to file
+	CachingUp           bool        // will be ignored if the cluster mode is STATIC
 }
 
 func NewRaftBrain(params NewRaftBrainParams) (*RaftBrainImpl, error) {
@@ -124,7 +125,6 @@ func NewRaftBrain(params NewRaftBrainParams) (*RaftBrainImpl, error) {
 		}(),
 		votedFor:     0,
 		db:           params.DB,
-		stateMachine: params.StateMachine,
 		arm:          NewAsyncResponseManager(100),
 		stop:         make(chan struct{}),
 		newMembers:   make(chan common.ClusterMemberChange, 10),

@@ -226,5 +226,7 @@ func (n *RaftBrainImpl) BroadcastAppendEntries() (majorityOK bool) {
 
 	n.applyLog()
 
+	n.log().Info().Msg("BroadcastAppendEntries Done")
+
 	return
 }

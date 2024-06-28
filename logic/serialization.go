@@ -4,7 +4,6 @@ import (
 	"errors"
 	"fmt"
 	"khanh/raft-go/common"
-	"khanh/raft-go/persistance"
 	"strconv"
 	"time"
 )
@@ -100,7 +99,7 @@ func (n *RaftBrainImpl) getPersistanceKeyList() ([]string, error) {
 func (n *RaftBrainImpl) restoreRaftStateFromFile() error {
 	keys, err := n.getPersistanceKeyList()
 	if err != nil {
-		if errors.Is(err, persistance.ErrEmptyData) {
+		if errors.Is(err, common.ErrEmptyData) {
 			n.log().Err(err).Msg("data file is empty")
 			return nil
 		}

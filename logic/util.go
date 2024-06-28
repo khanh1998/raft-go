@@ -19,7 +19,22 @@ func (n *RaftBrainImpl) isMemberOfCluster(id *int) bool {
 	return false
 }
 
-func (n *RaftBrainImpl) deleteLogFrom(index int) error {
+func (n *RaftBrainImpl) deleteLogTo(index int) (err error) {
+	if len(n.logs) == 0 {
+		return ErrLogIsEmtpy
+	}
+
+	if index > len(n.logs) || index <= 0 {
+		return ErrIndexOutOfRange
+	}
+
+	realIndex := int(index - 1)
+	n.logs = n.logs[realIndex+1:]
+
+	return nil
+}
+
+func (n *RaftBrainImpl) deleteLogFrom(index int) (err error) {
 	defer func() {
 		data := n.serialize(true, true, "DeleteLogFrom")
 		if err := n.db.AppendLog(data); err != nil {
@@ -42,8 +57,12 @@ func (n *RaftBrainImpl) deleteLogFrom(index int) error {
 	// these two numbers will be calculated again later.
 	n.lastApplied = 0
 	n.commitIndex = 0
-	// clear all data in state machine, so logs can be applied from beginning later.
-	n.stateMachine = common.NewKeyValueStateMachine()
+	// clear all data in state machine, reload latest snapshot from file,
+	// so logs can be applied from beginning again.
+	err = n.stateMachine.Reset() // TODO: in log compaction, no need to to this.
+	if err != nil {
+		return err
+	}
 
 	for i := len(deletedLogs) - 1; i >= 0; i-- {
 		n.revertChangeMember(deletedLogs[i].Command.(string))
@@ -159,6 +178,7 @@ func (n *RaftBrainImpl) applyLog() {
 
 		log, err := n.GetLog(n.lastApplied)
 		if err != nil {
+			n.log().Err(err).Msg("applyLog_GetLog")
 			break
 		}
 

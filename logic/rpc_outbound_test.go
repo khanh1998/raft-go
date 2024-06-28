@@ -2,12 +2,13 @@ package logic
 
 import (
 	"khanh/raft-go/common"
-	"khanh/raft-go/persistance"
 	"khanh/raft-go/rpc_proxy"
+	"khanh/raft-go/state_machine"
 	"testing"
 	"time"
 
 	"github.com/rs/zerolog"
+	"github.com/stretchr/testify/assert"
 )
 
 func Test_nodeImpl_BroadCastRequestVote(t *testing.T) {
@@ -38,6 +39,10 @@ func TestRaftBrainImpl_BroadCastRequestVote(t *testing.T) {
 		NextIndex           map[int]int
 		MatchIndex          map[int]int
 	}
+
+	sm, err := state_machine.NewKeyValueStateMachine(state_machine.NewKeyValueStateMachineParams{DB: common.NewPersistenceMock()})
+	assert.NoError(t, err)
+
 	tests := []struct {
 		name   string
 		fields fields
@@ -46,11 +51,11 @@ func TestRaftBrainImpl_BroadCastRequestVote(t *testing.T) {
 			name: "",
 			fields: fields{
 				logger:              &zerolog.Logger{},
-				DB:                  persistance.NewPersistenceMock(),
+				DB:                  common.NewPersistenceMock(),
 				Peers:               []common.ClusterMember{{ID: 2, RpcUrl: ""}},
 				State:               common.StateCandidate,
 				ID:                  1,
-				StateMachine:        common.NewKeyValueStateMachine(),
+				StateMachine:        sm,
 				ElectionTimeOut:     nil,
 				HeartBeatTimeOut:    nil,
 				Quorum:              3,

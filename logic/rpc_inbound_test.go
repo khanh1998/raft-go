@@ -3,7 +3,7 @@ package logic
 import (
 	"fmt"
 	"khanh/raft-go/common"
-	"khanh/raft-go/persistance"
+	"khanh/raft-go/state_machine"
 	"testing"
 
 	"github.com/rs/zerolog/log"
@@ -32,7 +32,7 @@ func Test_nodeImpl_RequestVote(t *testing.T) {
 		{
 			name: "2. If votedFor is null or candidateId, and candidate’s log is at least as up-to-date as receiver’s log, grant vote (§5.2, §5.4)",
 			n: RaftBrainImpl{
-				currentTerm: 3, votedFor: 4, db: persistance.NewPersistenceMock(), logger: &log.Logger,
+				currentTerm: 3, votedFor: 4, db: common.NewPersistenceMock(), logger: &log.Logger,
 				electionTimeOutMin: 300,
 				electionTimeOutMax: 500,
 			},
@@ -43,7 +43,7 @@ func Test_nodeImpl_RequestVote(t *testing.T) {
 			name: "2. If votedFor is null or candidateId, and candidate’s log is at least as up-to-date as receiver’s log, grant vote (§5.2, §5.4)",
 			n: RaftBrainImpl{
 				currentTerm: 3, votedFor: 0, logs: []common.Log{{Term: 1}, {Term: 2}, {Term: 3}},
-				db: persistance.NewPersistenceMock(), logger: &log.Logger,
+				db: common.NewPersistenceMock(), logger: &log.Logger,
 				electionTimeOutMin: 300,
 				electionTimeOutMax: 500,
 			},
@@ -56,7 +56,7 @@ func Test_nodeImpl_RequestVote(t *testing.T) {
 				currentTerm:         3,
 				votedFor:            0,
 				logs:                []common.Log{{Term: 1}, {Term: 2}, {Term: 3}},
-				db:                  persistance.NewPersistenceMock(),
+				db:                  common.NewPersistenceMock(),
 				logger:              &log.Logger,
 				heartBeatTimeOutMin: 100,
 				heartBeatTimeOutMax: 150,
@@ -89,17 +89,21 @@ func Test_nodeImpl_AppendEntries(t *testing.T) {
 		persist TestCasePersist
 	}
 
+	sm, err := state_machine.NewKeyValueStateMachine(state_machine.NewKeyValueStateMachineParams{DB: common.NewPersistenceMock()})
+	assert.NoError(t, err)
+
 	testCases := []TestCase{
 		{
 			name: "1. Reply false if term < currentTerm (§5.1)",
 			n: RaftBrainImpl{
 				currentTerm:         5,
 				logger:              &log.Logger,
-				db:                  persistance.NewPersistenceMock(),
+				db:                  common.NewPersistenceMock(),
 				heartBeatTimeOutMin: 100,
 				heartBeatTimeOutMax: 150,
 				electionTimeOutMin:  300,
 				electionTimeOutMax:  500,
+				stateMachine:        sm,
 			},
 			in: common.AppendEntriesInput{
 				Term: 4,
@@ -115,12 +119,13 @@ func Test_nodeImpl_AppendEntries(t *testing.T) {
 			n: RaftBrainImpl{
 				currentTerm:         2,
 				logs:                []common.Log{{Term: 1}, {Term: 1}},
-				db:                  persistance.NewPersistenceMock(),
+				db:                  common.NewPersistenceMock(),
 				logger:              &log.Logger,
 				heartBeatTimeOutMin: 100,
 				heartBeatTimeOutMax: 150,
 				electionTimeOutMin:  300,
 				electionTimeOutMax:  500,
+				stateMachine:        sm,
 			},
 			in: common.AppendEntriesInput{
 				Term:         3,
@@ -139,11 +144,12 @@ func Test_nodeImpl_AppendEntries(t *testing.T) {
 				currentTerm:         2,
 				logs:                []common.Log{},
 				logger:              &log.Logger,
-				db:                  persistance.NewPersistenceMock(),
+				db:                  common.NewPersistenceMock(),
 				heartBeatTimeOutMin: 100,
 				heartBeatTimeOutMax: 150,
 				electionTimeOutMin:  300,
 				electionTimeOutMax:  500,
+				stateMachine:        sm,
 			},
 			in: common.AppendEntriesInput{
 				Term:         3,
@@ -162,11 +168,12 @@ func Test_nodeImpl_AppendEntries(t *testing.T) {
 				currentTerm:         2,
 				logs:                []common.Log{{Term: 1}},
 				logger:              &log.Logger,
-				db:                  persistance.NewPersistenceMock(),
+				db:                  common.NewPersistenceMock(),
 				heartBeatTimeOutMin: 100,
 				heartBeatTimeOutMax: 150,
 				electionTimeOutMin:  300,
 				electionTimeOutMax:  500,
+				stateMachine:        sm,
 			},
 			in: common.AppendEntriesInput{
 				Term:         3,
@@ -189,12 +196,13 @@ func Test_nodeImpl_AppendEntries(t *testing.T) {
 					{Term: 2, Command: "set x 5"},
 					{Term: 2, Command: "set x 5"},
 				},
-				db:                  persistance.NewPersistenceMock(),
+				db:                  common.NewPersistenceMock(),
 				logger:              &log.Logger,
 				heartBeatTimeOutMin: 100,
 				heartBeatTimeOutMax: 150,
 				electionTimeOutMin:  300,
 				electionTimeOutMax:  500,
+				stateMachine:        sm,
 			},
 			in: common.AppendEntriesInput{
 				Term:         3,
@@ -214,12 +222,13 @@ func Test_nodeImpl_AppendEntries(t *testing.T) {
 				votedFor:            5,
 				currentTerm:         3,
 				logs:                []common.Log{},
-				db:                  persistance.NewPersistenceMock(),
+				db:                  common.NewPersistenceMock(),
 				logger:              &log.Logger,
 				heartBeatTimeOutMin: 100,
 				heartBeatTimeOutMax: 150,
 				electionTimeOutMin:  300,
 				electionTimeOutMax:  500,
+				stateMachine:        sm,
 			},
 			in: common.AppendEntriesInput{
 				Term:         3,
@@ -245,12 +254,13 @@ func Test_nodeImpl_AppendEntries(t *testing.T) {
 					{Term: 1, Command: "set x 5"},
 					{Term: 2, Command: "set y 5"},
 				},
-				db:                  persistance.NewPersistenceMock(),
+				db:                  common.NewPersistenceMock(),
 				logger:              &log.Logger,
 				heartBeatTimeOutMin: 100,
 				heartBeatTimeOutMax: 150,
 				electionTimeOutMin:  300,
 				electionTimeOutMax:  500,
+				stateMachine:        sm,
 			},
 			in: common.AppendEntriesInput{
 				Term:         3,
@@ -276,13 +286,13 @@ func Test_nodeImpl_AppendEntries(t *testing.T) {
 					{Term: 1, Command: "set x 5"},
 					{Term: 2, Command: "set y 5"},
 				},
-				db:                  persistance.NewPersistenceMock(),
+				db:                  common.NewPersistenceMock(),
 				logger:              &log.Logger,
 				heartBeatTimeOutMin: 100,
 				heartBeatTimeOutMax: 150,
 				electionTimeOutMin:  300,
 				electionTimeOutMax:  500,
-				stateMachine:        common.NewKeyValueStateMachine(),
+				stateMachine:        sm,
 			},
 			in: common.AppendEntriesInput{
 				Term:         3,
@@ -302,12 +312,13 @@ func Test_nodeImpl_AppendEntries(t *testing.T) {
 				votedFor:            1,
 				currentTerm:         1,
 				logs:                []common.Log{},
-				db:                  persistance.NewPersistenceMock(),
+				db:                  common.NewPersistenceMock(),
 				logger:              &log.Logger,
 				heartBeatTimeOutMin: 100,
 				heartBeatTimeOutMax: 150,
 				electionTimeOutMin:  300,
 				electionTimeOutMax:  500,
+				stateMachine:        sm,
 			},
 			in: common.AppendEntriesInput{
 				Term:         1,
@@ -324,36 +335,41 @@ func Test_nodeImpl_AppendEntries(t *testing.T) {
 	}
 
 	for index, testCase := range testCases {
-		log.Info().Int("index", index).Msg("test case AppendEntriesOutput")
-		var out common.AppendEntriesOutput
-		testCase.n.AppendEntries(&testCase.in, &out)
-		assert.Equal(t, testCase.out, out, fmt.Sprintf("%d test case: %s", index, testCase.name))
+		testCase := &testCase
+		testCase.n.stateMachine.Reset()
+		t.Run(fmt.Sprintf("[%d] %s", index, testCase.name), func(t *testing.T) {
+			log.Info().Int("index", index).Msg("test case AppendEntriesOutput")
+			var out common.AppendEntriesOutput
+			testCase.n.AppendEntries(&testCase.in, &out)
+			assert.Equal(t, testCase.out, out, fmt.Sprintf("%d test case: %s", index, testCase.name))
 
-		if testCase.persist.do {
-			n2 := RaftBrainImpl{
-				db:                  testCase.n.db,
-				logger:              &log.Logger,
-				heartBeatTimeOutMin: 100,
-				heartBeatTimeOutMax: 150,
-				electionTimeOutMin:  300,
-				electionTimeOutMax:  500,
+			if testCase.persist.do {
+				n2 := RaftBrainImpl{
+					db:                  testCase.n.db,
+					logger:              &log.Logger,
+					heartBeatTimeOutMin: 100,
+					heartBeatTimeOutMax: 150,
+					electionTimeOutMin:  300,
+					electionTimeOutMax:  500,
+					stateMachine:        testCase.n.stateMachine,
+				}
+				keys, err := n2.getPersistanceKeyList()
+				assert.NoError(t, err)
+				// assert.Equal(t, []string{}, keys)
+				data, err := n2.db.ReadNewestLog(keys)
+				assert.NoError(t, err)
+				// assert.Equal(t, map[string]string{}, data)
+				_ = data
+
+				err = n2.restoreRaftStateFromFile()
+
+				assert.NoError(t, err)
+
+				assert.Equal(t, testCase.n.currentTerm, n2.currentTerm)
+				assert.Equal(t, testCase.n.votedFor, n2.votedFor)
+				assert.Equal(t, testCase.n.logs, n2.logs)
+				assert.Equal(t, testCase.persist.logCount, len(n2.logs))
 			}
-			keys, err := n2.getPersistanceKeyList()
-			assert.NoError(t, err)
-			// assert.Equal(t, []string{}, keys)
-			data, err := n2.db.ReadNewestLog(keys)
-			assert.NoError(t, err)
-			// assert.Equal(t, map[string]string{}, data)
-			_ = data
-
-			err = n2.restoreRaftStateFromFile()
-
-			assert.NoError(t, err)
-
-			assert.Equal(t, testCase.n.currentTerm, n2.currentTerm)
-			assert.Equal(t, testCase.n.votedFor, n2.votedFor)
-			assert.Equal(t, testCase.n.logs, n2.logs)
-			assert.Equal(t, testCase.persist.logCount, len(n2.logs))
-		}
+		})
 	}
 }

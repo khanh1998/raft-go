@@ -33,3 +33,9 @@ todos:
 
 - use env variable for rpc and http timeout
 - write a db engine
+- compare and set
+
+
+map[key_0:citizenship key_1:city key_2:name last_index:6 last_term:5 log_count:3 member_0:1|localhost:8080|localhost:1234 member_1:2|localhost:8081|localhost:1235 member_count:2 value_0:vietnam value_1:hcm value_2:khanh]
+
+map[key_0:citizenship key_1:city key_2:name last_index:6 last_term:5 log_count:3 member_0:1|localhost:8080|localhost:1234 member_1:2|localhost:8081|localhost:1235 member_count:2 value_0:vietnam value_1:hcm value_2:khanh]

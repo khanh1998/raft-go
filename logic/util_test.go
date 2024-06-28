@@ -2,15 +2,21 @@ package logic
 
 import (
 	"khanh/raft-go/common"
-	"khanh/raft-go/persistance"
+	"khanh/raft-go/state_machine"
 	"testing"
 
 	"github.com/stretchr/testify/assert"
 )
 
 func Test_nodeImpl_DeleteFrom(t *testing.T) {
-	n := RaftBrainImpl{logs: []common.Log{}, db: persistance.NewPersistenceMock()}
-	err := n.deleteLogFrom(1)
+	sm, err := state_machine.NewKeyValueStateMachine(state_machine.NewKeyValueStateMachineParams{
+		DB: common.NewPersistenceMock(),
+	})
+	assert.NoError(t, err)
+
+	sm.Reset()
+	n := RaftBrainImpl{logs: []common.Log{}, db: common.NewPersistenceMock(), stateMachine: sm}
+	err = n.deleteLogFrom(1)
 	assert.ErrorIs(t, err, ErrLogIsEmtpy)
 
 	data := []common.Log{
@@ -19,26 +25,30 @@ func Test_nodeImpl_DeleteFrom(t *testing.T) {
 		{Term: 3, Command: "set x 3"},
 	}
 
-	n = RaftBrainImpl{logs: make([]common.Log, 3), db: persistance.NewPersistenceMock()}
+	sm.Reset()
+	n = RaftBrainImpl{logs: make([]common.Log, 3), db: common.NewPersistenceMock(), stateMachine: sm}
 	copy(n.logs, data)
 	err = n.deleteLogFrom(4)
 	assert.ErrorIs(t, err, ErrIndexOutOfRange)
 	err = n.deleteLogFrom(0)
 	assert.ErrorIs(t, err, ErrIndexOutOfRange)
 
-	n = RaftBrainImpl{logs: make([]common.Log, 3), db: persistance.NewPersistenceMock()}
+	sm.Reset()
+	n = RaftBrainImpl{logs: make([]common.Log, 3), db: common.NewPersistenceMock(), stateMachine: sm}
 	copy(n.logs, data)
 	err = n.deleteLogFrom(3)
 	assert.NoError(t, err)
 	assert.Equal(t, data[:2], n.logs)
 
-	n = RaftBrainImpl{logs: make([]common.Log, 3), db: persistance.NewPersistenceMock()}
+	sm.Reset()
+	n = RaftBrainImpl{logs: make([]common.Log, 3), db: common.NewPersistenceMock(), stateMachine: sm}
 	copy(n.logs, data)
 	err = n.deleteLogFrom(2)
 	assert.NoError(t, err)
 	assert.Equal(t, data[:1], n.logs)
 
-	n = RaftBrainImpl{logs: make([]common.Log, 3), db: persistance.NewPersistenceMock()}
+	sm.Reset()
+	n = RaftBrainImpl{logs: make([]common.Log, 3), db: common.NewPersistenceMock(), stateMachine: sm}
 	copy(n.logs, data)
 	err = n.deleteLogFrom(1)
 	assert.NoError(t, err)

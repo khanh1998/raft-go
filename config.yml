@@ -18,3 +18,5 @@ min_election_timeout_ms: 12000
 max_election_timeout_ms: 15000
 min_heartbeat_timeout_ms: 2000
 max_heartbeat_timeout_ms: 5000
+data_folder: data/
+state_machine_snapshot: false

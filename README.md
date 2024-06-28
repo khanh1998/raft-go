@@ -3,7 +3,7 @@ This is a simple distributed key-value database, built on top of [Raft](https://
 - Log replication
 - Safety
 - Client interaction
-- Cluster membership changes (in progress)
+- Cluster membership changes
 - Log compaction (pending)
 
 ![Orverall Architecture](docs/diagram.drawio.png "Orverall Architecture")

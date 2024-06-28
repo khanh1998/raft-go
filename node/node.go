@@ -6,6 +6,7 @@ import (
 	"khanh/raft-go/http_proxy"
 	"khanh/raft-go/logic"
 	"khanh/raft-go/rpc_proxy"
+	"khanh/raft-go/state_machine"
 
 	"github.com/rs/zerolog"
 	"github.com/rs/zerolog/log"
@@ -20,23 +21,36 @@ type Node struct {
 }
 
 type NewNodeParams struct {
-	ID        int
-	Brain     logic.NewRaftBrainParams
-	RPCProxy  rpc_proxy.NewRPCImplParams
-	HTTPProxy http_proxy.NewHttpProxyParams
-	Logger    *zerolog.Logger
+	ID int
+
+	Brain        logic.NewRaftBrainParams
+	RPCProxy     rpc_proxy.NewRPCImplParams
+	HTTPProxy    http_proxy.NewHttpProxyParams
+	StateMachine state_machine.NewKeyValueStateMachineParams
+
+	Logger     *zerolog.Logger
+	DataFolder string
 }
 
 func NewNode(params NewNodeParams) *Node {
+	if err := common.CreateFolderIfNotExists(params.DataFolder); err != nil {
+		log.Fatal().Err(err).Msg("NewNode_CreateFolderIfNotExists")
+	}
+
+	stateMachine, err := state_machine.NewKeyValueStateMachine(params.StateMachine)
+	if err != nil {
+		log.Fatal().Err(err).Msg("NewNode_NewKeyValueStateMachine")
+	}
+
 	brain, err := logic.NewRaftBrain(params.Brain)
 	if err != nil {
-		log.Fatal().Msg(err.Error())
+		log.Fatal().Err(err).Msg("NewNode_NewRaftBrain")
 	}
 
 	params.RPCProxy.HostID = params.ID
 	rpcProxy, err := rpc_proxy.NewRPCImpl(params.RPCProxy)
 	if err != nil {
-		log.Fatal().AnErr("err", err).Msg("NewNode")
+		log.Fatal().Err(err).Msg("NewNode_NewRPCImpl")
 	}
 
 	httpProxy := http_proxy.NewHttpProxy(params.HTTPProxy)
@@ -44,6 +58,9 @@ func NewNode(params NewNodeParams) *Node {
 	rpcProxy.SetBrain(brain)
 	httpProxy.SetBrain(brain)
 	brain.SetRpcProxy(rpcProxy)
+
+	stateMachine.SetConsensusModule(brain)
+	brain.SetStateMachine(stateMachine)
 
 	n := &Node{ID: params.ID, brain: brain, rpc: rpcProxy, http: httpProxy, logger: params.Logger}
 

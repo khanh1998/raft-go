@@ -4,8 +4,8 @@ import (
 	"khanh/raft-go/common"
 	"khanh/raft-go/http_proxy"
 	"khanh/raft-go/logic"
-	"khanh/raft-go/persistance"
 	"khanh/raft-go/rpc_proxy"
+	"khanh/raft-go/state_machine"
 	"net/rpc"
 	"testing"
 	"time"
@@ -14,7 +14,7 @@ import (
 	"github.com/stretchr/testify/assert"
 )
 
-func TestStop(t *testing.T) {
+func TestRpcConnection(t *testing.T) {
 	n := NewNode(NewNodeParams{
 		Brain: logic.NewRaftBrainParams{
 			ID:   1,
@@ -27,14 +27,12 @@ func TestStop(t *testing.T) {
 				},
 			},
 			CachingUp:           false,
-			DataFileName:        "logs.dat",
 			HeartBeatTimeOutMin: 150,
 			HeartBeatTimeOutMax: 300,
 			ElectionTimeOutMin:  300,
 			ElectionTimeOutMax:  500,
 			Logger:              &zerolog.Logger{},
-			DB:                  persistance.NewPersistenceMock(),
-			StateMachine:        common.NewKeyValueStateMachine(),
+			DB:                  common.NewPersistenceMock(),
 		},
 		RPCProxy: rpc_proxy.NewRPCImplParams{
 			HostID:  1,
@@ -45,8 +43,13 @@ func TestStop(t *testing.T) {
 			URL:    "localhost:8080",
 			Logger: &zerolog.Logger{},
 		},
-		Logger: &zerolog.Logger{},
+		StateMachine: state_machine.NewKeyValueStateMachineParams{
+			DB: common.NewPersistenceMock(),
+		},
+		Logger:     &zerolog.Logger{},
+		DataFolder: "data/",
 	})
+
 	n.Start(false, false)
 
 	_, err := rpc.Dial("tcp", ":1234")

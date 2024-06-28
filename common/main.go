@@ -34,12 +34,6 @@ type RequestVoteOutput struct {
 	NodeID      int    // id of the responder
 }
 
-type ClusterMember struct {
-	ID      int    `mapstructure:"id"`
-	RpcUrl  string `mapstructure:"rpc_url"`
-	HttpUrl string `mapstructure:"http_url"`
-}
-
 type RaftState string
 
 const (

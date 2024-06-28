@@ -7,8 +7,8 @@ import (
 	"khanh/raft-go/http_proxy"
 	"khanh/raft-go/logic"
 	"khanh/raft-go/node"
-	"khanh/raft-go/persistance"
 	"khanh/raft-go/rpc_proxy"
+	"khanh/raft-go/state_machine"
 	"log"
 	"os"
 	"sync"
@@ -50,7 +50,16 @@ func (c *Cluster) init(filePath string) {
 	zerolog.TimeFieldFormat = time.RFC3339Nano
 	stdOutput := zerolog.ConsoleWriter{Out: os.Stdout, TimeFormat: time.RFC3339Nano}
 
-	log := zerolog.New(stdOutput).With().Timestamp().Logger()
+	common.CreateFolderIfNotExists(config.DataFolder)
+
+	// logFile, err := os.OpenFile(config.DataFolder+"app.log", os.O_CREATE|os.O_WRONLY|os.O_APPEND, 0664)
+	// if err != nil {
+	// 	panic(err)
+	// }
+
+	multiLevel := zerolog.MultiLevelWriter(stdOutput)
+
+	log := zerolog.New(multiLevel).With().Timestamp().Logger()
 
 	peers := []common.ClusterMember{}
 	for _, mem := range config.Cluster.Servers {
@@ -68,13 +77,15 @@ func (c *Cluster) init(filePath string) {
 	for _, mem := range peers {
 		l.Add(1)
 		go func(mem common.ClusterMember) {
+			dataFolder := fmt.Sprintf("%s%d/", c.config.DataFolder, mem.ID)
+			common.CreateFolderIfNotExists(dataFolder)
+
 			param := node.NewNodeParams{
 				ID: mem.ID,
 				Brain: logic.NewRaftBrainParams{
 					ID:                  mem.ID,
 					Mode:                common.Static,
 					CachingUp:           false,
-					DataFileName:        fmt.Sprintf("test.log.%d.dat", mem.ID),
 					HeartBeatTimeOutMin: config.MinHeartbeatTimeoutMs,
 					HeartBeatTimeOutMax: config.MaxHeartbeatTimeoutMs,
 					ElectionTimeOutMin:  config.MinElectionTimeoutMs,
@@ -82,8 +93,7 @@ func (c *Cluster) init(filePath string) {
 					Logger:              &log,
 					Members:             peers,
 					// DB:                persistance.NewPersistence(fmt.Sprintf("test.log.%d.dat", id+i)),
-					DB:           persistance.NewPersistenceMock(),
-					StateMachine: common.NewKeyValueStateMachine(),
+					DB: common.NewPersistence(dataFolder, "wal.txt"),
 				},
 				RPCProxy: rpc_proxy.NewRPCImplParams{
 					HostURL: mem.RpcUrl,
@@ -94,7 +104,12 @@ func (c *Cluster) init(filePath string) {
 					URL:    mem.HttpUrl,
 					Logger: &log,
 				},
-				Logger: &log,
+				StateMachine: state_machine.NewKeyValueStateMachineParams{
+					DB:         common.NewPersistence(dataFolder, ""),
+					DoSnapshot: config.StateMachineSnapshot,
+				},
+				Logger:     &log,
+				DataFolder: dataFolder,
 			}
 
 			n := node.NewNode(param)
@@ -287,7 +302,7 @@ func (c *Cluster) HasOneLeader() (common.GetStatusResponse, error) {
 func (c Cluster) Clean() {
 	for id, node := range c.Nodes {
 		node.Stop()
-		os.Remove(fmt.Sprintf("test.log.%d.dat", id))
+		os.RemoveAll(fmt.Sprintf("data/%d", id))
 		delete(c.Nodes, id)
 	}
 }

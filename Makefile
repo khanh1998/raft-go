@@ -20,4 +20,4 @@ nodes3:
 	go run main.go -id=3
 
 clear:
-	rm -f log.*.dat
+	rm -rf data/
