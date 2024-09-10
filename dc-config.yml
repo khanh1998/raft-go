@@ -1,19 +1,19 @@
-# this config file is for local development environment
+# this config file is for docker compose environment
 cluster: 
   mode: static # the cluster can be either 'static' or 'dynamic'
   servers: # if the mode is 'dynamic', `servers` will be ignored
     - id: 1
-      host: "localhost"
+      host: "raft-node-1.raft-cluster.local"
       http_port: 8080
       rpc_port: 1234
     - id: 2
-      host: "localhost"
-      http_port: 8081
-      rpc_port: 1235
+      host: "raft-node-2.raft-cluster.local"
+      http_port: 8080
+      rpc_port: 1234
     - id: 3
-      host: "localhost"
-      http_port: 8082
-      rpc_port: 1236
+      host: "raft-node-3.raft-cluster.local"
+      http_port: 8080
+      rpc_port: 1234
 # timeout in miliseconds
 min_election_timeout_ms: 12000
 max_election_timeout_ms: 15000

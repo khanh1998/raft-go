@@ -1,0 +1,7 @@
+# if you change value of any config in this file, the whole cluster need to be rebooted
+min_election_timeout_ms: 12000
+max_election_timeout_ms: 15000
+min_heartbeat_timeout_ms: 2000
+max_heartbeat_timeout_ms: 5000
+data_folder: data/
+state_machine_snapshot: false

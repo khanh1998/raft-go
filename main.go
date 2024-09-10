@@ -123,7 +123,7 @@ func main() {
 	logger.Info().Interface("config", config).Msg("config")
 
 	walFileName := fmt.Sprintf("log.%d.dat", id)
-	dataFolder := fmt.Sprintf("%s/%d/", config.DataFolder, id)
+	dataFolder := fmt.Sprintf("%s%d/", config.DataFolder, id)
 
 	params := node.NewNodeParams{
 		ID: id,

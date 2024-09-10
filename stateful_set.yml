@@ -1,0 +1,52 @@
+apiVersion: apps/v1
+kind: StatefulSet
+metadata:
+  name: raft-cluster
+  namespace: raft-go
+spec:
+  serviceName: raft-headless
+  replicas: 3
+  selector:
+    matchLabels:
+      app: raft
+  template:
+    metadata:
+      labels:
+        app: raft
+    spec:
+      containers:
+      - name: raft-node
+        image: khanh1998/raft-go:latest
+        ports:
+        - containerPort: 8080
+        env:
+        - name: pod_name
+          valueFrom:
+            fieldRef:
+              fieldPath: metadata.name
+        - name: pod_namespace:
+          valueFrom:
+            fieldRef:
+              fieldPath: metadata.namespace
+        - name: service_name
+          value: raft-headless
+        - name: id
+          value: "$(pod_name##*-)"
+        - name: http_port
+          value: 8080
+        - name: rpc_port
+          value: 1234
+        - host:
+          value: "$(POD_NAME).$(SERVICE_NAME).$(POD_NAMESPACE).svc.cluster.local"
+        command: ["/app/raft-go", "-id=$(id)"]
+        volumeMounts:
+        - name: raft-storage
+          mountPath: /data
+  volumeClaimTemplates:
+  - metadata:
+      name: raft-storage
+    spec:
+      accessModes: ["ReadWriteOnce"]
+      resources:
+        requests:
+          storage: 1Gi
