@@ -103,7 +103,7 @@ func main() {
 		id = *_id
 		catchingUp = *_catchingUp
 		httpUrl = fmt.Sprintf("localhost:%d", *httpPort)
-		rpcUrl = fmt.Sprintf("localhost:%d", *rpcPort)
+		rpcUrl = fmt.Sprintf(":%d", *rpcPort)
 
 		if !catchingUp {
 			clusterMembers = []common.ClusterMember{

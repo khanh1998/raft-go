@@ -21,3 +21,9 @@ nodes3:
 
 clear:
 	rm -rf data/
+
+dc:
+	docker compose up -d --build
+
+k8s:
+	kubectl apply -f k8s-static-cluster.yml

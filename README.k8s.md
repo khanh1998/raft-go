@@ -6,3 +6,6 @@ since we deploy cluster by utilizing the stateful set, each node can connect to 
 
 # dynamic mode
 http and rpc ports are fixed like static mode
+
+
+kubectl scale statefulset raft-node --replicas=5

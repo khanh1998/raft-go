@@ -14,7 +14,7 @@ RUN CGO_ENABLED=0 GOOS=linux GOARCH=amd64 go build -o /app .
 RUN chmod -R 755 /app
 
 # Deploy the application binary into a lean image
-FROM gcr.io/distroless/base-debian11 AS build-release-stage
+FROM alpine:latest AS build-release-stage
 
 WORKDIR /app
 

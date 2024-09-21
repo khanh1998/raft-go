@@ -1,0 +1,119 @@
+apiVersion: v1
+kind: Namespace
+metadata:
+  name: raft-go
+---
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: raft-config
+  namespace: raft-go
+data:
+  config.yaml: |
+    cluster: 
+      mode: static # the cluster can be either 'static' or 'dynamic'
+      servers: # if the mode is 'dynamic', `servers` will be ignored
+      - id: 1
+        host: "raft-node-0.raft-cluster.raft-go.svc.cluster.local"
+        http_port: 8080
+        rpc_port: 1234
+      - id: 2
+        host: "raft-node-1.raft-cluster.raft-go.svc.cluster.local"
+        http_port: 8080
+        rpc_port: 1234
+      - id: 3
+        host: "raft-node-2.raft-cluster.raft-go.svc.cluster.local"
+        http_port: 8080
+        rpc_port: 1234
+    # timeout in miliseconds
+    min_election_timeout_ms: 12000
+    max_election_timeout_ms: 15000
+    min_heartbeat_timeout_ms: 2000
+    max_heartbeat_timeout_ms: 5000
+    data_folder: data/
+    state_machine_snapshot: false
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: raft-cluster
+  namespace: raft-go
+  labels:
+    app: raft
+spec:
+  selector:
+    app: raft
+  ports:
+  - name: http
+    port: 8080
+    targetPort: 8080
+  - name: rpc
+    port: 1234
+    targetPort: 1234
+  clusterIP: None
+---
+apiVersion: apps/v1
+kind: StatefulSet
+metadata:
+  name: raft-node
+  namespace: raft-go
+spec:
+  serviceName: raft-cluster
+  replicas: 3
+  selector:
+    matchLabels:
+      app: raft
+  template:
+    metadata:
+      labels:
+        app: raft
+    spec:
+      containers:
+      - name: raft-node
+        image: raft-go:latest
+        imagePullPolicy: Never
+        ports:
+        - name: http
+          containerPort: 8080
+        - name: rpc
+          containerPort: 1234
+        env:
+        - name: POD_NAME
+          valueFrom:
+            fieldRef:
+              fieldPath: metadata.name
+        - name: POD_NAMESPACE
+          valueFrom:
+            fieldRef:
+              fieldPath: metadata.namespace
+        - name: SERVICE_NAME
+          value: raft-cluster
+        - name: ID
+          value: "$(pod_name##*-)"
+        - name: http_port
+          value: "8080"
+        - name: rpc_port
+          value: "1234"
+        - name: host
+          value: "$(POD_NAME).$(SERVICE_NAME).$(POD_NAMESPACE).svc.cluster.local"
+        command: ["/bin/sh", "-c"]
+        args:
+          - id=$(( ${POD_NAME##*-} + 1 )) && exec /app/raft-go -id=$id
+        volumeMounts:
+        - name: raft-storage
+          mountPath: /app/data
+        - name: raft-config
+          mountPath: /app/config.yml
+          subPath: config.yaml
+      volumes:
+      - name: raft-config
+        configMap:
+          name: raft-config
+  volumeClaimTemplates:
+  - metadata:
+      name: raft-storage
+    spec:
+      accessModes: ["ReadWriteOnce"]
+      resources:
+        requests:
+          storage: 32Mi
