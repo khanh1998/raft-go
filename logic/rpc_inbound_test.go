@@ -1,6 +1,7 @@
 package logic
 
 import (
+	"context"
 	"fmt"
 	"khanh/raft-go/common"
 	"khanh/raft-go/state_machine"
@@ -70,7 +71,7 @@ func Test_nodeImpl_RequestVote(t *testing.T) {
 
 	for index, testCase := range testCases {
 		var out common.RequestVoteOutput
-		testCase.n.RequestVote(&testCase.in, &out)
+		testCase.n.RequestVote(context.TODO(), &testCase.in, &out)
 		log.Info().Int("index", index).Msg("test case RequestVoteOutput")
 		assert.Equal(t, testCase.out, out, fmt.Sprintf("test case: #%d", index))
 	}
@@ -340,7 +341,7 @@ func Test_nodeImpl_AppendEntries(t *testing.T) {
 		t.Run(fmt.Sprintf("[%d] %s", index, testCase.name), func(t *testing.T) {
 			log.Info().Int("index", index).Msg("test case AppendEntriesOutput")
 			var out common.AppendEntriesOutput
-			testCase.n.AppendEntries(&testCase.in, &out)
+			testCase.n.AppendEntries(context.TODO(), &testCase.in, &out)
 			assert.Equal(t, testCase.out, out, fmt.Sprintf("%d test case: %s", index, testCase.name))
 
 			if testCase.persist.do {
@@ -361,7 +362,7 @@ func Test_nodeImpl_AppendEntries(t *testing.T) {
 				// assert.Equal(t, map[string]string{}, data)
 				_ = data
 
-				err = n2.restoreRaftStateFromFile()
+				err = n2.restoreRaftStateFromFile(context.TODO())
 
 				assert.NoError(t, err)
 

@@ -1,6 +1,7 @@
 package logic
 
 import (
+	"context"
 	"errors"
 	"khanh/raft-go/common"
 	"time"
@@ -19,7 +20,10 @@ func (r *RaftBrainImpl) getLeaderHttpUrl() string {
 	return leaderUrl
 }
 
-func (r *RaftBrainImpl) ClientRequest(input *common.ClientRequestInput, output *common.ClientRequestOutput) (err error) {
+func (r *RaftBrainImpl) ClientRequest(ctx context.Context, input *common.ClientRequestInput, output *common.ClientRequestOutput) (err error) {
+	ctx, span := tracer.Start(ctx, "ClientRequest")
+	defer span.End()
+
 	r.inOutLock.Lock()
 	if r.state != common.StateLeader {
 		leaderUrl := r.getLeaderHttpUrl()
@@ -35,7 +39,7 @@ func (r *RaftBrainImpl) ClientRequest(input *common.ClientRequestInput, output *
 		return nil
 	}
 
-	index := r.appendLog(common.Log{
+	index := r.appendLog(ctx, common.Log{
 		Term:        r.currentTerm,
 		Command:     input.Command,
 		ClientID:    input.ClientID,
@@ -48,7 +52,7 @@ func (r *RaftBrainImpl) ClientRequest(input *common.ClientRequestInput, output *
 	var response any = nil
 
 	if err := r.arm.Register(index); err != nil {
-		r.log().Err(err).Msg("ClientRequest_Register")
+		r.log(ctx).Err(err).Msg("ClientRequest_Register")
 
 		*output = common.ClientRequestOutput{
 			Status:     common.StatusNotOK,
@@ -67,7 +71,7 @@ func (r *RaftBrainImpl) ClientRequest(input *common.ClientRequestInput, output *
 			response = common.SessionExpired
 		}
 
-		r.log().Err(err).Msg("ClientRequest_TakeResponse")
+		r.log(ctx).Err(err).Msg("ClientRequest_TakeResponse")
 	}
 
 	*output = common.ClientRequestOutput{
@@ -78,7 +82,10 @@ func (r *RaftBrainImpl) ClientRequest(input *common.ClientRequestInput, output *
 	return nil
 }
 
-func (r *RaftBrainImpl) RegisterClient(input *common.RegisterClientInput, output *common.RegisterClientOutput) (err error) {
+func (r *RaftBrainImpl) RegisterClient(ctx context.Context, input *common.RegisterClientInput, output *common.RegisterClientOutput) (err error) {
+	ctx, span := tracer.Start(ctx, "RegisterClient")
+	defer span.End()
+
 	r.inOutLock.Lock()
 
 	if r.state != common.StateLeader {
@@ -95,7 +102,7 @@ func (r *RaftBrainImpl) RegisterClient(input *common.RegisterClientInput, output
 		return nil
 	}
 
-	index := r.appendLog(common.Log{
+	index := r.appendLog(ctx, common.Log{
 		Term:        r.currentTerm,
 		ClientID:    0,
 		SequenceNum: 0,
@@ -107,7 +114,7 @@ func (r *RaftBrainImpl) RegisterClient(input *common.RegisterClientInput, output
 	var status common.ClientRequestStatus = common.StatusOK
 
 	if err := r.arm.Register(index); err != nil {
-		r.log().Err(err).Msg("RegisterClient_Register")
+		r.log(ctx).Err(err).Msg("RegisterClient_Register")
 		*output = common.RegisterClientOutput{
 			Status:     common.StatusNotOK,
 			LeaderHint: "",
@@ -119,7 +126,7 @@ func (r *RaftBrainImpl) RegisterClient(input *common.RegisterClientInput, output
 
 	_, err = r.arm.TakeResponse(index, 30*time.Second)
 	if err != nil {
-		r.log().Err(err).Msg("RegisterClient_TakeResponse")
+		r.log(ctx).Err(err).Msg("RegisterClient_TakeResponse")
 
 		*output = common.RegisterClientOutput{
 			Status:     common.StatusNotOK,
@@ -139,7 +146,10 @@ func (r *RaftBrainImpl) RegisterClient(input *common.RegisterClientInput, output
 	return nil
 }
 
-func (r *RaftBrainImpl) ClientQuery(input *common.ClientQueryInput, output *common.ClientQueryOutput) (err error) {
+func (r *RaftBrainImpl) ClientQuery(ctx context.Context, input *common.ClientQueryInput, output *common.ClientQueryOutput) (err error) {
+	ctx, span := tracer.Start(ctx, "ClientQuery")
+	defer span.End()
+
 	defer func() {
 		if err != nil {
 			output.Status = common.StatusNotOK
@@ -185,7 +195,7 @@ func (r *RaftBrainImpl) ClientQuery(input *common.ClientQueryInput, output *comm
 
 	realIndex := r.commitIndex
 
-	r.BroadcastAppendEntries() // TODO: heartbeat only
+	r.BroadcastAppendEntries(ctx) // TODO: heartbeat only
 
 	ok = false
 	for i := 0; i < 100; i++ {

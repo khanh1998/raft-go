@@ -1,21 +1,21 @@
 package main
 
 import (
+	"context"
+	"errors"
 	"flag"
 	"fmt"
 	"khanh/raft-go/common"
 	"khanh/raft-go/http_proxy"
 	"khanh/raft-go/logic"
 	"khanh/raft-go/node"
+	"khanh/raft-go/observability"
 	"khanh/raft-go/rpc_proxy"
 	"khanh/raft-go/state_machine"
 	"log"
 	"os"
 	"os/signal"
 	"syscall"
-	"time"
-
-	"github.com/rs/zerolog"
 )
 
 func readCmdArgsForStatic() (id *int, err error) {
@@ -116,9 +116,7 @@ func main() {
 		}
 	}
 
-	output := zerolog.ConsoleWriter{Out: os.Stdout, TimeFormat: time.RFC3339Nano}
-
-	logger := zerolog.New(output).With().Timestamp().Logger()
+	logger := observability.NewZerolog(config.LogServer, id)
 
 	logger.Info().Interface("config", config).Msg("config")
 
@@ -155,8 +153,23 @@ func main() {
 		DataFolder: dataFolder,
 	}
 
+	// Set up OpenTelemetry.
+	otelShutdown, err := observability.SetupOTelSDK(context.Background(), id, config.TraceServer)
+	if err != nil {
+		log.Panic(err)
+	}
+
+	// Handle shutdown properly so nothing leaks.
+	defer func() {
+		err = errors.Join(err, otelShutdown(context.Background()))
+		log.Panic(err)
+	}()
+
 	n := node.NewNode(params)
 	n.Start(params.Brain.Mode == common.Dynamic, params.Brain.CachingUp)
+
+	l := common.NewOtelLogger()
+	l.Info(context.Background(), "hello", "name", "khanh", "age", 26)
 
 	signChan := make(chan os.Signal, 1)
 	signal.Notify(signChan, os.Interrupt, syscall.SIGTERM)

@@ -1,12 +1,19 @@
 package logic
 
 import (
+	"context"
 	"errors"
 	"khanh/raft-go/common"
 	"sync"
 	"time"
 
 	"github.com/rs/zerolog"
+	"go.opentelemetry.io/contrib/bridges/otelslog"
+	"go.opentelemetry.io/otel/trace"
+)
+
+var (
+	logger = otelslog.NewLogger("rpc-proxy")
 )
 
 type SessionManager interface{}
@@ -81,12 +88,12 @@ type SimpleStateMachine interface {
 }
 
 type RPCProxy interface {
-	SendAppendEntries(peerId int, timeout *time.Duration, input common.AppendEntriesInput) (output common.AppendEntriesOutput, err error)
-	SendRequestVote(peerId int, timeout *time.Duration, input common.RequestVoteInput) (output common.RequestVoteOutput, err error)
-	SendPing(peerId int, timeout *time.Duration) (res common.PingResponse, err error)
+	SendAppendEntries(ctx context.Context, peerId int, timeout *time.Duration, input common.AppendEntriesInput) (output common.AppendEntriesOutput, err error)
+	SendRequestVote(ctx context.Context, peerId int, timeout *time.Duration, input common.RequestVoteInput) (output common.RequestVoteOutput, err error)
+	SendPing(ctx context.Context, peerId int, timeout *time.Duration) (res common.PingResponse, err error)
 
-	ConnectToNewPeer(peerID int, peerURL string, retry int, retryDelay time.Duration) error
-	SendToVotingMember(peerId int, timeout *time.Duration) (err error)
+	ConnectToNewPeer(ctx context.Context, peerID int, peerURL string, retry int, retryDelay time.Duration) error
+	SendToVotingMember(ctx context.Context, peerId int, timeout *time.Duration) (err error)
 }
 
 type Persistence interface {
@@ -143,7 +150,10 @@ func NewRaftBrain(params NewRaftBrainParams) (*RaftBrainImpl, error) {
 		matchIndex: make(map[int]int),
 	}
 
-	err := n.restoreRaftStateFromFile()
+	ctx, span := tracer.Start(context.Background(), "NewRaftBrain")
+	defer span.End()
+
+	err := n.restoreRaftStateFromFile(ctx)
 	if err != nil {
 		return n, err
 	}
@@ -165,14 +175,14 @@ func NewRaftBrain(params NewRaftBrainParams) (*RaftBrainImpl, error) {
 			if len(n.logs) == 0 {
 				mem := params.Members[0]
 
-				n.appendLog(common.Log{
+				n.appendLog(ctx, common.Log{
 					Term:        1,
 					ClientID:    0,
 					SequenceNum: 0,
 					Command:     common.ComposeAddServerCommand(mem.ID, mem.HttpUrl, mem.RpcUrl),
 				})
 			} else {
-				n.restoreClusterMemberInfoFromLogs()
+				n.restoreClusterMemberInfoFromLogs(ctx)
 			}
 		}
 	}
@@ -187,7 +197,7 @@ func NewRaftBrain(params NewRaftBrainParams) (*RaftBrainImpl, error) {
 		}
 	}
 
-	n.applyLog()
+	n.applyLog(ctx)
 
 	return n, nil
 }
@@ -200,19 +210,28 @@ func (n *RaftBrainImpl) Stop() {
 }
 
 func (n *RaftBrainImpl) Start() {
-	n.resetElectionTimeout()
-	n.resetHeartBeatTimeout()
+	ctx, span := tracer.Start(context.Background(), "Start")
+	defer span.End()
 
-	go n.loop()
+	n.resetElectionTimeout(ctx)
+	n.resetHeartBeatTimeout(ctx)
 
-	n.log().Info().
+	go n.loop(ctx)
+
+	n.log(ctx).Info().
 		Interface("members", n.members).
 		Msg("Brain start")
 }
 
-func (n *RaftBrainImpl) log() *zerolog.Logger {
-	// data race
+// data race
+func (n *RaftBrainImpl) log(ctx context.Context) *zerolog.Logger {
+	span := trace.SpanFromContext(ctx)
+	traceID := span.SpanContext().TraceID()
+	spanID := span.SpanContext().SpanID()
+
 	sub := n.logger.With().
+		Str("trace_id", traceID.String()).
+		Str("span_id", spanID.String()).
 		Int("id", n.id).
 		Str("state", n.state.String()).
 		Int("votedFor", n.votedFor).

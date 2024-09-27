@@ -1,0 +1,35 @@
+server:
+  http_listen_port: 9080
+  grpc_listen_port: 0
+
+positions:
+  filename: /tmp/positions.yaml
+
+clients:
+  - url: http://loki:3100/loki/api/v1/push
+    batchsize: 100  # Smaller batch size
+    timeout: 10s
+    backoff_config:
+      min_period: 500ms
+      max_period: 10s
+
+scrape_configs:
+- job_name: system
+  static_configs:
+  - targets:
+      - localhost
+    labels:
+      job: varlogs
+      __path__: /var/log/*log
+  pipeline_stages:
+    - match:
+        selector: '{job="varlogs", container_name=~"raft-node-(1|2|3)"}'
+        stages:
+          - json:
+              expressions:
+                level: level
+                msg: msg
+          - labels:
+            level:
+          - output:
+            source: msg

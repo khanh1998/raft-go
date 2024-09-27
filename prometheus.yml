@@ -1,0 +1,10 @@
+global:
+  scrape_interval: 5s  # Default scrape interval
+
+scrape_configs:
+  - job_name: 'raft-db'
+    static_configs:
+      - targets:
+          - 'raft-node-1.raft-cluster.local:8080'
+          - 'raft-node-2.raft-cluster.local:8080'
+          - 'raft-node-3.raft-cluster.local:8080'

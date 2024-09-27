@@ -1,17 +1,24 @@
 package logic
 
 import (
+	"context"
 	"khanh/raft-go/common"
 	"time"
+
+	"go.opentelemetry.io/otel"
 )
 
-func (n *RaftBrainImpl) loop() {
-	n.log().Info().Msg("Raft main loop has been started")
+var (
+	tracer = otel.Tracer("raft-brain")
+)
+
+func (n *RaftBrainImpl) loop(ctx context.Context) {
+	n.log(ctx).Info().Msg("Raft main loop has been started")
 	stop := false
 	majorityOK := false
 	for {
 		if stop {
-			n.log().Info().Msg("Raft main loop has been stopped")
+			n.log(context.Background()).Info().Msg("Raft main loop has been stopped")
 
 			break
 		}
@@ -21,29 +28,33 @@ func (n *RaftBrainImpl) loop() {
 			// Thus, a leader in Raft steps down if an election timeout elapses without a successful round of heartbeats to a majority of its cluster;
 			// this allows clients to retry their requests with another server.
 			// TODO: brings this out of the loop
+			ctx, span := tracer.Start(context.Background(), "ElectionTimeout")
 			if n.state == common.StateLeader && !majorityOK {
-				n.toFollower()
-				n.setLeaderID(0)
-				n.setVotedFor(0)
+				n.toFollower(ctx)
+				n.setLeaderID(ctx, 0)
+				n.setVotedFor(ctx, 0)
 
-				n.log().Debug().Msg("main loop: leader step down")
+				n.log(ctx).Debug().Msg("main loop: leader step down")
 			}
 			majorityOK = false
-			n.BroadCastRequestVote()
+			n.BroadCastRequestVote(ctx)
+			span.End()
 		case <-n.heartBeatTimeOut.C:
-			majorityOK = n.BroadcastAppendEntries() || majorityOK
+			ctx, span := tracer.Start(context.Background(), "HeartBeatTimeout")
+			majorityOK = n.BroadcastAppendEntries(ctx) || majorityOK
+			span.End()
 		case <-n.stop:
 			stop = true
 		}
 	}
 }
 
-func (n *RaftBrainImpl) resetElectionTimeout() {
+func (n *RaftBrainImpl) resetElectionTimeout(ctx context.Context) {
 	n.dataLock.Lock()
 	defer n.dataLock.Unlock()
 
 	randomElectionTimeOut := time.Duration(common.RandInt(n.electionTimeOutMin, n.electionTimeOutMax)) * time.Millisecond
-	n.log().Info().Interface("seconds", randomElectionTimeOut.Seconds()).Msg("resetElectionTimeout")
+	n.log(ctx).Info().Interface("seconds", randomElectionTimeOut.Seconds()).Msg("resetElectionTimeout")
 	if n.electionTimeOut == nil {
 		n.electionTimeOut = time.NewTimer(randomElectionTimeOut)
 	} else {
@@ -51,12 +62,12 @@ func (n *RaftBrainImpl) resetElectionTimeout() {
 	}
 }
 
-func (n *RaftBrainImpl) resetHeartBeatTimeout() {
+func (n *RaftBrainImpl) resetHeartBeatTimeout(ctx context.Context) {
 	n.dataLock.Lock()
 	defer n.dataLock.Unlock()
 
 	randomHeartBeatTimeout := time.Duration(common.RandInt(n.heartBeatTimeOutMin, n.heartBeatTimeOutMax)) * time.Millisecond
-	n.log().Info().Interface("seconds", randomHeartBeatTimeout.Seconds()).Msg("resetHeartBeatTimeout")
+	n.log(ctx).Info().Interface("seconds", randomHeartBeatTimeout.Seconds()).Msg("resetHeartBeatTimeout")
 	if n.heartBeatTimeOut == nil {
 		n.heartBeatTimeOut = time.NewTimer(randomHeartBeatTimeout)
 	} else {

@@ -11,6 +11,11 @@ type AppendEntriesInput struct {
 	PrevLogTerm  int   // term of prevLogIndex entry
 	Entries      []Log // log entries to store (empty for heartbeat; may send more than one for efficiency)
 	LeaderCommit int   // leader’s commitIndex
+
+	TraceID    string
+	SpanID     string
+	TraceFlags byte
+	TraceState string
 }
 
 type AppendEntriesOutput struct {
@@ -25,6 +30,11 @@ type RequestVoteInput struct {
 	CandidateID  int // candidate requesting vote
 	LastLogIndex int // index of candidate’s last log entry (§5.4)
 	LastLogTerm  int // term of candidate’s last log entry (§5.4)
+
+	TraceID    string
+	SpanID     string
+	TraceFlags byte
+	TraceState string
 }
 
 type RequestVoteOutput struct {
@@ -67,4 +77,11 @@ type PingResponse struct {
 	Message  string
 	State    RaftState
 	Term     int
+}
+
+type ToVotingMemberInput struct {
+	TraceID    string
+	SpanID     string
+	TraceFlags byte
+	TraceState string
 }

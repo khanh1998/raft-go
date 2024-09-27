@@ -1,6 +1,7 @@
 package logic
 
 import (
+	"context"
 	"khanh/raft-go/common"
 	"khanh/raft-go/rpc_proxy"
 	"khanh/raft-go/state_machine"
@@ -94,7 +95,7 @@ func TestRaftBrainImpl_BroadCastRequestVote(t *testing.T) {
 				nextIndex:           tt.fields.NextIndex,
 				matchIndex:          tt.fields.MatchIndex,
 			}
-			n.BroadCastRequestVote()
+			n.BroadCastRequestVote(context.TODO())
 		})
 	}
 }

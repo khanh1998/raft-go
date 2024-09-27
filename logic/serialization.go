@@ -1,6 +1,7 @@
 package logic
 
 import (
+	"context"
 	"errors"
 	"fmt"
 	"khanh/raft-go/common"
@@ -30,7 +31,7 @@ func (n *RaftBrainImpl) serialize(delimiter bool, createdAt bool, source string)
 	return data
 }
 
-func (n *RaftBrainImpl) deserialize(data map[string]string) error {
+func (n *RaftBrainImpl) deserialize(ctx context.Context, data map[string]string) error {
 	currentTerm, err := strconv.ParseInt(data["current_term"], 10, 32)
 	if err != nil {
 		return err
@@ -56,7 +57,7 @@ func (n *RaftBrainImpl) deserialize(data map[string]string) error {
 		if value, ok := data[key]; ok {
 			logItem, err := common.NewLogFromString(value)
 			if err != nil {
-				n.log().Err(err).Msg("can not create log from string")
+				n.log(ctx).Err(err).Msg("can not create log from string")
 
 				return err
 			} else {
@@ -96,11 +97,11 @@ func (n *RaftBrainImpl) getPersistanceKeyList() ([]string, error) {
 	return keys, nil
 }
 
-func (n *RaftBrainImpl) restoreRaftStateFromFile() error {
+func (n *RaftBrainImpl) restoreRaftStateFromFile(ctx context.Context) error {
 	keys, err := n.getPersistanceKeyList()
 	if err != nil {
 		if errors.Is(err, common.ErrEmptyData) {
-			n.log().Err(err).Msg("data file is empty")
+			n.log(ctx).Err(err).Msg("data file is empty")
 			return nil
 		}
 
@@ -112,7 +113,7 @@ func (n *RaftBrainImpl) restoreRaftStateFromFile() error {
 		return err
 	}
 
-	if err := n.deserialize(data); err != nil {
+	if err := n.deserialize(ctx, data); err != nil {
 		return err
 	}
 

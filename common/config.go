@@ -29,6 +29,8 @@ type Config struct {
 	MaxHeartbeatTimeoutMs int64         `mapstructure:"max_heartbeat_timeout_ms" validate:"required,gt=0"`
 	DataFolder            string        `mapstructure:"data_folder" default:"data/" validate:"required"`
 	StateMachineSnapshot  bool          `mapstructure:"state_machine_snapshot"`
+	TraceServer           string        `mapstructure:"trace_server"`
+	LogServer             string        `mapstructure:"log_server"`
 }
 
 // appModeValidator is a custom validator function to check if the mode is valid

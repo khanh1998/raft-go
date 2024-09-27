@@ -1,6 +1,7 @@
 package logic
 
 import (
+	"context"
 	"khanh/raft-go/common"
 	"time"
 )
@@ -17,12 +18,15 @@ var (
 )
 
 // AppendEntries Invoked by leader to replicate log entries (§5.3); also used as heartbeat (§5.2).
-func (n *RaftBrainImpl) AppendEntries(input *common.AppendEntriesInput, output *common.AppendEntriesOutput) (err error) {
+func (n *RaftBrainImpl) AppendEntries(ctx context.Context, input *common.AppendEntriesInput, output *common.AppendEntriesOutput) (err error) {
+	ctx, span := tracer.Start(ctx, "AppendEntries")
+	defer span.End()
+
 	n.inOutLock.Lock()
 	defer n.inOutLock.Unlock()
 
 	defer func() {
-		n.log().Info().
+		n.log(ctx).Info().
 			Interface("id", n.id).
 			Interface("input", input).
 			Interface("output", output).
@@ -43,18 +47,18 @@ func (n *RaftBrainImpl) AppendEntries(input *common.AppendEntriesInput, output *
 	}
 
 	n.lastHeartbeatReceivedTime = time.Now()
-	n.resetElectionTimeout()
+	n.resetElectionTimeout(ctx)
 
 	// If RPC request or response contains term T > currentTerm: set currentTerm = T, convert to follower (§5.1)
 	if input.Term > n.currentTerm {
-		n.toFollower()
-		n.setLeaderID(input.LeaderID)
-		n.setCurrentTerm(input.Term)
-		n.setVotedFor(0)
+		n.toFollower(ctx)
+		n.setLeaderID(ctx, input.LeaderID)
+		n.setCurrentTerm(ctx, input.Term)
+		n.setVotedFor(ctx, 0)
 	}
 
 	if input.Term == n.currentTerm {
-		n.setLeaderID(input.LeaderID)
+		n.setLeaderID(ctx, input.LeaderID)
 	}
 
 	// WARN: log index start from 1, not 0
@@ -82,7 +86,7 @@ func (n *RaftBrainImpl) AppendEntries(input *common.AppendEntriesInput, output *
 		logItem, err = n.GetLog(input.PrevLogIndex + 1)
 		if err == nil {
 			if logItem.Term != input.Term {
-				n.deleteLogFrom(input.PrevLogIndex + 1)
+				n.deleteLogFrom(ctx, input.PrevLogIndex+1)
 				*output = common.AppendEntriesOutput{Term: n.currentTerm, Success: false, Message: MsgCurrentLogTermsAreNotMatched, NodeID: n.id}
 
 				return nil
@@ -94,7 +98,7 @@ func (n *RaftBrainImpl) AppendEntries(input *common.AppendEntriesInput, output *
 	if len(input.Entries) > 0 {
 		_, err = n.GetLog(input.PrevLogIndex + 1)
 		if err != nil { // entries are not already in the log
-			n.appendLogs(input.Entries)
+			n.appendLogs(ctx, input.Entries)
 		}
 	}
 
@@ -103,7 +107,7 @@ func (n *RaftBrainImpl) AppendEntries(input *common.AppendEntriesInput, output *
 		n.commitIndex = common.Min(input.LeaderCommit, len(n.logs)) // data race
 	}
 
-	n.applyLog()
+	n.applyLog(ctx)
 
 	*output = common.AppendEntriesOutput{Term: n.currentTerm, Success: true, Message: "", NodeID: n.id}
 
@@ -111,12 +115,15 @@ func (n *RaftBrainImpl) AppendEntries(input *common.AppendEntriesInput, output *
 }
 
 // Invoked by candidates to gather votes (§5.2).
-func (n *RaftBrainImpl) RequestVote(input *common.RequestVoteInput, output *common.RequestVoteOutput) (err error) {
+func (n *RaftBrainImpl) RequestVote(ctx context.Context, input *common.RequestVoteInput, output *common.RequestVoteOutput) (err error) {
+	ctx, span := tracer.Start(ctx, "RequestVote")
+	defer span.End()
+
 	n.inOutLock.Lock()
 	defer n.inOutLock.Unlock()
 
 	defer func() {
-		n.log().Info().
+		n.log(ctx).Info().
 			Interface("id", n.id).
 			Interface("input", input).
 			Interface("output", output).
@@ -165,10 +172,10 @@ func (n *RaftBrainImpl) RequestVote(input *common.RequestVoteInput, output *comm
 
 	// If RPC request or response contains term T > currentTerm: set currentTerm = T, convert to follower (§5.1)
 	if input.Term > n.currentTerm {
-		n.setCurrentTerm(input.Term)
-		n.setLeaderID(0)
-		n.setVotedFor(0)
-		n.toFollower()
+		n.setCurrentTerm(ctx, input.Term)
+		n.setLeaderID(ctx, 0)
+		n.setVotedFor(ctx, 0)
+		n.toFollower(ctx)
 		// if current node is a follower: then no need to convert to follower.
 		// if current node is a candidate:
 		// if current node is a leader:
@@ -178,8 +185,8 @@ func (n *RaftBrainImpl) RequestVote(input *common.RequestVoteInput, output *comm
 	if n.votedFor == 0 || n.votedFor == input.CandidateID {
 		// Retry Mechanisms: However, in a distributed system, network partitions, retries due to lost messages, or other anomalies might lead to a scenario where the same candidate might end up re-sending a RequestVote RPC, or where a follower might process a duplicate RequestVote.
 		if n.isLogUpToDate(input.LastLogIndex, input.LastLogTerm) {
-			n.setVotedFor(input.CandidateID)
-			n.resetElectionTimeout()
+			n.setVotedFor(ctx, input.CandidateID)
+			n.resetElectionTimeout(ctx)
 
 			*output = common.RequestVoteOutput{Term: n.currentTerm, VoteGranted: true, Message: "", NodeID: n.id}
 

@@ -1,6 +1,7 @@
 package logic
 
 import (
+	"context"
 	"khanh/raft-go/common"
 	"reflect"
 	"testing"
@@ -115,7 +116,7 @@ func Test_nodeImpl_Deserialize(t *testing.T) {
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
 			n := &RaftBrainImpl{}
-			if err := n.deserialize(tt.args.data); (err != nil) != tt.wantErr {
+			if err := n.deserialize(context.Background(), tt.args.data); (err != nil) != tt.wantErr {
 				t.Errorf("nodeImpl.Deserialize() error = %v, wantErr %v", err, tt.wantErr)
 			}
 

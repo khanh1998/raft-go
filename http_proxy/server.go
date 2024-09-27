@@ -3,22 +3,28 @@ package http_proxy
 import (
 	"context"
 	"errors"
-	"fmt"
 	"khanh/raft-go/common"
 	"net/http"
 	"regexp"
 
 	"github.com/gin-gonic/gin"
 	"github.com/rs/zerolog"
+	"go.opentelemetry.io/contrib/instrumentation/github.com/gin-gonic/gin/otelgin"
+	"go.opentelemetry.io/otel"
+	"go.opentelemetry.io/otel/trace"
+)
+
+var (
+	tracer = otel.Tracer("http-proxy")
 )
 
 type RaftBrain interface {
 	// todo: remove returned error, error should be included in output
-	ClientRequest(input *common.ClientRequestInput, output *common.ClientRequestOutput) (err error)
-	RegisterClient(input *common.RegisterClientInput, output *common.RegisterClientOutput) (err error)
-	ClientQuery(input *common.ClientQueryInput, output *common.ClientQueryOutput) (err error)
-	AddServer(input common.AddServerInput, output *common.AddServerOutput) (err error)
-	RemoveServer(input common.RemoveServerInput, output *common.RemoveServerOutput) (err error)
+	ClientRequest(ctx context.Context, input *common.ClientRequestInput, output *common.ClientRequestOutput) (err error)
+	RegisterClient(ctx context.Context, input *common.RegisterClientInput, output *common.RegisterClientOutput) (err error)
+	ClientQuery(ctx context.Context, input *common.ClientQueryInput, output *common.ClientQueryOutput) (err error)
+	AddServer(ctx context.Context, input common.AddServerInput, output *common.AddServerOutput) (err error)
+	RemoveServer(ctx context.Context, input common.RemoveServerInput, output *common.RemoveServerOutput) (err error)
 }
 
 type HttpProxy struct {
@@ -45,9 +51,13 @@ func NewHttpProxy(params NewHttpProxyParams) *HttpProxy {
 	return &h
 }
 
-func (h *HttpProxy) log() *zerolog.Logger {
+func (h *HttpProxy) log(ctx context.Context) *zerolog.Logger {
 	// data race
+	span := trace.SpanFromContext(ctx)
+	traceID := span.SpanContext().TraceID()
+
 	sub := h.logger.With().
+		Str("trace_id", traceID.String()).
 		Str("origin", "HttpProxy").
 		Logger()
 	return &sub
@@ -71,9 +81,15 @@ func (h *HttpProxy) SetInaccessible() {
 func (h *HttpProxy) SetBrain(brain RaftBrain) {
 	h.brain = brain
 }
+func (h *HttpProxy) prometheus(r *gin.Engine) {
+	r.GET("/metrics", func(ctx *gin.Context) {})
+}
 
 func (h *HttpProxy) cli(r *gin.Engine) {
 	r.POST("/cli", func(c *gin.Context) {
+		ctx, span := tracer.Start(c.Request.Context(), "CliHandler")
+		defer span.End()
+
 		if !h.accessible {
 			c.Status(http.StatusRequestTimeout)
 
@@ -101,7 +117,7 @@ func (h *HttpProxy) cli(r *gin.Engine) {
 			request := common.ClientQueryInput{
 				Query: requestData.Command,
 			}
-			err = h.brain.ClientQuery(&request, &response)
+			err = h.brain.ClientQuery(ctx, &request, &response)
 			responseData = common.ClientRequestOutput{
 				Status:     response.Status,
 				Response:   response.Response,
@@ -114,7 +130,7 @@ func (h *HttpProxy) cli(r *gin.Engine) {
 				Command:     requestData.Command,
 			}
 			var response common.ClientRequestOutput
-			err = h.brain.ClientRequest(&request, &response)
+			err = h.brain.ClientRequest(ctx, &request, &response)
 			responseData = common.ClientRequestOutput{
 				Status:     response.Status,
 				Response:   response.Response,
@@ -123,7 +139,7 @@ func (h *HttpProxy) cli(r *gin.Engine) {
 		case CommandTypeRegister:
 			var request common.RegisterClientInput
 			var response common.RegisterClientOutput
-			err = h.brain.RegisterClient(&request, &response)
+			err = h.brain.RegisterClient(ctx, &request, &response)
 			responseData = common.ClientRequestOutput{
 				Status:     response.Status,
 				LeaderHint: response.LeaderHint,
@@ -147,7 +163,7 @@ func (h *HttpProxy) cli(r *gin.Engine) {
 					NewServerRpcUrl:  rpcUrl,
 				}
 				var response common.AddServerOutput
-				err = h.brain.AddServer(request, &response)
+				err = h.brain.AddServer(ctx, request, &response)
 				responseData = common.ClientRequestOutput{
 					Status:     response.Status,
 					LeaderHint: response.LeaderHint,
@@ -172,7 +188,7 @@ func (h *HttpProxy) cli(r *gin.Engine) {
 					NewServerRpcUrl:  rpcUrl,
 				}
 				var response common.RemoveServerOutput
-				err = h.brain.RemoveServer(request, &response)
+				err = h.brain.RemoveServer(ctx, request, &response)
 				responseData = common.ClientRequestOutput{
 					Status:     response.Status,
 					LeaderHint: response.LeaderHint,
@@ -250,27 +266,30 @@ func verifyRequest(request common.ClientRequestInput) (errs []error, cmdType Com
 func (h *HttpProxy) Start() {
 	gin.SetMode(gin.ReleaseMode)
 	r := gin.New()
-
-	fmt.Println(h)
+	r.Use(otelgin.Middleware("gin-server"))
 
 	h.cli(r)
+	h.prometheus(r)
 
 	httpServer := &http.Server{
 		Addr:    h.host,
 		Handler: r,
 	}
 
+	ctx, span := tracer.Start(context.Background(), "Start")
+	defer span.End()
+
 	go func() {
 		if err := httpServer.ListenAndServe(); err != nil {
-			h.log().Err(err).Msg("HTTP Proxy Start")
+			h.log(ctx).Err(err).Msg("HTTP Proxy Start")
 		}
 	}()
 
 	go func() {
 		<-h.stop
 		httpServer.Shutdown(context.Background())
-		h.log().Info().Msg("HTTP Proxy stop")
+		h.log(ctx).Info().Msg("HTTP Proxy stop")
 	}()
 
-	h.log().Info().Msg("HTTP start")
+	h.log(ctx).Info().Msg("HTTP start")
 }

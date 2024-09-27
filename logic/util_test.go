@@ -1,6 +1,7 @@
 package logic
 
 import (
+	"context"
 	"khanh/raft-go/common"
 	"khanh/raft-go/state_machine"
 	"testing"
@@ -9,6 +10,8 @@ import (
 )
 
 func Test_nodeImpl_DeleteFrom(t *testing.T) {
+	ctx := context.TODO()
+
 	sm, err := state_machine.NewKeyValueStateMachine(state_machine.NewKeyValueStateMachineParams{
 		DB: common.NewPersistenceMock(),
 	})
@@ -16,7 +19,7 @@ func Test_nodeImpl_DeleteFrom(t *testing.T) {
 
 	sm.Reset()
 	n := RaftBrainImpl{logs: []common.Log{}, db: common.NewPersistenceMock(), stateMachine: sm}
-	err = n.deleteLogFrom(1)
+	err = n.deleteLogFrom(ctx, 1)
 	assert.ErrorIs(t, err, ErrLogIsEmtpy)
 
 	data := []common.Log{
@@ -28,29 +31,29 @@ func Test_nodeImpl_DeleteFrom(t *testing.T) {
 	sm.Reset()
 	n = RaftBrainImpl{logs: make([]common.Log, 3), db: common.NewPersistenceMock(), stateMachine: sm}
 	copy(n.logs, data)
-	err = n.deleteLogFrom(4)
+	err = n.deleteLogFrom(ctx, 4)
 	assert.ErrorIs(t, err, ErrIndexOutOfRange)
-	err = n.deleteLogFrom(0)
+	err = n.deleteLogFrom(ctx, 0)
 	assert.ErrorIs(t, err, ErrIndexOutOfRange)
 
 	sm.Reset()
 	n = RaftBrainImpl{logs: make([]common.Log, 3), db: common.NewPersistenceMock(), stateMachine: sm}
 	copy(n.logs, data)
-	err = n.deleteLogFrom(3)
+	err = n.deleteLogFrom(ctx, 3)
 	assert.NoError(t, err)
 	assert.Equal(t, data[:2], n.logs)
 
 	sm.Reset()
 	n = RaftBrainImpl{logs: make([]common.Log, 3), db: common.NewPersistenceMock(), stateMachine: sm}
 	copy(n.logs, data)
-	err = n.deleteLogFrom(2)
+	err = n.deleteLogFrom(ctx, 2)
 	assert.NoError(t, err)
 	assert.Equal(t, data[:1], n.logs)
 
 	sm.Reset()
 	n = RaftBrainImpl{logs: make([]common.Log, 3), db: common.NewPersistenceMock(), stateMachine: sm}
 	copy(n.logs, data)
-	err = n.deleteLogFrom(1)
+	err = n.deleteLogFrom(ctx, 1)
 	assert.NoError(t, err)
 	assert.Equal(t, []common.Log{}, n.logs)
 }

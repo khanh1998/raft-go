@@ -1,6 +1,7 @@
 package logic
 
 import (
+	"context"
 	"errors"
 	"fmt"
 	"khanh/raft-go/common"
@@ -49,7 +50,10 @@ func (r *RaftBrainImpl) WaitForLogCommited(dur time.Duration, index int) error {
 	return nil
 }
 
-func (r *RaftBrainImpl) RemoveServer(input common.RemoveServerInput, output *common.RemoveServerOutput) (err error) {
+func (r *RaftBrainImpl) RemoveServer(ctx context.Context, input common.RemoveServerInput, output *common.RemoveServerOutput) (err error) {
+	ctx, span := tracer.Start(ctx, "RemoveServer")
+	defer span.End()
+
 	r.inOutLock.Lock()
 	_ = output // to disable the warning: argument output is overwritten before first use
 
@@ -91,7 +95,7 @@ func (r *RaftBrainImpl) RemoveServer(input common.RemoveServerInput, output *com
 	}
 	defer r.changeMemberLock.Unlock()
 
-	index := r.appendLog(common.Log{
+	index := r.appendLog(ctx, common.Log{
 		Term:        r.currentTerm,
 		ClientID:    0,
 		SequenceNum: 0,
@@ -108,7 +112,7 @@ func (r *RaftBrainImpl) RemoveServer(input common.RemoveServerInput, output *com
 	if isLeaderRemoved {
 		r.state = common.StateRemoved
 		r.stop <- struct{}{}
-		r.log().Info().Msg("the server will be shut down in 5s")
+		r.log(ctx).Info().Msg("the server will be shut down in 5s")
 		time.AfterFunc(5*time.Second, func() {
 			pid := os.Getpid()
 			syscall.Kill(pid, syscall.SIGTERM)
@@ -124,7 +128,10 @@ func (r *RaftBrainImpl) RemoveServer(input common.RemoveServerInput, output *com
 	return nil
 }
 
-func (r *RaftBrainImpl) AddServer(input common.AddServerInput, output *common.AddServerOutput) (err error) {
+func (r *RaftBrainImpl) AddServer(ctx context.Context, input common.AddServerInput, output *common.AddServerOutput) (err error) {
+	ctx, span := tracer.Start(ctx, "AddServer")
+	defer span.End()
+
 	r.inOutLock.Lock()
 	if r.state != common.StateLeader {
 		*output = common.AddServerOutput{
@@ -164,7 +171,7 @@ func (r *RaftBrainImpl) AddServer(input common.AddServerInput, output *common.Ad
 	defer r.changeMemberLock.Unlock()
 	timeout := 5 * time.Second
 
-	if err := r.rpcProxy.ConnectToNewPeer(input.ID, input.NewServerRpcUrl, 5, timeout); err != nil {
+	if err := r.rpcProxy.ConnectToNewPeer(ctx, input.ID, input.NewServerRpcUrl, 5, timeout); err != nil {
 		*output = common.AddServerOutput{
 			Status:     common.StatusNotOK,
 			LeaderHint: r.getLeaderHttpUrl(),
@@ -181,7 +188,7 @@ func (r *RaftBrainImpl) AddServer(input common.AddServerInput, output *common.Ad
 		log.Info().Msgf("AddServer catchup start round %d", i)
 		begin := time.Now()
 
-		err := r.catchUpWithNewMember(input.ID)
+		err := r.catchUpWithNewMember(ctx, input.ID)
 		if err != nil {
 			*output = common.AddServerOutput{
 				Status:     common.StatusNotOK,
@@ -199,7 +206,7 @@ func (r *RaftBrainImpl) AddServer(input common.AddServerInput, output *common.Ad
 		log.Info().Msgf("AddServer catchup end round %d", i)
 	}
 
-	index := r.appendLog(common.Log{
+	index := r.appendLog(ctx, common.Log{
 		Term:        r.currentTerm,
 		ClientID:    0,
 		SequenceNum: 0,
@@ -211,7 +218,7 @@ func (r *RaftBrainImpl) AddServer(input common.AddServerInput, output *common.Ad
 	r.nextMemberId = input.ID + 1
 
 	// allow new server to become follower
-	err = r.rpcProxy.SendToVotingMember(input.ID, &timeout)
+	err = r.rpcProxy.SendToVotingMember(ctx, input.ID, &timeout)
 	if err != nil {
 		log.Err(err).Msg("SendToVotingMember")
 	}
@@ -231,7 +238,7 @@ func (r *RaftBrainImpl) AddServer(input common.AddServerInput, output *common.Ad
 	return nil
 }
 
-func (r *RaftBrainImpl) catchUpWithNewMember(peerID int) error {
+func (r *RaftBrainImpl) catchUpWithNewMember(ctx context.Context, peerID int) error {
 	initNextIdx := len(r.logs)
 	nextIdx := initNextIdx
 	currentTerm := r.currentTerm
@@ -261,13 +268,13 @@ func (r *RaftBrainImpl) catchUpWithNewMember(peerID int) error {
 
 		timeout := 5 * time.Second
 
-		output, err := r.rpcProxy.SendAppendEntries(peerID, &timeout, input)
-		r.log().Debug().Interface("output", output).Msg("r.RpcProxy.SendAppendEntries")
+		output, err := r.rpcProxy.SendAppendEntries(ctx, peerID, &timeout, input)
+		r.log(ctx).Debug().Interface("output", output).Msg("r.RpcProxy.SendAppendEntries")
 		if err != nil {
-			r.log().Err(err).Msg("BroadcastAppendEntries: ")
+			r.log(ctx).Err(err).Msg("BroadcastAppendEntries: ")
 		} else {
 			if output.Success && output.Term > currentTerm {
-				r.log().Fatal().Interface("response", output).Msg("inconsistent response")
+				r.log(ctx).Fatal().Interface("response", output).Msg("inconsistent response")
 			} else if output.Success {
 				matchIndex = common.Min(nextIdx, initNextIdx)
 
@@ -279,14 +286,14 @@ func (r *RaftBrainImpl) catchUpWithNewMember(peerID int) error {
 					// the appendEntries request is failed,
 					// because current leader is outdated
 					err = errors.New("the follower cannot be more up to date than the current leader")
-					r.log().Error().Msg(err.Error())
+					r.log(ctx).Error().Msg(err.Error())
 					return err
 				}
 			}
 		}
 	}
 
-	r.log().Info().
+	r.log(ctx).Info().
 		Interface("matchIndex", matchIndex).
 		Interface("initNextIdx", initNextIdx).
 		Msg("finish catch up")
@@ -377,13 +384,13 @@ func (r *RaftBrainImpl) addMember(id int, httpUrl, rpcUrl string) error {
 	return nil
 }
 
-func (r *RaftBrainImpl) restoreClusterMemberInfoFromLogs() (err error) {
+func (r *RaftBrainImpl) restoreClusterMemberInfoFromLogs(ctx context.Context) (err error) {
 	r.members = []common.ClusterMember{}
 
 	for _, log := range r.logs {
 		err = r.changeMember(log.Command.(string))
 		if err != nil {
-			r.log().Err(err).Msg("restoreClusterMemberInfoFromLogs")
+			r.log(ctx).Err(err).Msg("restoreClusterMemberInfoFromLogs")
 		}
 	}
 
