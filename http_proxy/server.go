@@ -4,14 +4,13 @@ import (
 	"context"
 	"errors"
 	"khanh/raft-go/common"
+	"khanh/raft-go/observability"
 	"net/http"
 	"regexp"
 
 	"github.com/gin-gonic/gin"
-	"github.com/rs/zerolog"
 	"go.opentelemetry.io/contrib/instrumentation/github.com/gin-gonic/gin/otelgin"
 	"go.opentelemetry.io/otel"
-	"go.opentelemetry.io/otel/trace"
 )
 
 var (
@@ -32,12 +31,12 @@ type HttpProxy struct {
 	host       string
 	stop       chan struct{}
 	accessible bool
-	logger     *zerolog.Logger
+	logger     observability.Logger
 }
 
 type NewHttpProxyParams struct {
 	URL    string
-	Logger *zerolog.Logger
+	Logger observability.Logger
 }
 
 func NewHttpProxy(params NewHttpProxyParams) *HttpProxy {
@@ -51,16 +50,12 @@ func NewHttpProxy(params NewHttpProxyParams) *HttpProxy {
 	return &h
 }
 
-func (h *HttpProxy) log(ctx context.Context) *zerolog.Logger {
-	// data race
-	span := trace.SpanFromContext(ctx)
-	traceID := span.SpanContext().TraceID()
+func (h *HttpProxy) log() observability.Logger {
+	sub := h.logger.With(
+		"origin", "HttpProxy",
+	)
 
-	sub := h.logger.With().
-		Str("trace_id", traceID.String()).
-		Str("origin", "HttpProxy").
-		Logger()
-	return &sub
+	return sub
 }
 
 func (h *HttpProxy) Stop() {
@@ -281,15 +276,15 @@ func (h *HttpProxy) Start() {
 
 	go func() {
 		if err := httpServer.ListenAndServe(); err != nil {
-			h.log(ctx).Err(err).Msg("HTTP Proxy Start")
+			h.log().ErrorContext(ctx, "HTTP Proxy Start", err)
 		}
 	}()
 
 	go func() {
 		<-h.stop
 		httpServer.Shutdown(context.Background())
-		h.log(ctx).Info().Msg("HTTP Proxy stop")
+		h.log().InfoContext(context.Background(), "HTTP Proxy stop")
 	}()
 
-	h.log(ctx).Info().Msg("HTTP start")
+	h.log().InfoContext(ctx, "HTTP server start")
 }

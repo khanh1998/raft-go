@@ -4,6 +4,8 @@ import (
 	"context"
 	"khanh/raft-go/common"
 	"time"
+
+	"go.opentelemetry.io/otel/codes"
 )
 
 var (
@@ -26,11 +28,12 @@ func (n *RaftBrainImpl) AppendEntries(ctx context.Context, input *common.AppendE
 	defer n.inOutLock.Unlock()
 
 	defer func() {
-		n.log(ctx).Info().
-			Interface("id", n.id).
-			Interface("input", input).
-			Interface("output", output).
-			Msg("AppendEntries")
+		n.log().InfoContext(ctx, "AppendEntries", "input", input, "output", output)
+		if err != nil {
+			span.SetStatus(codes.Error, err.Error())
+		} else {
+			span.SetStatus(codes.Ok, "finished process append entries")
+		}
 	}()
 
 	// if current leader get removed,
@@ -123,11 +126,12 @@ func (n *RaftBrainImpl) RequestVote(ctx context.Context, input *common.RequestVo
 	defer n.inOutLock.Unlock()
 
 	defer func() {
-		n.log(ctx).Info().
-			Interface("id", n.id).
-			Interface("input", input).
-			Interface("output", output).
-			Msg("RequestVote")
+		n.log().InfoContext(ctx, "RequestVote", "input", input, "output", output)
+		if err != nil {
+			span.SetStatus(codes.Error, err.Error())
+		} else {
+			span.SetStatus(codes.Ok, "finished process request vote")
+		}
 	}()
 
 	if n.state == common.StateRemoved {

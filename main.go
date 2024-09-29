@@ -16,6 +16,8 @@ import (
 	"os"
 	"os/signal"
 	"syscall"
+
+	"go.opentelemetry.io/otel"
 )
 
 func readCmdArgsForStatic() (id *int, err error) {
@@ -59,6 +61,10 @@ func readCmdArgsForDynamic() (id *int, catchingUp *bool, httpPort *int, rpcPort 
 }
 
 func main() {
+	ctx := context.Background()
+	tracer := otel.Tracer("raft-brain")
+	ctx, span := tracer.Start(ctx, "main.go")
+
 	config, err := common.ReadConfigFromFile(nil)
 	if err != nil {
 		log.Panic(err)
@@ -116,9 +122,10 @@ func main() {
 		}
 	}
 
-	logger := observability.NewZerolog(config.LogServer, id)
+	logger := observability.NewZerolog(config.LokiPushURL, id)
+	// logger := observability.NewOtelLogger()
 
-	logger.Info().Interface("config", config).Msg("config")
+	logger.InfoContext(ctx, "config content", "config", config)
 
 	walFileName := fmt.Sprintf("log.%d.dat", id)
 	dataFolder := fmt.Sprintf("%s%d/", config.DataFolder, id)
@@ -132,47 +139,46 @@ func main() {
 			HeartBeatTimeOutMax: config.MaxHeartbeatTimeoutMs,
 			ElectionTimeOutMin:  config.MinElectionTimeoutMs,
 			ElectionTimeOutMax:  config.MaxElectionTimeoutMs,
-			Logger:              &logger,
+			Logger:              logger,
 			Members:             clusterMembers,
 			DB:                  common.NewPersistence(dataFolder, walFileName),
 			CachingUp:           catchingUp,
 		},
 		RPCProxy: rpc_proxy.NewRPCImplParams{
 			HostURL: rpcUrl,
-			Logger:  &logger,
+			Logger:  logger,
 		},
 		HTTPProxy: http_proxy.NewHttpProxyParams{
 			URL:    httpUrl,
-			Logger: &logger,
+			Logger: logger,
 		},
 		StateMachine: state_machine.NewKeyValueStateMachineParams{
 			DB:         common.NewPersistence(dataFolder, ""),
 			DoSnapshot: config.StateMachineSnapshot,
 		},
-		Logger:     &logger,
+		Logger:     logger,
 		DataFolder: dataFolder,
 	}
 
 	// Set up OpenTelemetry.
-	otelShutdown, err := observability.SetupOTelSDK(context.Background(), id, config.TraceServer)
+	otelShutdown, err := observability.SetupOTelSDK(ctx, id, config.TraceEndpoint, config.LogEndpoint)
 	if err != nil {
 		log.Panic(err)
 	}
 
 	// Handle shutdown properly so nothing leaks.
 	defer func() {
-		err = errors.Join(err, otelShutdown(context.Background()))
+		err = errors.Join(err, otelShutdown(ctx))
 		log.Panic(err)
 	}()
 
-	n := node.NewNode(params)
-	n.Start(params.Brain.Mode == common.Dynamic, params.Brain.CachingUp)
+	n := node.NewNode(ctx, params)
+	n.Start(ctx, params.Brain.Mode == common.Dynamic, params.Brain.CachingUp)
 
-	l := common.NewOtelLogger()
-	l.Info(context.Background(), "hello", "name", "khanh", "age", 26)
+	span.End() // end init node
 
 	signChan := make(chan os.Signal, 1)
 	signal.Notify(signChan, os.Interrupt, syscall.SIGTERM)
 	<-signChan
-	logger.Info().Msg("Shut down")
+	logger.Info("shutdown")
 }

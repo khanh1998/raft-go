@@ -6,6 +6,7 @@ import (
 	"fmt"
 
 	"go.opentelemetry.io/otel"
+	"go.opentelemetry.io/otel/exporters/otlp/otlplog/otlploghttp"
 	"go.opentelemetry.io/otel/exporters/otlp/otlptrace/otlptracehttp"
 	"go.opentelemetry.io/otel/exporters/prometheus"
 	"go.opentelemetry.io/otel/exporters/stdout/stdoutlog"
@@ -19,7 +20,7 @@ import (
 	semconv "go.opentelemetry.io/otel/semconv/v1.17.0"
 )
 
-func SetupOTelSDK(ctx context.Context, nodeId int, traceServer string) (shutdown func(context.Context) error, err error) {
+func SetupOTelSDK(ctx context.Context, nodeId int, traceServer string, logServer string) (shutdown func(context.Context) error, err error) {
 	var shutdownFuncs []func(context.Context) error
 
 	// shutdown calls cleanup functions registered via shutdownFuncs.
@@ -62,7 +63,7 @@ func SetupOTelSDK(ctx context.Context, nodeId int, traceServer string) (shutdown
 	otel.SetMeterProvider(meterProvider)
 
 	// Set up logger provider.
-	loggerProvider, err := newLoggerProvider()
+	loggerProvider, err := newLoggerProvider(ctx, logServer, nodeId)
 	if err != nil {
 		handleErr(err)
 		return
@@ -109,14 +110,24 @@ func newMeterProvider() (*metric.MeterProvider, error) {
 	return meterProvider, nil
 }
 
-func newLoggerProvider() (*log.LoggerProvider, error) {
+func newLoggerProvider(ctx context.Context, logServer string, nodeId int) (*log.LoggerProvider, error) {
 	logExporter, err := stdoutlog.New()
+	if err != nil {
+		return nil, err
+	}
+
+	otlpExporter, err := otlploghttp.New(ctx, otlploghttp.WithEndpoint(logServer), otlploghttp.WithURLPath("/otlp/v1/logs"), otlploghttp.WithInsecure())
 	if err != nil {
 		return nil, err
 	}
 
 	loggerProvider := log.NewLoggerProvider(
 		log.WithProcessor(log.NewBatchProcessor(logExporter)),
+		log.WithProcessor(log.NewBatchProcessor(otlpExporter)),
+		log.WithResource(resource.NewWithAttributes(
+			semconv.SchemaURL,
+			semconv.ServiceNameKey.String(fmt.Sprintf("raft-node-%d", nodeId)),
+		)),
 	)
 	return loggerProvider, nil
 }

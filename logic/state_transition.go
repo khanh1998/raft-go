@@ -2,18 +2,17 @@ package logic
 
 import (
 	"context"
-	"errors"
 	"fmt"
 	"khanh/raft-go/common"
 )
 
 func (n *RaftBrainImpl) toCandidate(ctx context.Context) {
-	n.log(ctx).Info().Msg("to candidate")
+	n.log().InfoContext(ctx, "toCandidate")
 	n.state = common.StateCandidate
 }
 
 func (n *RaftBrainImpl) toLeader(ctx context.Context) {
-	n.log(ctx).Info().Msg("to leader")
+	n.log().InfoContext(ctx, "toLeader")
 	n.state = common.StateLeader
 	n.leaderID = n.id
 
@@ -36,11 +35,11 @@ func (n *RaftBrainImpl) toLeader(ctx context.Context) {
 func (n *RaftBrainImpl) toFollower(ctx context.Context) {
 	if n.state != common.StateCatchingUp {
 		n.state = common.StateFollower
-		n.log(ctx).Info().Msg("toFollower")
+		n.log().InfoContext(ctx, "toFollower")
 	} else {
 		// if the current node's status is catching-up, i can't call this function to become a follower by itself,
 		// need to wait the permission from the current leader.
-		n.log(ctx).Error().Err(errors.New("catching-up can't be changed to follower with this function")).Msg("toFollower")
+		n.log().ErrorContext(ctx, "catching-up can't be changed to follower with this function", nil)
 	}
 }
 
@@ -50,11 +49,11 @@ func (n *RaftBrainImpl) ToVotingMember(ctx context.Context) error {
 	n.inOutLock.Lock()
 	defer n.inOutLock.Unlock()
 
-	n.log(ctx).Info().Msg("ToVotingMember")
+	n.log().InfoContext(ctx, "ToVotingMember")
 
 	if n.state == common.StateCatchingUp {
 		n.state = common.StateFollower
-		n.Start()
+		n.Start(ctx)
 	} else {
 		return fmt.Errorf("current status is %s", n.state)
 	}

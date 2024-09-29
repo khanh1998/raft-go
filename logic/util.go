@@ -39,7 +39,7 @@ func (n *RaftBrainImpl) deleteLogFrom(ctx context.Context, index int) (err error
 	defer func() {
 		data := n.serialize(true, true, "DeleteLogFrom")
 		if err := n.db.AppendLog(data); err != nil {
-			n.log(ctx).Err(err).Msg("DeleteLogFrom save to db error: ")
+			n.log().ErrorContext(ctx, "DeleteLogFrom save to db error: ", err)
 		}
 	}()
 
@@ -76,7 +76,7 @@ func (n *RaftBrainImpl) appendLogs(ctx context.Context, logItems []common.Log) {
 	defer func() {
 		data := n.serialize(true, true, "AppendLogs")
 		if err := n.db.AppendLog(data); err != nil {
-			n.log(ctx).Err(err).Msg("AppendLogs save to db error: ")
+			n.log().ErrorContext(ctx, "DeleteLogFrom save to db error: ", err)
 		}
 	}()
 
@@ -93,14 +93,14 @@ func (n *RaftBrainImpl) appendLog(ctx context.Context, logItem common.Log) int {
 	defer func() {
 		data := n.serialize(true, true, "AppendLog")
 		if err := n.db.AppendLog(data); err != nil {
-			n.log(ctx).Err(err).Msg("AppendLog save to db error: ")
+			n.log().ErrorContext(ctx, "AppendLog save to db error: ", err)
 		}
 	}()
 
 	n.logs = append(n.logs, logItem)
 	index := len(n.logs)
 
-	n.log(ctx).Info().Interface("log", logItem).Msg("AppendLog")
+	n.log().InfoContext(ctx, "AppendLog", "log", logItem)
 
 	// we need to update cluster membership infomation as soon as we receive the log,
 	// don't need to wait until it get commited.
@@ -127,7 +127,7 @@ func (n *RaftBrainImpl) setLeaderID(ctx context.Context, leaderId int) {
 	defer func() {
 		data := n.serialize(true, true, "SetLeaderID")
 		if err := n.db.AppendLog(data); err != nil {
-			n.log(ctx).Err(err).Msg("SetLeaderID save to db error: ")
+			n.log().ErrorContext(ctx, "SetLeaderID save to db error: ", err)
 		}
 	}()
 
@@ -138,7 +138,7 @@ func (n *RaftBrainImpl) setCurrentTerm(ctx context.Context, term int) {
 	defer func() {
 		data := n.serialize(true, true, "SetCurrentTerm")
 		if err := n.db.AppendLog(data); err != nil {
-			n.log(ctx).Err(err).Msg("SetCurrentTerm save to db error: ")
+			n.log().ErrorContext(ctx, "SetCurrentTerm save to db error: ", err)
 		}
 	}()
 
@@ -149,7 +149,7 @@ func (n *RaftBrainImpl) setVotedFor(ctx context.Context, nodeID int) {
 	defer func() {
 		data := n.serialize(true, true, "SetVotedFor")
 		if err := n.db.AppendLog(data); err != nil {
-			n.log(ctx).Err(err).Msg("SetVotedFor save to db error: ")
+			n.log().ErrorContext(ctx, "SetVotedFor save to db error: ", err)
 		}
 	}()
 
@@ -179,24 +179,22 @@ func (n *RaftBrainImpl) applyLog(ctx context.Context) {
 
 		log, err := n.GetLog(n.lastApplied)
 		if err != nil {
-			n.log(ctx).Err(err).Msg("applyLog_GetLog")
+			n.log().ErrorContext(ctx, "applyLog_GetLog", err)
 			break
 		}
 
 		res, err := n.stateMachine.Process(log.ClientID, log.SequenceNum, log.Command, n.lastApplied)
 		if err != nil {
-			n.log(ctx).Err(err).Msg("applyLog_Process")
+			n.log().ErrorContext(ctx, "applyLog_Process", err)
 			continue
 		}
 
 		if n.state == common.StateLeader {
 			err = n.arm.PutResponse(n.lastApplied, res, err, 30*time.Second)
 			if err != nil {
-				n.log(ctx).Err(err).Msg("ApplyLog_PutResponse")
+				n.log().ErrorContext(ctx, "applyLog_Process", err)
 			} else {
-				n.log(ctx).Info().
-					Interface("log", log).
-					Msg("applyLog_PutResponse")
+				n.log().InfoContext(ctx, "applyLog_PutResponse", "log", log)
 			}
 		}
 	}

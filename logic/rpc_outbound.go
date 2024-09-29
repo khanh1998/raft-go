@@ -5,14 +5,16 @@ import (
 	"khanh/raft-go/common"
 	"sync"
 	"time"
+
+	"go.opentelemetry.io/otel/codes"
+	"go.opentelemetry.io/otel/trace"
 )
 
 func (n *RaftBrainImpl) BroadCastRequestVote(ctx context.Context) {
 	ctx, span := tracer.Start(ctx, "BroadCastRequestVote")
 	defer span.End()
 
-	traceID := span.SpanContext().TraceID().String()
-	spanID := span.SpanContext().SpanID().String()
+	validSpan, traceID, spanID, traceFlags, traceState := extractSpanInfo(span)
 
 	n.inOutLock.Lock()
 	defer n.inOutLock.Unlock()
@@ -20,6 +22,7 @@ func (n *RaftBrainImpl) BroadCastRequestVote(ctx context.Context) {
 	n.resetElectionTimeout(ctx)
 
 	if n.state != common.StateFollower {
+		span.SetStatus(codes.Ok, "not a follower, don't request vote")
 		return
 	}
 	// On conversion to candidate, start election:
@@ -31,15 +34,21 @@ func (n *RaftBrainImpl) BroadCastRequestVote(ctx context.Context) {
 	n.toCandidate(ctx)
 	n.setVotedFor(ctx, n.id)
 
+	span.AddEvent("to candidate")
+
 	lastLogIndex, lastLogTerm := n.lastLogInfo()
 	input := common.RequestVoteInput{
 		Term:         n.currentTerm,
 		CandidateID:  n.id,
 		LastLogIndex: lastLogIndex,
 		LastLogTerm:  lastLogTerm,
+	}
 
-		TraceID: traceID,
-		SpanID:  spanID,
+	if validSpan {
+		input.SpanID = spanID
+		input.TraceID = traceID
+		input.TraceFlags = traceFlags
+		input.TraceState = traceState
 	}
 
 	responses := make(map[int]*common.RequestVoteOutput, len(n.members))
@@ -64,7 +73,7 @@ func (n *RaftBrainImpl) BroadCastRequestVote(ctx context.Context) {
 
 			output, err := n.rpcProxy.SendRequestVote(ctx, peerID, &timeout, input)
 			if err != nil {
-				n.log(ctx).Err(err).Msg("Client invocation error: ")
+				n.log().ErrorContext(ctx, "n.rpcProxy.SendRequestVote", err)
 			} else {
 				responsesMutex.Lock()
 				defer responsesMutex.Unlock()
@@ -87,31 +96,46 @@ func (n *RaftBrainImpl) BroadCastRequestVote(ctx context.Context) {
 		n.toLeader(ctx)
 		n.resetHeartBeatTimeout(ctx)
 		n.resetElectionTimeout(ctx)
+
+		span.AddEvent("to leader")
 	} else {
 		// If RPC request or response contains term T > currentTerm: set currentTerm = T, convert to follower (§5.1)
 		n.toFollower(ctx)
 		n.setVotedFor(ctx, 0)
 		n.setLeaderID(ctx, 0)
 		n.setCurrentTerm(ctx, maxTerm)
+
+		span.AddEvent("to follower")
 	}
 
-	n.log(ctx).Info().
-		Interface("responses", responses).
-		Interface("members", n.members).
-		Int("vote_granted_count", voteGrantedCount).
-		Int("max_term", maxTerm).
-		Int("max_term_id", maxTermID).
-		Int("quorum", n.Quorum()).
-		Msg("BroadCastRequestVote")
+	span.SetStatus(codes.Ok, "finish send request vote")
 
+	n.log().InfoContext(ctx,
+		"BroadCastRequestVote",
+		"responses", responses,
+		"members", n.members,
+		"voteGrantedCount", voteGrantedCount,
+		"maxTerm", maxTerm,
+		"maxTermId", maxTermID,
+		"quorum", n.Quorum(),
+	)
+
+}
+
+func extractSpanInfo(span trace.Span) (valid bool, traceID string, spanID string, traceFlags byte, traceState string) {
+	valid = span.SpanContext().IsValid()
+	traceID = span.SpanContext().TraceID().String()
+	spanID = span.SpanContext().SpanID().String()
+	traceFlags = byte(span.SpanContext().TraceFlags())
+	traceState = span.SpanContext().TraceState().String()
+	return
 }
 
 func (n *RaftBrainImpl) BroadcastAppendEntries(ctx context.Context) (majorityOK bool) {
 	ctx, span := tracer.Start(ctx, "BroadcastAppendEntries")
 	defer span.End()
 
-	traceID := span.SpanContext().TraceID().String()
-	spanID := span.SpanContext().SpanID().String()
+	validSpan, traceID, spanID, traceFlags, traceState := extractSpanInfo(span)
 
 	// TODO: shorten the critical region, only acquire lock when reading or writing data.
 	// in the paper, when a node are acting as a candidate, if it receive request with higher term,
@@ -120,6 +144,7 @@ func (n *RaftBrainImpl) BroadcastAppendEntries(ctx context.Context) (majorityOK 
 	defer n.inOutLock.Unlock()
 
 	if n.state != common.StateLeader {
+		span.SetStatus(codes.Ok, "not a leader, don't send append entries")
 		return false
 	}
 
@@ -151,9 +176,13 @@ func (n *RaftBrainImpl) BroadcastAppendEntries(ctx context.Context) (majorityOK 
 				Term:         n.currentTerm,
 				LeaderID:     n.id,
 				LeaderCommit: n.commitIndex,
+			}
 
-				TraceID: traceID,
-				SpanID:  spanID,
+			if validSpan {
+				input.SpanID = spanID
+				input.TraceID = traceID
+				input.TraceFlags = traceFlags
+				input.TraceState = traceState
 			}
 
 			if nextIdx > 1 {
@@ -174,7 +203,7 @@ func (n *RaftBrainImpl) BroadcastAppendEntries(ctx context.Context) (majorityOK 
 
 			output, err := n.rpcProxy.SendAppendEntries(ctx, peerID, &timeout, input)
 			if err != nil {
-				n.log(ctx).Err(err).Msg("BroadcastAppendEntries: ")
+				n.log().ErrorContext(ctx, "BroadcastAppendEntries", err)
 			} else {
 				responseLock.Lock()
 				defer responseLock.Unlock()
@@ -208,6 +237,8 @@ func (n *RaftBrainImpl) BroadcastAppendEntries(ctx context.Context) (majorityOK 
 		n.setVotedFor(ctx, 0)
 		n.setLeaderID(ctx, 0)
 		n.toFollower(ctx)
+
+		span.AddEvent("to follower")
 	} else if successCount >= n.Quorum() {
 		majorityOK = true
 		// If there exists an N such that N > commitIndex, a majority
@@ -231,21 +262,26 @@ func (n *RaftBrainImpl) BroadcastAppendEntries(ctx context.Context) (majorityOK 
 				break
 			}
 		}
+
+		span.AddEvent("majority ok")
 	}
 
-	n.log(ctx).Info().
-		Int("success_count", successCount).
-		Int("max_term", maxTerm).
-		Int("max_term_id", maxTermID).
-		Interface("responses", m).
-		Interface("members", n.members).
-		Bool("majority_ok", majorityOK).
-		Int("quorum", n.Quorum()).
-		Msg("BroadcastAppendEntries")
+	n.log().InfoContext(ctx,
+		"BroadcastAppendEntries",
+		"successCount", successCount,
+		"maxTerm", maxTerm,
+		"maxTermID", maxTermID,
+		"responses", m,
+		"members", n.members,
+		"majorityOk", majorityOK,
+		"quorum", n.Quorum(),
+	)
 
 	n.applyLog(ctx)
 
-	n.log(ctx).Info().Msg("BroadcastAppendEntries Done")
+	span.SetStatus(codes.Ok, "finished send append entries")
+
+	n.log().InfoContext(ctx, "BroadcastAppendEntries Done")
 
 	return
 }

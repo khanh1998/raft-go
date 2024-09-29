@@ -4,15 +4,14 @@ import (
 	"errors"
 	"fmt"
 	"khanh/raft-go/common"
+	"khanh/raft-go/observability"
 	"net/rpc"
 	"sync"
 	"time"
-
-	"github.com/rs/zerolog"
 )
 
 type RpcAgentImpl struct {
-	Log        *zerolog.Logger
+	Log        observability.Logger
 	peers      map[int]common.PeerRPCProxy
 	peerParams []common.ClusterMember
 }
@@ -22,14 +21,13 @@ type RpcServerConnectionInfo struct {
 	URL string
 }
 
-func (r RpcAgentImpl) log() *zerolog.Logger {
-	l := r.Log.With().Int("RPC_ID", 0).Str("RPC_URL", "test").Logger()
-	return &l
+func (r RpcAgentImpl) log() observability.Logger {
+	return r.Log.With()
 }
 
 type NewRPCImplParams struct {
 	Peers []common.ClusterMember
-	Log   *zerolog.Logger
+	Log   observability.Logger
 }
 
 func NewRPCImpl(params NewRPCImplParams) (*RpcAgentImpl, error) {
@@ -64,9 +62,9 @@ func (r *RpcAgentImpl) ConnectToRpcServer(peerID int, peerURL string, retry int,
 		if err != nil {
 			time.Sleep(retryDelay)
 
-			r.log().Err(err).Msg("ConnectToRpcServer: Client connection error: ")
+			r.log().Error("ConnectToRpcServer: Client connection error: ", err)
 		} else {
-			r.log().Info().Msgf("ConnectToRpcServer: connect to %s successfully", peerURL)
+			r.log().Info(fmt.Sprintf("ConnectToRpcServer: connect to %s successfully", peerURL))
 			r.peers[peerID] = common.PeerRPCProxy{
 				Conn: client,
 				URL:  peerURL,
@@ -75,11 +73,11 @@ func (r *RpcAgentImpl) ConnectToRpcServer(peerID int, peerURL string, retry int,
 			timeout := 100 * time.Millisecond
 			res, err := r.SendPing(peerID, &timeout)
 			if err != nil {
-				r.log().Err(err).Str("url", peerURL).Msg("ConnectToRpcServer: cannot ping")
+				r.log().Error("ConnectToRpcServer: cannot ping", err, "url", peerURL)
 			} else {
-				r.log().Info().Interface("res", res).Msg("SendPing")
+				r.log().Info("SendPing", "res", res)
 				if res.ID != peerID {
-					r.log().Err(nil).Msg("connect to wrong server")
+					r.log().Error("connect to wrong server", nil)
 					return errors.New("connect to wrong server, input value is incorrect")
 				}
 			}
@@ -112,7 +110,7 @@ func (r *RpcAgentImpl) disconnect(peerId int) error {
 	if !ok {
 		return ErrPeerIdDoesNotExist
 	}
-	r.log().Info().Str("serverUrl", peer.URL).Msg("Disconnect: rpc local agent")
+	r.log().Info("Disconnect: rpc local agent", "serverUrl", peer.URL)
 
 	r.peers[peerId] = common.PeerRPCProxy{URL: peer.URL, Conn: nil}
 

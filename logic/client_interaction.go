@@ -52,7 +52,7 @@ func (r *RaftBrainImpl) ClientRequest(ctx context.Context, input *common.ClientR
 	var response any = nil
 
 	if err := r.arm.Register(index); err != nil {
-		r.log(ctx).Err(err).Msg("ClientRequest_Register")
+		r.log().ErrorContext(ctx, "ClientRequest_Register", err)
 
 		*output = common.ClientRequestOutput{
 			Status:     common.StatusNotOK,
@@ -71,7 +71,7 @@ func (r *RaftBrainImpl) ClientRequest(ctx context.Context, input *common.ClientR
 			response = common.SessionExpired
 		}
 
-		r.log(ctx).Err(err).Msg("ClientRequest_TakeResponse")
+		r.log().ErrorContext(ctx, "ClientRequest_TakeResponse", err)
 	}
 
 	*output = common.ClientRequestOutput{
@@ -114,7 +114,7 @@ func (r *RaftBrainImpl) RegisterClient(ctx context.Context, input *common.Regist
 	var status common.ClientRequestStatus = common.StatusOK
 
 	if err := r.arm.Register(index); err != nil {
-		r.log(ctx).Err(err).Msg("RegisterClient_Register")
+		r.log().ErrorContext(ctx, "RegisterClient_Register", err)
 		*output = common.RegisterClientOutput{
 			Status:     common.StatusNotOK,
 			LeaderHint: "",
@@ -126,7 +126,7 @@ func (r *RaftBrainImpl) RegisterClient(ctx context.Context, input *common.Regist
 
 	_, err = r.arm.TakeResponse(index, 30*time.Second)
 	if err != nil {
-		r.log(ctx).Err(err).Msg("RegisterClient_TakeResponse")
+		r.log().ErrorContext(ctx, "RegisterClient_TakeResponse", err)
 
 		*output = common.RegisterClientOutput{
 			Status:     common.StatusNotOK,

@@ -4,6 +4,7 @@ import (
 	"context"
 	"fmt"
 	"khanh/raft-go/common"
+	"khanh/raft-go/observability"
 	"khanh/raft-go/state_machine"
 	"testing"
 
@@ -19,11 +20,13 @@ func Test_nodeImpl_RequestVote(t *testing.T) {
 		out  common.RequestVoteOutput
 	}
 
+	logger := observability.NewZerolog("", 1)
+
 	testCases := []TestCase{
 		{
 			name: "1. Reply false if term < currentTerm (§5.1)",
 			n: RaftBrainImpl{
-				currentTerm: 3, logger: &log.Logger,
+				currentTerm: 3, logger: logger,
 				electionTimeOutMin: 300,
 				electionTimeOutMax: 500,
 			},
@@ -33,7 +36,7 @@ func Test_nodeImpl_RequestVote(t *testing.T) {
 		{
 			name: "2. If votedFor is null or candidateId, and candidate’s log is at least as up-to-date as receiver’s log, grant vote (§5.2, §5.4)",
 			n: RaftBrainImpl{
-				currentTerm: 3, votedFor: 4, db: common.NewPersistenceMock(), logger: &log.Logger,
+				currentTerm: 3, votedFor: 4, db: common.NewPersistenceMock(), logger: logger,
 				electionTimeOutMin: 300,
 				electionTimeOutMax: 500,
 			},
@@ -44,7 +47,7 @@ func Test_nodeImpl_RequestVote(t *testing.T) {
 			name: "2. If votedFor is null or candidateId, and candidate’s log is at least as up-to-date as receiver’s log, grant vote (§5.2, §5.4)",
 			n: RaftBrainImpl{
 				currentTerm: 3, votedFor: 0, logs: []common.Log{{Term: 1}, {Term: 2}, {Term: 3}},
-				db: common.NewPersistenceMock(), logger: &log.Logger,
+				db: common.NewPersistenceMock(), logger: logger,
 				electionTimeOutMin: 300,
 				electionTimeOutMax: 500,
 			},
@@ -58,7 +61,7 @@ func Test_nodeImpl_RequestVote(t *testing.T) {
 				votedFor:            0,
 				logs:                []common.Log{{Term: 1}, {Term: 2}, {Term: 3}},
 				db:                  common.NewPersistenceMock(),
-				logger:              &log.Logger,
+				logger:              logger,
 				heartBeatTimeOutMin: 100,
 				heartBeatTimeOutMax: 150,
 				electionTimeOutMin:  300,
@@ -90,6 +93,8 @@ func Test_nodeImpl_AppendEntries(t *testing.T) {
 		persist TestCasePersist
 	}
 
+	logger := observability.NewZerolog("", 1)
+
 	sm, err := state_machine.NewKeyValueStateMachine(state_machine.NewKeyValueStateMachineParams{DB: common.NewPersistenceMock()})
 	assert.NoError(t, err)
 
@@ -98,7 +103,7 @@ func Test_nodeImpl_AppendEntries(t *testing.T) {
 			name: "1. Reply false if term < currentTerm (§5.1)",
 			n: RaftBrainImpl{
 				currentTerm:         5,
-				logger:              &log.Logger,
+				logger:              logger,
 				db:                  common.NewPersistenceMock(),
 				heartBeatTimeOutMin: 100,
 				heartBeatTimeOutMax: 150,
@@ -121,7 +126,7 @@ func Test_nodeImpl_AppendEntries(t *testing.T) {
 				currentTerm:         2,
 				logs:                []common.Log{{Term: 1}, {Term: 1}},
 				db:                  common.NewPersistenceMock(),
-				logger:              &log.Logger,
+				logger:              logger,
 				heartBeatTimeOutMin: 100,
 				heartBeatTimeOutMax: 150,
 				electionTimeOutMin:  300,
@@ -144,7 +149,7 @@ func Test_nodeImpl_AppendEntries(t *testing.T) {
 			n: RaftBrainImpl{
 				currentTerm:         2,
 				logs:                []common.Log{},
-				logger:              &log.Logger,
+				logger:              logger,
 				db:                  common.NewPersistenceMock(),
 				heartBeatTimeOutMin: 100,
 				heartBeatTimeOutMax: 150,
@@ -168,7 +173,7 @@ func Test_nodeImpl_AppendEntries(t *testing.T) {
 			n: RaftBrainImpl{
 				currentTerm:         2,
 				logs:                []common.Log{{Term: 1}},
-				logger:              &log.Logger,
+				logger:              logger,
 				db:                  common.NewPersistenceMock(),
 				heartBeatTimeOutMin: 100,
 				heartBeatTimeOutMax: 150,
@@ -198,7 +203,7 @@ func Test_nodeImpl_AppendEntries(t *testing.T) {
 					{Term: 2, Command: "set x 5"},
 				},
 				db:                  common.NewPersistenceMock(),
-				logger:              &log.Logger,
+				logger:              logger,
 				heartBeatTimeOutMin: 100,
 				heartBeatTimeOutMax: 150,
 				electionTimeOutMin:  300,
@@ -224,7 +229,7 @@ func Test_nodeImpl_AppendEntries(t *testing.T) {
 				currentTerm:         3,
 				logs:                []common.Log{},
 				db:                  common.NewPersistenceMock(),
-				logger:              &log.Logger,
+				logger:              logger,
 				heartBeatTimeOutMin: 100,
 				heartBeatTimeOutMax: 150,
 				electionTimeOutMin:  300,
@@ -256,7 +261,7 @@ func Test_nodeImpl_AppendEntries(t *testing.T) {
 					{Term: 2, Command: "set y 5"},
 				},
 				db:                  common.NewPersistenceMock(),
-				logger:              &log.Logger,
+				logger:              logger,
 				heartBeatTimeOutMin: 100,
 				heartBeatTimeOutMax: 150,
 				electionTimeOutMin:  300,
@@ -288,7 +293,7 @@ func Test_nodeImpl_AppendEntries(t *testing.T) {
 					{Term: 2, Command: "set y 5"},
 				},
 				db:                  common.NewPersistenceMock(),
-				logger:              &log.Logger,
+				logger:              logger,
 				heartBeatTimeOutMin: 100,
 				heartBeatTimeOutMax: 150,
 				electionTimeOutMin:  300,
@@ -314,7 +319,7 @@ func Test_nodeImpl_AppendEntries(t *testing.T) {
 				currentTerm:         1,
 				logs:                []common.Log{},
 				db:                  common.NewPersistenceMock(),
-				logger:              &log.Logger,
+				logger:              logger,
 				heartBeatTimeOutMin: 100,
 				heartBeatTimeOutMax: 150,
 				electionTimeOutMin:  300,
@@ -347,7 +352,7 @@ func Test_nodeImpl_AppendEntries(t *testing.T) {
 			if testCase.persist.do {
 				n2 := RaftBrainImpl{
 					db:                  testCase.n.db,
-					logger:              &log.Logger,
+					logger:              logger,
 					heartBeatTimeOutMin: 100,
 					heartBeatTimeOutMax: 150,
 					electionTimeOutMin:  300,

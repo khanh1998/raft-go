@@ -1,27 +1,27 @@
 package integration_testing
 
 import (
+	"context"
 	"errors"
 	"fmt"
 	"khanh/raft-go/common"
 	"khanh/raft-go/http_proxy"
 	"khanh/raft-go/logic"
 	"khanh/raft-go/node"
+	"khanh/raft-go/observability"
 	"khanh/raft-go/rpc_proxy"
 	"khanh/raft-go/state_machine"
 	"log"
 	"os"
 	"sync"
 	"time"
-
-	"github.com/rs/zerolog"
 )
 
 type Cluster struct {
 	Nodes               map[int]*node.Node // nodes or servers in cluster
 	RpcAgent            RpcAgentImpl       // use this rpc agent to get real-time status from servers in cluster
 	HttpAgent           HttpAgent
-	log                 *zerolog.Logger
+	log                 observability.Logger
 	createNodeParams    map[int]node.NewNodeParams
 	MaxElectionTimeout  time.Duration
 	MaxHeartbeatTimeout time.Duration
@@ -37,6 +37,7 @@ func NewCluster(filePath string) *Cluster {
 }
 
 func (c *Cluster) init(filePath string) {
+	ctx := context.Background()
 	config, err := common.ReadConfigFromFile(&filePath)
 	if err != nil {
 		log.Panic(err)
@@ -47,19 +48,9 @@ func (c *Cluster) init(filePath string) {
 	c.MaxElectionTimeout = time.Duration(config.MaxElectionTimeoutMs * 1000 * 1000)
 	c.MaxHeartbeatTimeout = time.Duration(config.MaxHeartbeatTimeoutMs * 1000 * 1000)
 
-	zerolog.TimeFieldFormat = time.RFC3339Nano
-	stdOutput := zerolog.ConsoleWriter{Out: os.Stdout, TimeFormat: time.RFC3339Nano}
-
 	common.CreateFolderIfNotExists(config.DataFolder)
 
-	// logFile, err := os.OpenFile(config.DataFolder+"app.log", os.O_CREATE|os.O_WRONLY|os.O_APPEND, 0664)
-	// if err != nil {
-	// 	panic(err)
-	// }
-
-	multiLevel := zerolog.MultiLevelWriter(stdOutput)
-
-	log := zerolog.New(multiLevel).With().Timestamp().Logger()
+	log := observability.NewZerolog("", 0)
 
 	peers := []common.ClusterMember{}
 	for _, mem := range config.Cluster.Servers {
@@ -90,30 +81,30 @@ func (c *Cluster) init(filePath string) {
 					HeartBeatTimeOutMax: config.MaxHeartbeatTimeoutMs,
 					ElectionTimeOutMin:  config.MinElectionTimeoutMs,
 					ElectionTimeOutMax:  config.MaxElectionTimeoutMs,
-					Logger:              &log,
+					Logger:              log,
 					Members:             peers,
 					// DB:                persistance.NewPersistence(fmt.Sprintf("test.log.%d.dat", id+i)),
 					DB: common.NewPersistence(dataFolder, "wal.txt"),
 				},
 				RPCProxy: rpc_proxy.NewRPCImplParams{
 					HostURL: mem.RpcUrl,
-					Logger:  &log,
+					Logger:  log,
 					HostID:  mem.ID,
 				},
 				HTTPProxy: http_proxy.NewHttpProxyParams{
 					URL:    mem.HttpUrl,
-					Logger: &log,
+					Logger: log,
 				},
 				StateMachine: state_machine.NewKeyValueStateMachineParams{
 					DB:         common.NewPersistence(dataFolder, ""),
 					DoSnapshot: config.StateMachineSnapshot,
 				},
-				Logger:     &log,
+				Logger:     log,
 				DataFolder: dataFolder,
 			}
 
-			n := node.NewNode(param)
-			n.Start(false, false)
+			n := node.NewNode(ctx, param)
+			n.Start(ctx, false, false)
 
 			c.createNodeParams[mem.ID] = param
 			c.Nodes[mem.ID] = n
@@ -121,7 +112,7 @@ func (c *Cluster) init(filePath string) {
 		}(mem)
 	}
 
-	rpcAgent, err := NewRPCImpl(NewRPCImplParams{Peers: peers, Log: &log})
+	rpcAgent, err := NewRPCImpl(NewRPCImplParams{Peers: peers, Log: log})
 	if err != nil {
 		panic(err)
 	}
@@ -137,12 +128,12 @@ func (c *Cluster) init(filePath string) {
 
 	httpAgent := NewHttpAgent(HttpAgentArgs{
 		serverUrls: httpServerUrls,
-		Log:        &log,
+		Log:        log,
 	})
 
 	c.RpcAgent = *rpcAgent
 	c.HttpAgent = *httpAgent
-	c.log = &log
+	c.log = log
 
 	l.Wait()
 }
@@ -178,7 +169,7 @@ func (c *Cluster) StopLeader() (nodeId int, err error) {
 
 func (c *Cluster) StopAll() {
 	for _, node := range c.Nodes {
-		node.Stop()
+		node.Stop(context.Background())
 	}
 }
 
@@ -188,7 +179,7 @@ func (c *Cluster) StopNode(nodeId int) error {
 			continue
 		}
 		if node.ID == nodeId {
-			node.Stop()
+			node.Stop(context.Background())
 			err := c.RpcAgent.disconnect(nodeId)
 			if err != nil {
 				return err
@@ -206,7 +197,7 @@ func (c *Cluster) StartNode(nodeId int) error {
 			continue
 		}
 		if node.ID == nodeId {
-			node.Start(false, false)
+			node.Start(context.Background(), false, false)
 			break
 		}
 	}
@@ -220,11 +211,11 @@ func (c *Cluster) RestartNode(nodeId int, sleep time.Duration) {
 			continue
 		}
 		if n.ID == nodeId {
-			c.Nodes[index].Stop()
+			c.Nodes[index].Stop(context.Background())
 			time.AfterFunc(sleep, func() {
 				// new node will read data from log file and recreate the state of the node
-				c.Nodes[index] = node.NewNode(c.createNodeParams[index])
-				c.log.Info().Msgf("new node is replaced %d", nodeId)
+				c.Nodes[index] = node.NewNode(context.Background(), c.createNodeParams[index])
+				c.log.Info(fmt.Sprintf("new node is replaced %d", nodeId))
 			})
 			break
 		}
@@ -252,7 +243,7 @@ func (c *Cluster) FindFirstFollower() (status common.GetStatusResponse, err erro
 		}
 		status, err = c.RpcAgent.GetInfo(n.ID, &timeout)
 		if err != nil {
-			c.log.Err(err).Msg("HasOneLeader_GetInfo")
+			c.log.Error("HasOneLeader_GetInfo", err)
 
 			continue
 		}
@@ -275,12 +266,12 @@ func (c *Cluster) HasOneLeader() (common.GetStatusResponse, error) {
 		}
 		status, err := c.RpcAgent.GetInfo(n.ID, &timeout)
 		if err != nil {
-			c.log.Err(err).Msg("HasOneLeader_GetInfo")
+			c.log.Error("HasOneLeader_GetInfo", err)
 
 			continue
 		}
 
-		c.log.Info().Interface("status", status).Msgf("HasOneLeader")
+		c.log.Info("HasOneLeader", "status", status)
 
 		if status.State == common.StateLeader {
 			if leaderCount == 0 {
@@ -301,7 +292,7 @@ func (c *Cluster) HasOneLeader() (common.GetStatusResponse, error) {
 
 func (c Cluster) Clean() {
 	for id, node := range c.Nodes {
-		node.Stop()
+		node.Stop(context.Background())
 		os.RemoveAll(fmt.Sprintf("data/%d", id))
 		delete(c.Nodes, id)
 	}

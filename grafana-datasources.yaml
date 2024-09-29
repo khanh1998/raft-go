@@ -31,10 +31,11 @@ datasources:
       spanStartTimeShift: '-10m'
       spanEndTimeShift: '10m'
       tags: [{ key: 'job', value: 'job' }] 
-      filterByTraceID: false
-      filterBySpanID: false
-      customQuery: true
-      query: '{service_name="$${__span.tags["service.name"]}"} | span_id="$${__span.spanId}" | trace_id="$${__trace.traceId}"'
+      filterByTraceID: true
+      filterBySpanID: true
+      customQuery: false
+      query: '{service_name=~".+"} | json | trace_id="$${__trace.traceId}" | span_id="$${__span.spanId}"'
+      # query: '{service_name="$${__span.tags["service.name"]}"} | json | span_id="$${__span.spanId}" | trace_id="$${__trace.traceId}"'
 
 
 - name: Loki
@@ -47,3 +48,16 @@ datasources:
   isDefault: false
   version: 1
   editable: true
+  jsonData:
+    derivedFields:
+      - datasourceUid: tempo  # Link to the Tempo datasource
+        name: TraceID
+        url: $${__value.raw}  # Uses the raw value as the TraceID
+        matcherRegex: '\"trace_id\":\"(\w+)\"'  # Regex to extract the trace ID from logs
+        datasource: tempo  # This is the Tempo datasource name
+      - datasourceUid: tempo  # Link to the Tempo datasource
+        name: SpanID
+        matcherRegex: '\"span_id\":\"(\w+)\"'  # Regex to extract the trace ID from logs
+        datasource: tempo  # This is the Tempo datasource name
+        url: '{span:id="$${__value.raw}"}'
+

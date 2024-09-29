@@ -73,11 +73,11 @@ func (h *LokiHook) Write(p []byte) (n int, err error) {
 	}
 	delete(logEntry, "level")
 
-	message, ok := logEntry["message"].(string)
-	if !ok {
-		return 0, fmt.Errorf("invalid log entry format: message")
-	}
-	delete(logEntry, "message")
+	// message, ok := logEntry["message"].(string)
+	// if !ok {
+	// 	return 0, fmt.Errorf("invalid log entry format: message")
+	// }
+	// delete(logEntry, "message")
 
 	timestampStr, ok := logEntry["time"].(string)
 	if !ok {
@@ -91,14 +91,21 @@ func (h *LokiHook) Write(p []byte) (n int, err error) {
 	}
 
 	metadata := make(map[string]string)
-	for key, value := range logEntry {
-		metadata[key] = fmt.Sprintf("%v", value)
-	}
+	// for key, value := range logEntry {
+	// 	metadata[key] = fmt.Sprintf("%v", value)
+	// }
 
 	labels := map[string]string{
 		"service_name": fmt.Sprintf("raft-node-%d", h.nodeId),
 		"level":        level,
 	}
+
+	messageByte, err := json.Marshal(logEntry)
+	if err != nil {
+		return 0, fmt.Errorf("failed to marshal struct")
+	}
+
+	message := string(messageByte)
 
 	return len(p), h.client.Push(labels, timestamp, message, metadata)
 }

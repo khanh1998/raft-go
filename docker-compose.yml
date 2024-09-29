@@ -82,7 +82,7 @@ services:
       raft-network:
 
   init:
-    image: &tempoImage grafana/tempo:latest
+    image: &tempoImage grafana/tempo:2.6.0
     user: root
     entrypoint:
       - "chown"
@@ -111,7 +111,7 @@ services:
       - memcached
 
   loki:
-    image: grafana/loki:latest
+    image: grafana/loki:3.2.0
     ports:
       - "3100:3100"
     command: -config.file=/etc/loki/loki.yaml

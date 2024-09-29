@@ -11,19 +11,19 @@ import (
 func (r *RPCProxyImpl) AppendEntries(input *common.AppendEntriesInput, output *common.AppendEntriesOutput) (err error) {
 	traceID, err := trace.TraceIDFromHex(input.TraceID)
 	if err != nil {
-		return err
+		r.logger.Error("RequestVote_TraceIDFromHex", err)
 	}
 
 	spanID, err := trace.SpanIDFromHex(input.SpanID)
 	if err != nil {
-		return err
+		r.logger.Error("RequestVote_SpanIDFromHex", err)
 	}
 
 	traceFlags := trace.TraceFlags(input.TraceFlags)
 
 	traceState, err := trace.ParseTraceState(input.TraceState)
 	if err != nil {
-		return err
+		r.logger.Error("RequestVote_ParseTraceState", err)
 	}
 
 	sc := trace.NewSpanContext(trace.SpanContextConfig{
@@ -47,19 +47,19 @@ func (r *RPCProxyImpl) AppendEntries(input *common.AppendEntriesInput, output *c
 func (r *RPCProxyImpl) RequestVote(input *common.RequestVoteInput, output *common.RequestVoteOutput) (err error) {
 	traceID, err := trace.TraceIDFromHex(input.TraceID)
 	if err != nil {
-		return err
+		r.logger.Error("RequestVote_TraceIDFromHex", err)
 	}
 
 	spanID, err := trace.SpanIDFromHex(input.SpanID)
 	if err != nil {
-		return err
+		r.logger.Error("RequestVote_SpanIDFromHex", err)
 	}
 
 	traceFlags := trace.TraceFlags(input.TraceFlags)
 
 	traceState, err := trace.ParseTraceState(input.TraceState)
 	if err != nil {
-		return err
+		r.logger.Error("RequestVote_ParseTraceState", err)
 	}
 
 	sc := trace.NewSpanContext(trace.SpanContextConfig{
@@ -106,7 +106,7 @@ func (r *RPCProxyImpl) GetInfo(_ *struct{}, info *common.GetStatusResponse) (err
 
 	*info = r.brain.GetInfo()
 
-	r.log().Info().Msg("received GetInfo request")
+	r.log().Info("received GetInfo request")
 
 	return nil
 }

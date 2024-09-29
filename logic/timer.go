@@ -13,12 +13,12 @@ var (
 )
 
 func (n *RaftBrainImpl) loop(ctx context.Context) {
-	n.log(ctx).Info().Msg("Raft main loop has been started")
+	n.log().InfoContext(ctx, "Raft main loop has been started")
 	stop := false
 	majorityOK := false
 	for {
 		if stop {
-			n.log(context.Background()).Info().Msg("Raft main loop has been stopped")
+			n.log().InfoContext(context.Background(), "Raft main loop has been stopped")
 
 			break
 		}
@@ -34,7 +34,7 @@ func (n *RaftBrainImpl) loop(ctx context.Context) {
 				n.setLeaderID(ctx, 0)
 				n.setVotedFor(ctx, 0)
 
-				n.log(ctx).Debug().Msg("main loop: leader step down")
+				n.log().InfoContext(ctx, "Raft main loop has been stopped")
 			}
 			majorityOK = false
 			n.BroadCastRequestVote(ctx)
@@ -54,7 +54,7 @@ func (n *RaftBrainImpl) resetElectionTimeout(ctx context.Context) {
 	defer n.dataLock.Unlock()
 
 	randomElectionTimeOut := time.Duration(common.RandInt(n.electionTimeOutMin, n.electionTimeOutMax)) * time.Millisecond
-	n.log(ctx).Info().Interface("seconds", randomElectionTimeOut.Seconds()).Msg("resetElectionTimeout")
+	n.log().InfoContext(ctx, "resetElectionTimeout", "seconds", randomElectionTimeOut.Seconds())
 	if n.electionTimeOut == nil {
 		n.electionTimeOut = time.NewTimer(randomElectionTimeOut)
 	} else {
@@ -67,7 +67,7 @@ func (n *RaftBrainImpl) resetHeartBeatTimeout(ctx context.Context) {
 	defer n.dataLock.Unlock()
 
 	randomHeartBeatTimeout := time.Duration(common.RandInt(n.heartBeatTimeOutMin, n.heartBeatTimeOutMax)) * time.Millisecond
-	n.log(ctx).Info().Interface("seconds", randomHeartBeatTimeout.Seconds()).Msg("resetHeartBeatTimeout")
+	n.log().InfoContext(ctx, "resetHeartBeatTimeout", "seconds", randomHeartBeatTimeout.Seconds())
 	if n.heartBeatTimeOut == nil {
 		n.heartBeatTimeOut = time.NewTimer(randomHeartBeatTimeout)
 	} else {

@@ -1,18 +1,17 @@
 package integration_testing
 
 import (
+	"context"
 	"fmt"
 	"khanh/raft-go/common"
 	"khanh/raft-go/http_proxy"
 	"khanh/raft-go/logic"
 	"khanh/raft-go/node"
+	"khanh/raft-go/observability"
 	"khanh/raft-go/rpc_proxy"
 	"khanh/raft-go/state_machine"
 	"log"
-	"os"
 	"time"
-
-	"github.com/rs/zerolog"
 )
 
 // after a cluster is created, need to wait a moment so a follower can win a election and become leader
@@ -48,7 +47,7 @@ func (c *Cluster) RemoveServer(id int) error {
 	return c.HttpAgent.RemoveServer(id, params.HTTPProxy.URL, params.RPCProxy.HostURL)
 }
 
-func (c *Cluster) createNewNode(id int) error {
+func (c *Cluster) createNewNode(ctx context.Context, id int) error {
 	rpcUrl, httpUrl := fmt.Sprintf("localhost:%d", 1233+id), fmt.Sprintf("localhost:%d", 8079+id)
 	catchingUp := id > 1
 
@@ -91,8 +90,8 @@ func (c *Cluster) createNewNode(id int) error {
 		DataFolder: dataFolder,
 	}
 
-	n := node.NewNode(param)
-	n.Start(true, catchingUp)
+	n := node.NewNode(ctx, param)
+	n.Start(ctx, true, catchingUp)
 
 	c.createNodeParams[id] = param
 	c.Nodes[id] = n
@@ -114,13 +113,10 @@ func (c *Cluster) initDynamic(filePath string) {
 	c.MaxElectionTimeout = time.Duration(config.MaxElectionTimeoutMs * 1000 * 1000)
 	c.MaxHeartbeatTimeout = time.Duration(config.MaxHeartbeatTimeoutMs * 1000 * 1000)
 
-	zerolog.TimeFieldFormat = time.RFC3339Nano
-	output := zerolog.ConsoleWriter{Out: os.Stdout, TimeFormat: time.RFC3339Nano}
-
 	common.CreateFolderIfNotExists(config.DataFolder)
 
-	log := zerolog.New(output).With().Timestamp().Logger()
-	c.log = &log
+	log := observability.NewZerolog("", 0)
+	c.log = log
 
 	c.Nodes = make(map[int]*node.Node)
 	c.createNodeParams = make(map[int]node.NewNodeParams)
@@ -130,7 +126,7 @@ func (c *Cluster) initDynamic(filePath string) {
 	// we will use these rpc and http agent to connect to the cluster
 	rpcAgent, err := NewRPCImpl(NewRPCImplParams{
 		Peers: []common.ClusterMember{{ID: id, HttpUrl: httpUrl, RpcUrl: rpcUrl}},
-		Log:   &log,
+		Log:   log,
 	})
 	if err != nil {
 		panic(err)
@@ -145,7 +141,7 @@ func (c *Cluster) initDynamic(filePath string) {
 
 	httpAgent := NewHttpAgent(HttpAgentArgs{
 		serverUrls: httpServerUrls,
-		Log:        &log,
+		Log:        log,
 	})
 
 	c.RpcAgent = *rpcAgent
@@ -153,7 +149,7 @@ func (c *Cluster) initDynamic(filePath string) {
 	c.HttpAgent.leaderId = 1 // initially, the leader is the first node, which is 1
 
 	// create first node of cluster
-	err = c.createNewNode(id)
+	err = c.createNewNode(context.Background(), id)
 	if err != nil {
 		panic(err)
 	}

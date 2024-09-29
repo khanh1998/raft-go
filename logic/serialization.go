@@ -57,7 +57,7 @@ func (n *RaftBrainImpl) deserialize(ctx context.Context, data map[string]string)
 		if value, ok := data[key]; ok {
 			logItem, err := common.NewLogFromString(value)
 			if err != nil {
-				n.log(ctx).Err(err).Msg("can not create log from string")
+				n.log().ErrorContext(ctx, "can not create log from string", err)
 
 				return err
 			} else {
@@ -101,7 +101,7 @@ func (n *RaftBrainImpl) restoreRaftStateFromFile(ctx context.Context) error {
 	keys, err := n.getPersistanceKeyList()
 	if err != nil {
 		if errors.Is(err, common.ErrEmptyData) {
-			n.log(ctx).Err(err).Msg("data file is empty")
+			n.log().ErrorContext(ctx, "data file is empty", err)
 			return nil
 		}
 

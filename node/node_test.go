@@ -1,21 +1,25 @@
 package node
 
 import (
+	"context"
 	"khanh/raft-go/common"
 	"khanh/raft-go/http_proxy"
 	"khanh/raft-go/logic"
+	"khanh/raft-go/observability"
 	"khanh/raft-go/rpc_proxy"
 	"khanh/raft-go/state_machine"
 	"net/rpc"
 	"testing"
 	"time"
 
-	"github.com/rs/zerolog"
 	"github.com/stretchr/testify/assert"
 )
 
 func TestRpcConnection(t *testing.T) {
-	n := NewNode(NewNodeParams{
+	logger := observability.NewZerolog("", 1)
+	ctx := context.Background()
+
+	n := NewNode(ctx, NewNodeParams{
 		Brain: logic.NewRaftBrainParams{
 			ID:   1,
 			Mode: common.Dynamic,
@@ -31,31 +35,31 @@ func TestRpcConnection(t *testing.T) {
 			HeartBeatTimeOutMax: 300,
 			ElectionTimeOutMin:  300,
 			ElectionTimeOutMax:  500,
-			Logger:              &zerolog.Logger{},
+			Logger:              logger,
 			DB:                  common.NewPersistenceMock(),
 		},
 		RPCProxy: rpc_proxy.NewRPCImplParams{
 			HostID:  1,
 			HostURL: "localhost:1234",
-			Logger:  &zerolog.Logger{},
+			Logger:  logger,
 		},
 		HTTPProxy: http_proxy.NewHttpProxyParams{
 			URL:    "localhost:8080",
-			Logger: &zerolog.Logger{},
+			Logger: logger,
 		},
 		StateMachine: state_machine.NewKeyValueStateMachineParams{
 			DB: common.NewPersistenceMock(),
 		},
-		Logger:     &zerolog.Logger{},
+		Logger:     logger,
 		DataFolder: "data/",
 	})
 
-	n.Start(false, false)
+	n.Start(ctx, false, false)
 
 	_, err := rpc.Dial("tcp", ":1234")
 	assert.NoError(t, err, "connect to rpc server ok")
 
-	n.Stop()
+	n.Stop(ctx)
 
 	time.Sleep(3 * time.Second)
 

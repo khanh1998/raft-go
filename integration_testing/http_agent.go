@@ -7,11 +7,11 @@ import (
 	"fmt"
 	"io"
 	"khanh/raft-go/common"
+	"khanh/raft-go/observability"
 	"net/http"
 	"strings"
 	"time"
 
-	"github.com/rs/zerolog"
 	"github.com/rs/zerolog/log"
 )
 
@@ -34,7 +34,7 @@ type HttpServerConnectionInfo struct {
 
 type HttpAgentArgs struct {
 	serverUrls []HttpServerConnectionInfo
-	Log        *zerolog.Logger
+	Log        observability.Logger
 }
 
 type HttpAgent struct {
@@ -44,7 +44,7 @@ type HttpAgent struct {
 	leaderId    int
 	clientId    int
 	sequenceNum int
-	log         *zerolog.Logger
+	log         observability.Logger
 }
 
 func NewHttpAgent(args HttpAgentArgs) *HttpAgent {
@@ -198,7 +198,7 @@ func (h *HttpAgent) findLeaderAndDo(payload Request) (result Response, err error
 		// try with current leader id (id can be outdated)
 		result, err = h.do(url, payload)
 		if err != nil {
-			h.log.Err(err).Msg("findLeaderAndDo_do")
+			h.log.Error("findLeaderAndDo_do", err)
 			h.leaderId = 0
 			continue
 		}
@@ -263,10 +263,7 @@ func (h HttpAgent) do(url string, payload Request) (result Response, err error) 
 		return result, err
 	}
 
-	h.log.Debug().
-		Str("response", responseBody).
-		Interface("decoded", result).
-		Msg("ResponseToString")
+	h.log.Debug("ResponseToString", "response", responseBody, "decoded", result)
 
 	return result, nil
 }

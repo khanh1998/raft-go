@@ -4,12 +4,11 @@ import (
 	"context"
 	"errors"
 	"khanh/raft-go/common"
+	"khanh/raft-go/observability"
 	"sync"
 	"time"
 
-	"github.com/rs/zerolog"
 	"go.opentelemetry.io/contrib/bridges/otelslog"
-	"go.opentelemetry.io/otel/trace"
 )
 
 var (
@@ -24,7 +23,7 @@ type MembershipManager interface {
 
 type RaftBrainImpl struct {
 	dataFolder                string
-	logger                    *zerolog.Logger
+	logger                    observability.Logger
 	db                        Persistence
 	members                   []common.ClusterMember
 	nextMemberId              int
@@ -116,7 +115,7 @@ type NewRaftBrainParams struct {
 	HeartBeatTimeOutMax int64
 	ElectionTimeOutMin  int64
 	ElectionTimeOutMax  int64
-	Logger              *zerolog.Logger
+	Logger              observability.Logger
 	DB                  Persistence // help to persist raft server's state to file
 	CachingUp           bool        // will be ignored if the cluster mode is STATIC
 }
@@ -209,8 +208,8 @@ func (n *RaftBrainImpl) Stop() {
 	}
 }
 
-func (n *RaftBrainImpl) Start() {
-	ctx, span := tracer.Start(context.Background(), "Start")
+func (n *RaftBrainImpl) Start(ctx context.Context) {
+	ctx, span := tracer.Start(ctx, "Start")
 	defer span.End()
 
 	n.resetElectionTimeout(ctx)
@@ -218,29 +217,22 @@ func (n *RaftBrainImpl) Start() {
 
 	go n.loop(ctx)
 
-	n.log(ctx).Info().
-		Interface("members", n.members).
-		Msg("Brain start")
+	n.log().InfoContext(ctx, "Brain start", "members", n.members)
 }
 
 // data race
-func (n *RaftBrainImpl) log(ctx context.Context) *zerolog.Logger {
-	span := trace.SpanFromContext(ctx)
-	traceID := span.SpanContext().TraceID()
-	spanID := span.SpanContext().SpanID()
+func (n *RaftBrainImpl) log() observability.Logger {
+	sub := n.logger.With(
+		"id", n.id,
+		"state", n.state.String(),
+		"votedFor", n.votedFor,
+		"leaderID", n.leaderID,
+		"currentTerm", n.currentTerm,
+		"commitIndex", n.commitIndex,
+		"lastApplied", n.lastApplied,
+		"nextIndex", n.nextIndex,
+		"matchIndex", n.matchIndex,
+	)
 
-	sub := n.logger.With().
-		Str("trace_id", traceID.String()).
-		Str("span_id", spanID.String()).
-		Int("id", n.id).
-		Str("state", n.state.String()).
-		Int("votedFor", n.votedFor).
-		Int("leaderId", n.votedFor).
-		Int("term", n.currentTerm).
-		Int("commitIndex", n.commitIndex).
-		Int("lastApplied", n.lastApplied).
-		Interface("nextIndex", n.nextIndex).
-		Interface("matchIndex", n.matchIndex).
-		Logger()
-	return &sub
+	return sub
 }

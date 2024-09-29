@@ -1,6 +1,7 @@
 package integration_testing
 
 import (
+	"context"
 	"khanh/raft-go/common"
 	"strconv"
 	"testing"
@@ -73,7 +74,7 @@ func AssertLiveNode(t *testing.T, c *Cluster, expectCount int) {
 // create a new node, and it do nothing and is waiting for leader to send logs to it (catch-up process),
 // new node isn't part of the cluster yet, it won't request vote or response to request vote.
 func AssertCreatingNode(t *testing.T, c *Cluster, id int) {
-	err := c.createNewNode(id)
+	err := c.createNewNode(context.Background(), id)
 	assert.NoError(t, err)
 
 	timeout := 150 * time.Millisecond

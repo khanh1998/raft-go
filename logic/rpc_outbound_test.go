@@ -3,12 +3,12 @@ package logic
 import (
 	"context"
 	"khanh/raft-go/common"
+	"khanh/raft-go/observability"
 	"khanh/raft-go/rpc_proxy"
 	"khanh/raft-go/state_machine"
 	"testing"
 	"time"
 
-	"github.com/rs/zerolog"
 	"github.com/stretchr/testify/assert"
 )
 
@@ -18,7 +18,7 @@ func Test_nodeImpl_BroadCastRequestVote(t *testing.T) {
 
 func TestRaftBrainImpl_BroadCastRequestVote(t *testing.T) {
 	type fields struct {
-		logger              *zerolog.Logger
+		logger              observability.Logger
 		DB                  Persistence
 		Peers               []common.ClusterMember
 		State               common.RaftState
@@ -51,7 +51,7 @@ func TestRaftBrainImpl_BroadCastRequestVote(t *testing.T) {
 		{
 			name: "",
 			fields: fields{
-				logger:              &zerolog.Logger{},
+				logger:              observability.NewZerolog("", 1),
 				DB:                  common.NewPersistenceMock(),
 				Peers:               []common.ClusterMember{{ID: 2, RpcUrl: ""}},
 				State:               common.StateCandidate,

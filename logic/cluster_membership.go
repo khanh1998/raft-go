@@ -112,7 +112,7 @@ func (r *RaftBrainImpl) RemoveServer(ctx context.Context, input common.RemoveSer
 	if isLeaderRemoved {
 		r.state = common.StateRemoved
 		r.stop <- struct{}{}
-		r.log(ctx).Info().Msg("the server will be shut down in 5s")
+		r.log().InfoContext(ctx, "the server will be shut down in 5s")
 		time.AfterFunc(5*time.Second, func() {
 			pid := os.Getpid()
 			syscall.Kill(pid, syscall.SIGTERM)
@@ -269,12 +269,12 @@ func (r *RaftBrainImpl) catchUpWithNewMember(ctx context.Context, peerID int) er
 		timeout := 5 * time.Second
 
 		output, err := r.rpcProxy.SendAppendEntries(ctx, peerID, &timeout, input)
-		r.log(ctx).Debug().Interface("output", output).Msg("r.RpcProxy.SendAppendEntries")
+		r.log().DebugContext(ctx, "r.RpcProxy.SendAppendEntries", "output", output)
 		if err != nil {
-			r.log(ctx).Err(err).Msg("BroadcastAppendEntries: ")
+			r.log().ErrorContext(ctx, "r.rpcProxy.SendAppendEntries", err)
 		} else {
 			if output.Success && output.Term > currentTerm {
-				r.log(ctx).Fatal().Interface("response", output).Msg("inconsistent response")
+				r.log().WarnContext(ctx, "inconsistent response", "response", output)
 			} else if output.Success {
 				matchIndex = common.Min(nextIdx, initNextIdx)
 
@@ -285,18 +285,14 @@ func (r *RaftBrainImpl) catchUpWithNewMember(ctx context.Context, peerID int) er
 				} else {
 					// the appendEntries request is failed,
 					// because current leader is outdated
-					err = errors.New("the follower cannot be more up to date than the current leader")
-					r.log(ctx).Error().Msg(err.Error())
+					r.log().ErrorContext(ctx, "the follower cannot be more up to date than the current leader", nil)
 					return err
 				}
 			}
 		}
 	}
 
-	r.log(ctx).Info().
-		Interface("matchIndex", matchIndex).
-		Interface("initNextIdx", initNextIdx).
-		Msg("finish catch up")
+	r.log().InfoContext(ctx, "finish catch up", "matchIndex", matchIndex, "initNextIdx", initNextIdx)
 
 	return nil
 }
@@ -390,7 +386,7 @@ func (r *RaftBrainImpl) restoreClusterMemberInfoFromLogs(ctx context.Context) (e
 	for _, log := range r.logs {
 		err = r.changeMember(log.Command.(string))
 		if err != nil {
-			r.log(ctx).Err(err).Msg("restoreClusterMemberInfoFromLogs")
+			r.log().ErrorContext(ctx, "restoreClusterMemberInfoFromLogs", err)
 		}
 	}
 
