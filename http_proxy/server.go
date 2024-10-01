@@ -9,8 +9,11 @@ import (
 	"regexp"
 
 	"github.com/gin-gonic/gin"
+	"github.com/prometheus/client_golang/prometheus/promhttp"
 	"go.opentelemetry.io/contrib/instrumentation/github.com/gin-gonic/gin/otelgin"
 	"go.opentelemetry.io/otel"
+	"go.opentelemetry.io/otel/attribute"
+	"go.opentelemetry.io/otel/codes"
 )
 
 var (
@@ -77,7 +80,7 @@ func (h *HttpProxy) SetBrain(brain RaftBrain) {
 	h.brain = brain
 }
 func (h *HttpProxy) prometheus(r *gin.Engine) {
-	r.GET("/metrics", func(ctx *gin.Context) {})
+	r.GET("/metrics", gin.WrapH(promhttp.Handler()))
 }
 
 func (h *HttpProxy) cli(r *gin.Engine) {
@@ -101,6 +104,12 @@ func (h *HttpProxy) cli(r *gin.Engine) {
 		if len(errs) > 0 {
 			c.IndentedJSON(http.StatusBadRequest, errs)
 		}
+
+		span.SetAttributes(
+			attribute.Int("sequence", requestData.SequenceNum),
+			attribute.Int("clientID", requestData.ClientID),
+			attribute.String("command", requestData.Command.(string)),
+		)
 
 		var (
 			err error
@@ -271,12 +280,13 @@ func (h *HttpProxy) Start() {
 		Handler: r,
 	}
 
-	ctx, span := tracer.Start(context.Background(), "Start")
+	ctx, span := tracer.Start(context.Background(), "Start HTTP proxy")
 	defer span.End()
 
 	go func() {
 		if err := httpServer.ListenAndServe(); err != nil {
 			h.log().ErrorContext(ctx, "HTTP Proxy Start", err)
+			span.SetStatus(codes.Error, err.Error())
 		}
 	}()
 
@@ -287,4 +297,5 @@ func (h *HttpProxy) Start() {
 	}()
 
 	h.log().InfoContext(ctx, "HTTP server start")
+	span.SetStatus(codes.Ok, "HTTP proxy start successfully")
 }

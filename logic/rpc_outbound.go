@@ -3,6 +3,7 @@ package logic
 import (
 	"context"
 	"khanh/raft-go/common"
+	"khanh/raft-go/observability"
 	"sync"
 	"time"
 
@@ -11,6 +12,7 @@ import (
 )
 
 func (n *RaftBrainImpl) BroadCastRequestVote(ctx context.Context) {
+	startTime := time.Now()
 	ctx, span := tracer.Start(ctx, "BroadCastRequestVote")
 	defer span.End()
 
@@ -108,8 +110,6 @@ func (n *RaftBrainImpl) BroadCastRequestVote(ctx context.Context) {
 		span.AddEvent("to follower")
 	}
 
-	span.SetStatus(codes.Ok, "finish send request vote")
-
 	n.log().InfoContext(ctx,
 		"BroadCastRequestVote",
 		"responses", responses,
@@ -120,6 +120,9 @@ func (n *RaftBrainImpl) BroadCastRequestVote(ctx context.Context) {
 		"quorum", n.Quorum(),
 	)
 
+	span.SetStatus(codes.Ok, "finish send request vote")
+	duration := time.Since(startTime)
+	observability.SetRequestVoteDuration(ctx, duration)
 }
 
 func extractSpanInfo(span trace.Span) (valid bool, traceID string, spanID string, traceFlags byte, traceState string) {
@@ -132,6 +135,7 @@ func extractSpanInfo(span trace.Span) (valid bool, traceID string, spanID string
 }
 
 func (n *RaftBrainImpl) BroadcastAppendEntries(ctx context.Context) (majorityOK bool) {
+	start := time.Now()
 	ctx, span := tracer.Start(ctx, "BroadcastAppendEntries")
 	defer span.End()
 
@@ -282,6 +286,9 @@ func (n *RaftBrainImpl) BroadcastAppendEntries(ctx context.Context) (majorityOK 
 	span.SetStatus(codes.Ok, "finished send append entries")
 
 	n.log().InfoContext(ctx, "BroadcastAppendEntries Done")
+
+	duration := time.Since(start)
+	observability.SetAppendEntriesDuration(ctx, duration)
 
 	return
 }

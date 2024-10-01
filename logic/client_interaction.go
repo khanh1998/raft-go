@@ -5,6 +5,8 @@ import (
 	"errors"
 	"khanh/raft-go/common"
 	"time"
+
+	"go.opentelemetry.io/otel/codes"
 )
 
 func (r *RaftBrainImpl) getLeaderHttpUrl() string {
@@ -23,6 +25,14 @@ func (r *RaftBrainImpl) getLeaderHttpUrl() string {
 func (r *RaftBrainImpl) ClientRequest(ctx context.Context, input *common.ClientRequestInput, output *common.ClientRequestOutput) (err error) {
 	ctx, span := tracer.Start(ctx, "ClientRequest")
 	defer span.End()
+
+	defer func() {
+		if output.Status == common.StatusNotOK {
+			span.SetStatus(codes.Error, output.Response.(string))
+		} else {
+			span.SetStatus(codes.Ok, "finished client request")
+		}
+	}()
 
 	r.inOutLock.Lock()
 	if r.state != common.StateLeader {
@@ -47,6 +57,8 @@ func (r *RaftBrainImpl) ClientRequest(ctx context.Context, input *common.ClientR
 	})
 
 	r.inOutLock.Unlock()
+
+	span.AddEvent("log appended")
 
 	var status common.ClientRequestStatus = common.StatusOK
 	var response any = nil
@@ -74,6 +86,8 @@ func (r *RaftBrainImpl) ClientRequest(ctx context.Context, input *common.ClientR
 		r.log().ErrorContext(ctx, "ClientRequest_TakeResponse", err)
 	}
 
+	span.AddEvent("log committed")
+
 	*output = common.ClientRequestOutput{
 		Status:   status,
 		Response: response,
@@ -85,6 +99,14 @@ func (r *RaftBrainImpl) ClientRequest(ctx context.Context, input *common.ClientR
 func (r *RaftBrainImpl) RegisterClient(ctx context.Context, input *common.RegisterClientInput, output *common.RegisterClientOutput) (err error) {
 	ctx, span := tracer.Start(ctx, "RegisterClient")
 	defer span.End()
+
+	defer func() {
+		if output.Status == common.StatusNotOK {
+			span.SetStatus(codes.Error, output.Response.(string))
+		} else {
+			span.SetStatus(codes.Ok, "finished client request")
+		}
+	}()
 
 	r.inOutLock.Lock()
 
@@ -152,8 +174,9 @@ func (r *RaftBrainImpl) ClientQuery(ctx context.Context, input *common.ClientQue
 
 	defer func() {
 		if err != nil {
-			output.Status = common.StatusNotOK
-			output.Response = err.Error()
+			span.SetStatus(codes.Error, output.Response.(string))
+		} else {
+			span.SetStatus(codes.Ok, "query success")
 		}
 	}()
 
@@ -168,6 +191,7 @@ func (r *RaftBrainImpl) ClientQuery(ctx context.Context, input *common.ClientQue
 
 		return nil
 	}
+
 	var ok bool
 	for i := 0; i < 100; i++ {
 		log, err := r.GetLog(r.commitIndex)

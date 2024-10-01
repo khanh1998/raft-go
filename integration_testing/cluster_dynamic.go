@@ -108,6 +108,7 @@ func (c *Cluster) initDynamic(filePath string) {
 	if err != nil {
 		log.Panic(err)
 	}
+	config.Observability.Disabled = true
 
 	c.config = config
 	c.MaxElectionTimeout = time.Duration(config.MaxElectionTimeoutMs * 1000 * 1000)
@@ -115,7 +116,7 @@ func (c *Cluster) initDynamic(filePath string) {
 
 	common.CreateFolderIfNotExists(config.DataFolder)
 
-	log := observability.NewZerolog("", 0)
+	log := observability.NewZerolog(config.Observability, 0)
 	c.log = log
 
 	c.Nodes = make(map[int]*node.Node)

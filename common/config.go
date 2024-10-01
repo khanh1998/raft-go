@@ -21,17 +21,22 @@ type ClusterConfig struct {
 	Servers []ClusterServerConfig `mapstructure:"servers"`
 }
 
+type ObservabilityConfig struct {
+	Disabled      bool   `mapstructure:"disabled"`
+	TraceEndpoint string `mapstructure:"trace_endpoint"`
+	LogEndpoint   string `mapstructure:"log_endpoint"`
+	LokiPushURL   string `mapstructure:"loki_push_url"`
+}
+
 type Config struct {
-	Cluster               ClusterConfig `mapstructure:"cluster"`
-	MinElectionTimeoutMs  int64         `mapstructure:"min_election_timeout_ms" validate:"required,gt=0"`
-	MaxElectionTimeoutMs  int64         `mapstructure:"max_election_timeout_ms" validate:"required,gt=0"`
-	MinHeartbeatTimeoutMs int64         `mapstructure:"min_heartbeat_timeout_ms" validate:"required,gt=0"`
-	MaxHeartbeatTimeoutMs int64         `mapstructure:"max_heartbeat_timeout_ms" validate:"required,gt=0"`
-	DataFolder            string        `mapstructure:"data_folder" default:"data/" validate:"required"`
-	StateMachineSnapshot  bool          `mapstructure:"state_machine_snapshot"`
-	TraceEndpoint         string        `mapstructure:"trace_endpoint"`
-	LogEndpoint           string        `mapstructure:"log_endpoint"`
-	LokiPushURL           string        `mapstructure:"loki_push_url"`
+	Cluster               ClusterConfig       `mapstructure:"cluster"`
+	MinElectionTimeoutMs  int64               `mapstructure:"min_election_timeout_ms" validate:"required,gt=0"`
+	MaxElectionTimeoutMs  int64               `mapstructure:"max_election_timeout_ms" validate:"required,gt=0"`
+	MinHeartbeatTimeoutMs int64               `mapstructure:"min_heartbeat_timeout_ms" validate:"required,gt=0"`
+	MaxHeartbeatTimeoutMs int64               `mapstructure:"max_heartbeat_timeout_ms" validate:"required,gt=0"`
+	DataFolder            string              `mapstructure:"data_folder" default:"data/" validate:"required"`
+	StateMachineSnapshot  bool                `mapstructure:"state_machine_snapshot"`
+	Observability         ObservabilityConfig `mapstructure:"observability"`
 }
 
 // appModeValidator is a custom validator function to check if the mode is valid

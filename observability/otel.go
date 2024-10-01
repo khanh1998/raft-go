@@ -4,6 +4,9 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"khanh/raft-go/common"
+	"log"
+	"time"
 
 	"go.opentelemetry.io/otel"
 	"go.opentelemetry.io/otel/exporters/otlp/otlplog/otlploghttp"
@@ -11,16 +14,56 @@ import (
 	"go.opentelemetry.io/otel/exporters/prometheus"
 	"go.opentelemetry.io/otel/exporters/stdout/stdoutlog"
 	"go.opentelemetry.io/otel/log/global"
+	"go.opentelemetry.io/otel/metric"
 	"go.opentelemetry.io/otel/propagation"
-	"go.opentelemetry.io/otel/sdk/log"
-	"go.opentelemetry.io/otel/sdk/metric"
+	sdklog "go.opentelemetry.io/otel/sdk/log"
+	sdkmetric "go.opentelemetry.io/otel/sdk/metric"
 	"go.opentelemetry.io/otel/sdk/resource"
 	"go.opentelemetry.io/otel/sdk/trace"
-	sdktrace "go.opentelemetry.io/otel/sdk/trace"
 	semconv "go.opentelemetry.io/otel/semconv/v1.17.0"
 )
 
-func SetupOTelSDK(ctx context.Context, nodeId int, traceServer string, logServer string) (shutdown func(context.Context) error, err error) {
+var (
+	meter = otel.Meter("raft")
+
+	requestVotesDuration  metric.Int64Histogram
+	appendEntriesDuration metric.Int64Histogram
+	MetricsExporter       prometheus.Exporter
+)
+
+func init() {
+	var err error
+
+	requestVotesDuration, err = meter.Int64Histogram(
+		"LeaderElectionDuration",
+		metric.WithDescription("how long does it take to finish a successful election round"),
+		metric.WithUnit("{ms}"),
+	)
+
+	if err != nil {
+		log.Println(err.Error())
+	}
+
+	appendEntriesDuration, err = meter.Int64Histogram(
+		"AppendEntriesDuration",
+		metric.WithDescription("how long does it take to finish a successful append entries round"),
+		metric.WithUnit("{ms}"),
+	)
+
+	if err != nil {
+		log.Println(err.Error())
+	}
+}
+
+func SetRequestVoteDuration(ctx context.Context, dur time.Duration) {
+	requestVotesDuration.Record(ctx, dur.Milliseconds())
+}
+
+func SetAppendEntriesDuration(ctx context.Context, dur time.Duration) {
+	appendEntriesDuration.Record(ctx, dur.Milliseconds())
+}
+
+func SetupOTelSDK(ctx context.Context, nodeId int, cfg common.ObservabilityConfig) (shutdown func(context.Context) error, err error) {
 	var shutdownFuncs []func(context.Context) error
 
 	// shutdown calls cleanup functions registered via shutdownFuncs.
@@ -45,7 +88,7 @@ func SetupOTelSDK(ctx context.Context, nodeId int, traceServer string, logServer
 	otel.SetTextMapPropagator(prop)
 
 	// Set up trace provider.
-	tracerProvider, err := newTraceProvider(nodeId, traceServer)
+	tracerProvider, err := newTraceProvider(nodeId, cfg.TraceEndpoint)
 	if err != nil {
 		handleErr(err)
 		return
@@ -63,7 +106,7 @@ func SetupOTelSDK(ctx context.Context, nodeId int, traceServer string, logServer
 	otel.SetMeterProvider(meterProvider)
 
 	// Set up logger provider.
-	loggerProvider, err := newLoggerProvider(ctx, logServer, nodeId)
+	loggerProvider, err := newLoggerProvider(ctx, cfg.LogEndpoint, nodeId)
 	if err != nil {
 		handleErr(err)
 		return
@@ -88,9 +131,9 @@ func newTraceProvider(nodeId int, traceSever string) (*trace.TracerProvider, err
 	}
 
 	// Create the trace provider
-	tracerProvider := sdktrace.NewTracerProvider(
-		sdktrace.WithBatcher(exporter),
-		sdktrace.WithResource(resource.NewWithAttributes(
+	tracerProvider := trace.NewTracerProvider(
+		trace.WithBatcher(exporter),
+		trace.WithResource(resource.NewWithAttributes(
 			semconv.SchemaURL,
 			semconv.ServiceNameKey.String(fmt.Sprintf("raft-node-%d", nodeId)),
 		)),
@@ -99,18 +142,19 @@ func newTraceProvider(nodeId int, traceSever string) (*trace.TracerProvider, err
 	return tracerProvider, nil
 }
 
-func newMeterProvider() (*metric.MeterProvider, error) {
+func newMeterProvider() (*sdkmetric.MeterProvider, error) {
 	metricExporter, err := prometheus.New()
 	if err != nil {
 		return nil, err
 	}
+	metricExporter = metricExporter
 
-	meterProvider := metric.NewMeterProvider(metric.WithReader(metricExporter))
+	meterProvider := sdkmetric.NewMeterProvider(sdkmetric.WithReader(metricExporter))
 
 	return meterProvider, nil
 }
 
-func newLoggerProvider(ctx context.Context, logServer string, nodeId int) (*log.LoggerProvider, error) {
+func newLoggerProvider(ctx context.Context, logServer string, nodeId int) (*sdklog.LoggerProvider, error) {
 	logExporter, err := stdoutlog.New()
 	if err != nil {
 		return nil, err
@@ -121,10 +165,10 @@ func newLoggerProvider(ctx context.Context, logServer string, nodeId int) (*log.
 		return nil, err
 	}
 
-	loggerProvider := log.NewLoggerProvider(
-		log.WithProcessor(log.NewBatchProcessor(logExporter)),
-		log.WithProcessor(log.NewBatchProcessor(otlpExporter)),
-		log.WithResource(resource.NewWithAttributes(
+	loggerProvider := sdklog.NewLoggerProvider(
+		sdklog.WithProcessor(sdklog.NewBatchProcessor(logExporter)),
+		sdklog.WithProcessor(sdklog.NewBatchProcessor(otlpExporter)),
+		sdklog.WithResource(resource.NewWithAttributes(
 			semconv.SchemaURL,
 			semconv.ServiceNameKey.String(fmt.Sprintf("raft-node-%d", nodeId)),
 		)),

@@ -42,6 +42,7 @@ func (c *Cluster) init(filePath string) {
 	if err != nil {
 		log.Panic(err)
 	}
+	config.Observability.Disabled = true
 
 	c.config = config
 
@@ -50,7 +51,7 @@ func (c *Cluster) init(filePath string) {
 
 	common.CreateFolderIfNotExists(config.DataFolder)
 
-	log := observability.NewZerolog("", 0)
+	log := observability.NewZerolog(config.Observability, 0)
 
 	peers := []common.ClusterMember{}
 	for _, mem := range config.Cluster.Servers {

@@ -51,7 +51,7 @@ func TestRaftBrainImpl_BroadCastRequestVote(t *testing.T) {
 		{
 			name: "",
 			fields: fields{
-				logger:              observability.NewZerolog("", 1),
+				logger:              observability.NewZerolog(common.ObservabilityConfig{}, 1),
 				DB:                  common.NewPersistenceMock(),
 				Peers:               []common.ClusterMember{{ID: 2, RpcUrl: ""}},
 				State:               common.StateCandidate,

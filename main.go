@@ -122,7 +122,7 @@ func main() {
 		}
 	}
 
-	logger := observability.NewZerolog(config.LokiPushURL, id)
+	logger := observability.NewZerolog(config.Observability, id)
 	// logger := observability.NewOtelLogger()
 
 	logger.InfoContext(ctx, "config content", "config", config)
@@ -161,16 +161,17 @@ func main() {
 	}
 
 	// Set up OpenTelemetry.
-	otelShutdown, err := observability.SetupOTelSDK(ctx, id, config.TraceEndpoint, config.LogEndpoint)
-	if err != nil {
-		log.Panic(err)
-	}
+	if !config.Observability.Disabled {
+		otelShutdown, err := observability.SetupOTelSDK(ctx, id, config.Observability)
+		if err != nil {
+			log.Panic(err)
+		}
 
-	// Handle shutdown properly so nothing leaks.
-	defer func() {
-		err = errors.Join(err, otelShutdown(ctx))
-		log.Panic(err)
-	}()
+		defer func() {
+			err = errors.Join(err, otelShutdown(ctx))
+			log.Panic(err)
+		}()
+	}
 
 	n := node.NewNode(ctx, params)
 	n.Start(ctx, params.Brain.Mode == common.Dynamic, params.Brain.CachingUp)

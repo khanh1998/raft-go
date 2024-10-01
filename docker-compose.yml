@@ -58,18 +58,17 @@ services:
       - raft-node-3-data:/app/data
       - ./dc-config.yml:/app/config.yml
 
-  # prometheus:
-  #   image: prom/prometheus:latest
-  #   volumes:
-  #     - ./prometheus.yml:/etc/prometheus/prometheus.yml  # Mount the config file
-  #   ports:
-  #     - "9090:9090"  # Expose Prometheus port
-  #   command:
-  #     - '--config.file=/etc/prometheus/prometheus.yml'
-  #   networks:
-  #     raft-network:
-  # Tempo runs as user 10001, and docker compose creates the volume as root.
-  # As such, we need to chown the volume in order for Tempo to start correctly.
+  prometheus:
+    image: prom/prometheus:latest
+    volumes:
+      - ./prometheus.yml:/etc/prometheus/prometheus.yml  # Mount the config file
+    ports:
+      - "9090:9090"  # Expose Prometheus port
+    command:
+      - '--config.file=/etc/prometheus/prometheus.yml'
+    networks:
+      raft-network:
+      
   memcached:
     image: memcached:1.6.29
     container_name: memcached

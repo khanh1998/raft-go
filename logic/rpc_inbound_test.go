@@ -20,7 +20,7 @@ func Test_nodeImpl_RequestVote(t *testing.T) {
 		out  common.RequestVoteOutput
 	}
 
-	logger := observability.NewZerolog("", 1)
+	logger := observability.NewZerolog(common.ObservabilityConfig{}, 1)
 
 	testCases := []TestCase{
 		{
@@ -93,7 +93,7 @@ func Test_nodeImpl_AppendEntries(t *testing.T) {
 		persist TestCasePersist
 	}
 
-	logger := observability.NewZerolog("", 1)
+	logger := observability.NewZerolog(common.ObservabilityConfig{}, 1)
 
 	sm, err := state_machine.NewKeyValueStateMachine(state_machine.NewKeyValueStateMachineParams{DB: common.NewPersistenceMock()})
 	assert.NoError(t, err)

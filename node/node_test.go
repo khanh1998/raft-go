@@ -16,7 +16,7 @@ import (
 )
 
 func TestRpcConnection(t *testing.T) {
-	logger := observability.NewZerolog("", 1)
+	logger := observability.NewZerolog(common.ObservabilityConfig{}, 1)
 	ctx := context.Background()
 
 	n := NewNode(ctx, NewNodeParams{

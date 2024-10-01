@@ -3,6 +3,7 @@ package observability
 import (
 	"context"
 	"io"
+	"khanh/raft-go/common"
 	"os"
 	"time"
 
@@ -37,14 +38,12 @@ func (l *zerologLogger) Fatal(msg string, attrs ...any) {
 	l.log(zerolog.FatalLevel, msg, attrs...)
 }
 
-func NewZerolog(logServer string, id int) Logger {
+func NewZerolog(cfg common.ObservabilityConfig, id int) Logger {
 	stdOutput := zerolog.ConsoleWriter{Out: os.Stdout, TimeFormat: time.RFC3339Nano}
-	lokiURL := logServer
-
 	var logger zerolog.Logger
 
-	if logServer != "" {
-		lokiClient := NewLokiClient(lokiURL)
+	if cfg.LokiPushURL != "" && !cfg.Disabled {
+		lokiClient := NewLokiClient(cfg.LokiPushURL)
 		lokiHook := NewLokiHook(lokiClient, id)
 		output := io.MultiWriter(stdOutput, lokiHook)
 		logger = zerolog.New(output).With().Timestamp().Logger()

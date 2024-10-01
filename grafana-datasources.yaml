@@ -31,9 +31,9 @@ datasources:
       spanStartTimeShift: '-10m'
       spanEndTimeShift: '10m'
       tags: [{ key: 'job', value: 'job' }] 
-      filterByTraceID: true
-      filterBySpanID: true
-      customQuery: false
+      filterByTraceID: false
+      filterBySpanID: false
+      customQuery: true
       query: '{service_name=~".+"} | json | trace_id="$${__trace.traceId}" | span_id="$${__span.spanId}"'
       # query: '{service_name="$${__span.tags["service.name"]}"} | json | span_id="$${__span.spanId}" | trace_id="$${__trace.traceId}"'
 
