@@ -42,7 +42,7 @@ func NewZerolog(cfg common.ObservabilityConfig, id int) Logger {
 	stdOutput := zerolog.ConsoleWriter{Out: os.Stdout, TimeFormat: time.RFC3339Nano}
 	var logger zerolog.Logger
 
-	if cfg.LokiPushURL != "" && !cfg.Disabled {
+	if !cfg.Disabled && cfg.LokiPushURL != "" {
 		lokiClient := NewLokiClient(cfg.LokiPushURL)
 		lokiHook := NewLokiHook(lokiClient, id)
 		output := io.MultiWriter(stdOutput, lokiHook)

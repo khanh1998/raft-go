@@ -6,21 +6,34 @@ import (
 	"fmt"
 	"khanh/raft-go/common"
 	"time"
+
+	"go.opentelemetry.io/otel/trace"
 )
 
 var ErrInaccessible = errors.New("rpc proxy is in accessible")
+
+func extractSpanInfo(span trace.Span) (valid bool, traceID string, spanID string, traceFlags byte, traceState string) {
+	valid = span.SpanContext().IsValid()
+	traceID = span.SpanContext().TraceID().String()
+	spanID = span.SpanContext().SpanID().String()
+	traceFlags = byte(span.SpanContext().TraceFlags())
+	traceState = span.SpanContext().TraceState().String()
+	return
+}
 
 func (r *RPCProxyImpl) SendAppendEntries(ctx context.Context, peerId int, timeout *time.Duration, input common.AppendEntriesInput) (output common.AppendEntriesOutput, err error) {
 	ctx, span := tracer.Start(ctx, "SendAppendEntries")
 	defer span.End()
 
-	sc := span.SpanContext()
-	traceID, spanID, traceFlags, traceState := sc.TraceID().String(), sc.SpanID().String(), byte(sc.TraceFlags()), sc.TraceState().String()
-
-	input.TraceID = traceID
-	input.SpanID = spanID
-	input.TraceFlags = traceFlags
-	input.TraceState = traceState
+	validSpan, traceID, spanID, traceFlags, traceState := extractSpanInfo(span)
+	if validSpan {
+		input.Trace = &common.RequestTraceInfo{
+			SpanID:     spanID,
+			TraceID:    traceID,
+			TraceFlags: traceFlags,
+			TraceState: traceState,
+		}
+	}
 
 	if !r.accessible {
 		return output, ErrInaccessible
@@ -45,13 +58,15 @@ func (r *RPCProxyImpl) SendRequestVote(ctx context.Context, peerId int, timeout 
 	ctx, span := tracer.Start(ctx, "SendRequestVote")
 	defer span.End()
 
-	sc := span.SpanContext()
-	traceID, spanID, traceFlags, traceState := sc.TraceID().String(), sc.SpanID().String(), byte(sc.TraceFlags()), sc.TraceState().String()
-
-	input.TraceID = traceID
-	input.SpanID = spanID
-	input.TraceFlags = traceFlags
-	input.TraceState = traceState
+	validSpan, traceID, spanID, traceFlags, traceState := extractSpanInfo(span)
+	if validSpan {
+		input.Trace = &common.RequestTraceInfo{
+			SpanID:     spanID,
+			TraceID:    traceID,
+			TraceFlags: traceFlags,
+			TraceState: traceState,
+		}
+	}
 
 	if !r.accessible {
 		return output, ErrInaccessible

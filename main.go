@@ -123,7 +123,6 @@ func main() {
 	}
 
 	logger := observability.NewZerolog(config.Observability, id)
-	// logger := observability.NewOtelLogger()
 
 	logger.InfoContext(ctx, "config content", "config", config)
 

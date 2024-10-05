@@ -9,34 +9,18 @@ import (
 )
 
 func (r *RPCProxyImpl) AppendEntries(input *common.AppendEntriesInput, output *common.AppendEntriesOutput) (err error) {
-	traceID, err := trace.TraceIDFromHex(input.TraceID)
-	if err != nil {
-		r.logger.Error("RequestVote_TraceIDFromHex", err)
+	ctx := context.Background()
+
+	if input.Trace != nil {
+		var span trace.Span
+		ctx, err = input.Trace.Context()
+		if err != nil {
+			r.log().ErrorContext(ctx, "AppendEntries: get context", err)
+		}
+
+		ctx, span = tracer.Start(ctx, "AppendEntriesInvoked")
+		defer span.End()
 	}
-
-	spanID, err := trace.SpanIDFromHex(input.SpanID)
-	if err != nil {
-		r.logger.Error("RequestVote_SpanIDFromHex", err)
-	}
-
-	traceFlags := trace.TraceFlags(input.TraceFlags)
-
-	traceState, err := trace.ParseTraceState(input.TraceState)
-	if err != nil {
-		r.logger.Error("RequestVote_ParseTraceState", err)
-	}
-
-	sc := trace.NewSpanContext(trace.SpanContextConfig{
-		TraceID:    traceID,
-		SpanID:     spanID,
-		Remote:     true,
-		TraceFlags: traceFlags,
-		TraceState: traceState,
-	})
-	ctx := trace.ContextWithSpanContext(context.Background(), sc)
-
-	ctx, span := tracer.Start(ctx, "AppendEntriesInvoked")
-	defer span.End()
 
 	if !r.accessible {
 		return ErrInaccessible
@@ -45,35 +29,18 @@ func (r *RPCProxyImpl) AppendEntries(input *common.AppendEntriesInput, output *c
 }
 
 func (r *RPCProxyImpl) RequestVote(input *common.RequestVoteInput, output *common.RequestVoteOutput) (err error) {
-	traceID, err := trace.TraceIDFromHex(input.TraceID)
-	if err != nil {
-		r.logger.Error("RequestVote_TraceIDFromHex", err)
+	ctx := context.Background()
+
+	if input.Trace != nil {
+		var span trace.Span
+		ctx, err = input.Trace.Context()
+		if err != nil {
+			r.log().ErrorContext(ctx, "RequestVote: get context", err)
+		}
+
+		ctx, span = tracer.Start(ctx, "RequestVoteInvoked")
+		defer span.End()
 	}
-
-	spanID, err := trace.SpanIDFromHex(input.SpanID)
-	if err != nil {
-		r.logger.Error("RequestVote_SpanIDFromHex", err)
-	}
-
-	traceFlags := trace.TraceFlags(input.TraceFlags)
-
-	traceState, err := trace.ParseTraceState(input.TraceState)
-	if err != nil {
-		r.logger.Error("RequestVote_ParseTraceState", err)
-	}
-
-	sc := trace.NewSpanContext(trace.SpanContextConfig{
-		TraceID:    traceID,
-		SpanID:     spanID,
-		Remote:     true,
-		TraceFlags: traceFlags,
-		TraceState: traceState,
-	})
-
-	ctx := trace.ContextWithSpanContext(context.Background(), sc)
-
-	ctx, span := tracer.Start(ctx, "RequestVoteInvoked")
-	defer span.End()
 
 	if !r.accessible {
 		return ErrInaccessible

@@ -1,6 +1,11 @@
 package common
 
-import "net/rpc"
+import (
+	"context"
+	"net/rpc"
+
+	"go.opentelemetry.io/otel/trace"
+)
 
 const NoOperation = "NO-OP"
 
@@ -12,10 +17,7 @@ type AppendEntriesInput struct {
 	Entries      []Log // log entries to store (empty for heartbeat; may send more than one for efficiency)
 	LeaderCommit int   // leader’s commitIndex
 
-	TraceID    string
-	SpanID     string
-	TraceFlags byte
-	TraceState string
+	Trace *RequestTraceInfo // this will be set at RPC Proxy
 }
 
 type AppendEntriesOutput struct {
@@ -31,10 +33,55 @@ type RequestVoteInput struct {
 	LastLogIndex int // index of candidate’s last log entry (§5.4)
 	LastLogTerm  int // term of candidate’s last log entry (§5.4)
 
+	Trace *RequestTraceInfo // this will be set at RPC Proxy
+}
+
+// this struct carries need info so OpenTelemery can trace the requests between nodes.
+type RequestTraceInfo struct {
 	TraceID    string
 	SpanID     string
 	TraceFlags byte
 	TraceState string
+}
+
+func NewRequestTraceInfo(traceId string, spanId string, flags byte, state string) RequestTraceInfo {
+	return RequestTraceInfo{
+		TraceID:    traceId,
+		SpanID:     spanId,
+		TraceFlags: flags,
+		TraceState: state,
+	}
+}
+
+func (r *RequestTraceInfo) Context() (context.Context, error) {
+	traceID, err := trace.TraceIDFromHex(r.TraceID)
+	if err != nil {
+		return nil, err
+	}
+
+	spanID, err := trace.SpanIDFromHex(r.SpanID)
+	if err != nil {
+		return nil, err
+	}
+
+	traceFlags := trace.TraceFlags(r.TraceFlags)
+
+	traceState, err := trace.ParseTraceState(r.TraceState)
+	if err != nil {
+		return nil, err
+	}
+
+	sc := trace.NewSpanContext(trace.SpanContextConfig{
+		TraceID:    traceID,
+		SpanID:     spanID,
+		Remote:     true,
+		TraceFlags: traceFlags,
+		TraceState: traceState,
+	})
+
+	ctx := trace.ContextWithSpanContext(context.Background(), sc)
+
+	return ctx, nil
 }
 
 type RequestVoteOutput struct {

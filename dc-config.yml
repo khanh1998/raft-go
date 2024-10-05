@@ -22,7 +22,7 @@ max_heartbeat_timeout_ms: 5000
 data_folder: data/
 state_machine_snapshot: false
 observability:
-  disabled: false
+  disabled: true
   trace_endpoint: 'tempo:4318'
   log_endpoint: 'loki:3100'
   loki_push_url: 'http://loki:3100/loki/api/v1/push'

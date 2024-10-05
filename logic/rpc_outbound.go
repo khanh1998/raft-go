@@ -8,15 +8,12 @@ import (
 	"time"
 
 	"go.opentelemetry.io/otel/codes"
-	"go.opentelemetry.io/otel/trace"
 )
 
 func (n *RaftBrainImpl) BroadCastRequestVote(ctx context.Context) {
 	startTime := time.Now()
 	ctx, span := tracer.Start(ctx, "BroadCastRequestVote")
 	defer span.End()
-
-	validSpan, traceID, spanID, traceFlags, traceState := extractSpanInfo(span)
 
 	n.inOutLock.Lock()
 	defer n.inOutLock.Unlock()
@@ -44,13 +41,6 @@ func (n *RaftBrainImpl) BroadCastRequestVote(ctx context.Context) {
 		CandidateID:  n.id,
 		LastLogIndex: lastLogIndex,
 		LastLogTerm:  lastLogTerm,
-	}
-
-	if validSpan {
-		input.SpanID = spanID
-		input.TraceID = traceID
-		input.TraceFlags = traceFlags
-		input.TraceState = traceState
 	}
 
 	responses := make(map[int]*common.RequestVoteOutput, len(n.members))
@@ -125,21 +115,10 @@ func (n *RaftBrainImpl) BroadCastRequestVote(ctx context.Context) {
 	observability.SetRequestVoteDuration(ctx, duration)
 }
 
-func extractSpanInfo(span trace.Span) (valid bool, traceID string, spanID string, traceFlags byte, traceState string) {
-	valid = span.SpanContext().IsValid()
-	traceID = span.SpanContext().TraceID().String()
-	spanID = span.SpanContext().SpanID().String()
-	traceFlags = byte(span.SpanContext().TraceFlags())
-	traceState = span.SpanContext().TraceState().String()
-	return
-}
-
 func (n *RaftBrainImpl) BroadcastAppendEntries(ctx context.Context) (majorityOK bool) {
 	start := time.Now()
 	ctx, span := tracer.Start(ctx, "BroadcastAppendEntries")
 	defer span.End()
-
-	validSpan, traceID, spanID, traceFlags, traceState := extractSpanInfo(span)
 
 	// TODO: shorten the critical region, only acquire lock when reading or writing data.
 	// in the paper, when a node are acting as a candidate, if it receive request with higher term,
@@ -180,13 +159,6 @@ func (n *RaftBrainImpl) BroadcastAppendEntries(ctx context.Context) (majorityOK 
 				Term:         n.currentTerm,
 				LeaderID:     n.id,
 				LeaderCommit: n.commitIndex,
-			}
-
-			if validSpan {
-				input.SpanID = spanID
-				input.TraceID = traceID
-				input.TraceFlags = traceFlags
-				input.TraceState = traceState
 			}
 
 			if nextIdx > 1 {
