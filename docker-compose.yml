@@ -57,6 +57,18 @@ services:
     volumes:
       - raft-node-3-data:/app/data
       - ./dc-config.yml:/app/config.yml
+  
+  web-ui:
+    image: raft-go-ui:latest
+    build: ./web_ui
+    environment:
+      - VITE_PORT=3000
+      - VITE_NODE_URLS=raft-node-1.raft-cluster.local:8080,raft-node-2.raft-cluster.local:8080,raft-node-3.raft-cluster.local:8080
+    ports:
+      - "3000:3000"
+    command: ["node build"]
+    networks:
+      raft-network:
 
 networks:
   raft-network:
