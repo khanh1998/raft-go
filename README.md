@@ -15,6 +15,10 @@ If you want to quickly test the Raft cluster, you can start the cluster on Docke
 docker compose up -d --build
 ```
 This will create a static cluster including three nodes, you can check the docker-compose file to see which port those nodes are operating on.
+
+You can now move to step **#2 (Specify the URL of the leader)** and interact with the cluster by sending HTTP requests to the leader.
+
+Or you can using the web UI running at `localhost:3000` to interact with the cluster. Before using the web UI, you must wait a few minutes for the cluster to elect a leader.
 ## 1.2 Configuration
 You need a config file `config.yml` whose content as bellow:
 ```yaml
