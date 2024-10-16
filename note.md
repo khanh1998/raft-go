@@ -34,7 +34,4 @@ todos:
 - use env variable for rpc and http timeout
 - write a db engine
 - compare and set
-
-- Metrics collection with Prometheus
-- logging with ZeroLog
-- tracing with OpenTelemetry
+- upgrade rpc to gRPC

@@ -9,32 +9,46 @@ This is a simple distributed key-value database, built on top of [Raft](https://
 ![Orverall Architecture](docs/diagram.drawio.png "Orverall Architecture")
 
 # 1. Start the cluster
-## 1.0 Configuration
+## 1.1 Quick
+If you want to quickly test the Raft cluster, you can start the cluster on Docker Compose:
+```bash
+docker compose up -d --build
+```
+This will create a static cluster including three nodes, you can check the docker-compose file to see which port those nodes are operating on.
+## 1.2 Configuration
 You need a config file `config.yml` whose content as bellow:
 ```yaml
-cluster:
+# this config file is for local development environment
+cluster: 
   mode: static # the cluster can be either 'static' or 'dynamic'
   servers: # if the mode is 'dynamic', `servers` will be ignored
     - id: 1
-      host: "http://localhost"
+      host: "localhost"
       http_port: 8080
       rpc_port: 1234
     - id: 2
-      host: "http://localhost"
+      host: "localhost"
       http_port: 8081
       rpc_port: 1235
     - id: 3
-      host: "http://localhost"
+      host: "localhost"
       http_port: 8082
       rpc_port: 1236
-# timeout in miliseconds
+# timeout in milliseconds
 min_election_timeout_ms: 12000
 max_election_timeout_ms: 15000
 min_heartbeat_timeout_ms: 2000
 max_heartbeat_timeout_ms: 5000
+data_folder: data/
+state_machine_snapshot: false
+observability:
+  disabled: true
+  trace_endpoint: 'localhost:4318'
+  log_endpoint: 'localhost:3100'
+  loki_push_url: 'http://localhost:3100/loki/api/v1/push'
 ```
 Pick the mode of cluster, It can be either `dynamic` or `static`.
-## 1.1 Dynamic cluster
+## 1.3 Dynamic cluster
 With a dynamic cluster, you can freely add or remove nodes as you want (one at a time). \
 The general idea is, firstly you create a one-node-cluster, the only node will obviously become the leader. You can perform all commands with this cluster normally. \
 Then you add a new node to the cluster to form a two-nodes-cluster, the new node needs to catch up with the current leader before it officially becomes a member of the cluster. The catching-up can take a long time, and you can only add (or remove) one node to the cluster at a time. \
@@ -44,7 +58,7 @@ After the second node is added successfully, now you can add the third node to t
 > For a cluster with $n$ nodes, the quorum $q$ can be calculated as:
 > $$[ q = \left\lfloor \frac{n}{2} \right\rfloor + 1 ]$$
 
-## 1.1.1 Adding servers to cluster
+## 1.3.1 Adding servers to cluster
 To create the first node, wait for few seconds and this node will become the leader of a one-node-cluster:
 ``` bash
 go run -race main.go -id=1 -catching-up=false -rpc-port=1234 -http-port=8080
@@ -84,7 +98,7 @@ curl --location 'localhost:8080/cli' \
 
 In case the second or third node is crashed and need to restart, set `catching-up=false` because they have catched up with the current leader.
 
-## 1.1.2 Removing servers to cluster
+## 1.3.2 Removing servers to cluster
 In case you want to remove a node from the cluster, send an HTTP request to the leader to specify which server you want to remove. The leader can be removed as any other server.
 ``` bash
 curl --location 'localhost:8080/cli' \
@@ -98,15 +112,15 @@ After the server is removed from the cluster, you need to manually shut it down.
 If you want to get a previously removed server to join the cluster again, you need to choose a new ID for it, as you can't reuse the used server IDs.
 
 
-## 1.2 Static cluster
-## 1.2.1 Using multiple terminals (recommended)
+## 1.4 Static cluster
+## 1.4.1 Using multiple terminals (recommended)
 In this mode, logs of each node in the cluster will be shown in its terminal.\
 To clear the previous state of the cluster: `make clear`\
 Open three terminals, and input the three below commands to three terminals respectively:\
 Terminal 1 - Node 1: `make nodes1`\
 Terminal 2 - Node 2: `make nodes2`\
 Terminal 3 - Node 3: `make nodes2`
-## 1.2.2 Using one terminal (unavailable)
+## 1.4.2 Using one terminal (unavailable)
 In this mode, logs of nodes in the cluster will be all shown in one terminal.\
 To clear the previous state of the cluster: `make clear`\
 Open a terminal, and type: `make run`
