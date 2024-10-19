@@ -35,3 +35,4 @@ todos:
 - write a db engine
 - compare and set
 - upgrade rpc to gRPC
+- make a Go client

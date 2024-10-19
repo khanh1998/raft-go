@@ -2,6 +2,7 @@ package state_machine
 
 import (
 	"khanh/raft-go/common"
+	"khanh/raft-go/observability"
 	"reflect"
 	"sync"
 	"testing"
@@ -41,6 +42,7 @@ func TestKeyValueStateMachine_Process(t *testing.T) {
 		clientID    int
 		sequenceNum int
 		logIndex    int
+		clusterTime uint64
 	}
 	tests := []struct {
 		name       string
@@ -267,6 +269,7 @@ func TestKeyValueStateMachine_Process(t *testing.T) {
 				clientID:    0,
 				sequenceNum: 0,
 				logIndex:    2,
+				clusterTime: 3,
 			},
 			wantFields: &fields{
 				data: map[string]string{
@@ -276,11 +279,71 @@ func TestKeyValueStateMachine_Process(t *testing.T) {
 					2: {
 						LastSequenceNum: 0,
 						LastResponse:    nil,
+						ExpiryTime:      8,
 					},
 				},
 			},
 			wantResult: nil,
 			wantErr:    false,
+		},
+		{
+			name: "session valid",
+			fields: fields{
+				data: map[string]string{
+					"name": "khanh",
+				},
+				clients: map[int]ClientEntry{
+					1: {ExpiryTime: 20},
+				},
+			},
+			args: args{
+				command:     "set address ho chi minh city",
+				clientID:    1,
+				sequenceNum: 1,
+				clusterTime: 10,
+			},
+			wantFields: &fields{
+				data: map[string]string{
+					"name":    "khanh",
+					"address": "ho chi minh city",
+				},
+				clients: map[int]ClientEntry{
+					1: {ExpiryTime: 20, LastSequenceNum: 1, LastResponse: "ho chi minh city"},
+				},
+			},
+			wantResult: "ho chi minh city",
+			wantErr:    false,
+		},
+		{
+			name: "session timeout",
+			fields: fields{
+				data: map[string]string{
+					"name": "khanh",
+				},
+				clients: map[int]ClientEntry{
+					1: {ExpiryTime: 28},
+					2: {ExpiryTime: 29},
+					3: {ExpiryTime: 30},
+					4: {ExpiryTime: 31},
+				},
+			},
+			args: args{
+				command:     "set address ho chi minh city",
+				clientID:    1,
+				sequenceNum: 1,
+				clusterTime: 30,
+			},
+			wantFields: &fields{
+				data: map[string]string{
+					"name": "khanh",
+				},
+				clients: map[int]ClientEntry{
+					3: {ExpiryTime: 30},
+					4: {ExpiryTime: 31},
+				},
+			},
+			wantResult: nil,
+			wantErr:    true,
 		},
 	}
 	for _, tt := range tests {
@@ -289,9 +352,11 @@ func TestKeyValueStateMachine_Process(t *testing.T) {
 				current: snapshot{
 					data: tt.fields.data,
 				},
-				sessions: tt.fields.clients,
+				sessions:              tt.fields.clients,
+				logger:                observability.NewZerolog(common.ObservabilityConfig{Disabled: true}, 0),
+				clientSessionDuration: 5,
 			}
-			gotResult, err := k.Process(tt.args.clientID, tt.args.sequenceNum, tt.args.command, tt.args.logIndex)
+			gotResult, err := k.Process(tt.args.clientID, tt.args.sequenceNum, tt.args.command, tt.args.logIndex, tt.args.clusterTime)
 			if (err != nil) != tt.wantErr {
 				t.Errorf("KeyValueStateMachine.Process() error = %v, wantErr %v", err, tt.wantErr)
 				return

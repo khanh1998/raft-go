@@ -3,6 +3,7 @@ package logic
 import (
 	"context"
 	"errors"
+	"fmt"
 	"khanh/raft-go/common"
 	"time"
 
@@ -20,6 +21,81 @@ func (r *RaftBrainImpl) getLeaderHttpUrl() string {
 	}
 
 	return leaderUrl
+}
+
+func (r *RaftBrainImpl) KeepAlive(ctx context.Context, input *common.KeepAliveClientInput, output *common.KeepAliveClientOutput) (err error) {
+	ctx, span := tracer.Start(ctx, "ClientRequest")
+	defer span.End()
+	defer func() {
+		if output.Status == common.StatusNotOK {
+			span.SetStatus(codes.Error, output.Response.(string))
+		} else {
+			span.SetStatus(codes.Ok, "finished client request")
+		}
+	}()
+
+	r.inOutLock.Lock()
+	if r.state != common.StateLeader {
+		leaderUrl := r.getLeaderHttpUrl()
+
+		*output = common.KeepAliveClientOutput{
+			Status:     common.StatusNotOK,
+			Response:   common.NotLeader,
+			LeaderHint: leaderUrl,
+		}
+
+		r.inOutLock.Unlock()
+
+		return nil
+	}
+
+	index := r.appendLog(ctx, common.Log{
+		Term:        r.currentTerm,
+		Command:     "keep-alive",
+		ClientID:    input.ClientID,
+		SequenceNum: input.SequenceNum,
+		ClusterTime: r.clusterClock.Interpolate(),
+	})
+
+	r.inOutLock.Unlock()
+
+	span.AddEvent("log appended")
+
+	var status common.ClientRequestStatus = common.StatusOK
+	var response any = nil
+
+	if err := r.arm.Register(index); err != nil {
+		r.log().ErrorContext(ctx, "KeepAlive_Register", err)
+
+		*output = common.KeepAliveClientOutput{
+			Status:     common.StatusNotOK,
+			Response:   "can't keep this session alive: " + err.Error(),
+			LeaderHint: "",
+		}
+
+		return nil
+	}
+
+	response, err = r.arm.TakeResponse(index, 30*time.Second)
+	if err != nil {
+		status = common.StatusNotOK
+
+		response = fmt.Sprintf("time out: %s", err.Error())
+		if errors.Is(err, common.ErrorSessionExpired) {
+			response = common.SessionExpired
+		}
+
+		r.log().ErrorContext(ctx, "KeepAlive_TakeResponse", err)
+	}
+
+	span.AddEvent("log committed")
+
+	*output = common.KeepAliveClientOutput{
+		Status:   status,
+		Response: response,
+	}
+
+	return nil
 }
 
 func (r *RaftBrainImpl) ClientRequest(ctx context.Context, input *common.ClientRequestInput, output *common.ClientRequestOutput) (err error) {
@@ -54,6 +130,7 @@ func (r *RaftBrainImpl) ClientRequest(ctx context.Context, input *common.ClientR
 		Command:     input.Command,
 		ClientID:    input.ClientID,
 		SequenceNum: input.SequenceNum,
+		ClusterTime: r.clusterClock.Interpolate(),
 	})
 
 	r.inOutLock.Unlock()
@@ -79,6 +156,7 @@ func (r *RaftBrainImpl) ClientRequest(ctx context.Context, input *common.ClientR
 	if err != nil {
 		status = common.StatusNotOK
 
+		response = fmt.Sprintf("timeout: %s", err.Error())
 		if errors.Is(err, common.ErrorSessionExpired) {
 			response = common.SessionExpired
 		}
@@ -129,6 +207,7 @@ func (r *RaftBrainImpl) RegisterClient(ctx context.Context, input *common.Regist
 		ClientID:    0,
 		SequenceNum: 0,
 		Command:     "register",
+		ClusterTime: r.clusterClock.Interpolate(),
 	})
 
 	r.inOutLock.Unlock()
@@ -234,14 +313,14 @@ func (r *RaftBrainImpl) ClientQuery(ctx context.Context, input *common.ClientQue
 	if !ok {
 		*output = common.ClientQueryOutput{
 			Status:     common.StatusNotOK,
-			Response:   "timeout: wait for log commiting",
+			Response:   "timeout: wait for log committing",
 			LeaderHint: "",
 		}
 
 		return nil
 	}
 
-	res, err := r.stateMachine.Process(0, 0, input.Query, 0)
+	res, err := r.stateMachine.Process(0, 0, input.Query, 0, r.clusterClock.clusterTimeAtEpoch)
 	if err != nil {
 		*output = common.ClientQueryOutput{
 			Status:     common.StatusNotOK,

@@ -1,6 +1,8 @@
 package common
 
 import (
+	"time"
+
 	"github.com/go-playground/validator/v10"
 	"github.com/spf13/viper"
 )
@@ -21,7 +23,12 @@ func ReadConfigFromFile(filePath *string) (*Config, error) {
 		return nil, err
 	}
 
-	// Validate the configuration using validator
+	var err error
+	config.ClientSessionDuration, err = time.ParseDuration(viper.GetString("client_session_duration"))
+	if err != nil {
+		return nil, err
+	}
+
 	validate := validator.New()
 	validate.RegisterValidation("clustermode", clusterModeValidator)
 

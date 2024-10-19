@@ -152,8 +152,10 @@ func main() {
 			Logger: logger,
 		},
 		StateMachine: state_machine.NewKeyValueStateMachineParams{
-			DB:         common.NewPersistence(dataFolder, ""),
-			DoSnapshot: config.StateMachineSnapshot,
+			DB:                    common.NewPersistence(dataFolder, ""),
+			DoSnapshot:            config.StateMachineSnapshot,
+			ClientSessionDuration: uint64(config.ClientSessionDuration.Nanoseconds()),
+			Logger:                logger,
 		},
 		Logger:     logger,
 		DataFolder: dataFolder,

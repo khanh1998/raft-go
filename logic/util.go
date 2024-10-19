@@ -183,19 +183,21 @@ func (n *RaftBrainImpl) applyLog(ctx context.Context) {
 			break
 		}
 
-		res, err := n.stateMachine.Process(log.ClientID, log.SequenceNum, log.Command, n.lastApplied)
-		if err != nil {
-			n.log().ErrorContext(ctx, "applyLog_Process", err)
-			continue
-		}
+		n.clusterClock.NewEpoch(log.ClusterTime)
+
+		res, err := n.stateMachine.Process(log.ClientID, log.SequenceNum, log.Command, n.lastApplied, log.ClusterTime)
 
 		if n.state == common.StateLeader {
 			err = n.arm.PutResponse(n.lastApplied, res, err, 30*time.Second)
 			if err != nil {
-				n.log().ErrorContext(ctx, "applyLog_Process", err)
+				n.log().ErrorContext(ctx, "applyLog_PutResponse", err)
 			} else {
 				n.log().InfoContext(ctx, "applyLog_PutResponse", "log", log)
 			}
+		}
+
+		if err != nil {
+			n.log().ErrorContext(ctx, "applyLog_Process", err)
 		}
 	}
 }

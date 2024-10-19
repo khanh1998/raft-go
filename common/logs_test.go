@@ -7,10 +7,11 @@ import (
 
 func TestLog_ToString(t *testing.T) {
 	type fields struct {
-		Term        int
-		Command     string
-		ClientID    int
-		SequenceNum int
+		Term         int
+		Command      string
+		ClientID     int
+		SequenceNum  int
+		ClusterClock uint64
 	}
 	tests := []struct {
 		name   string
@@ -20,12 +21,13 @@ func TestLog_ToString(t *testing.T) {
 		{
 			name: "",
 			fields: fields{
-				Term:        1,
-				Command:     "set x 100",
-				ClientID:    5,
-				SequenceNum: 7,
+				Term:         1,
+				Command:      "set x 100",
+				ClientID:     5,
+				SequenceNum:  7,
+				ClusterClock: 0,
 			},
-			want: "1|set x 100|5|7",
+			want: "1|5|7|0|set x 100",
 		},
 	}
 	for _, tt := range tests {
@@ -56,13 +58,14 @@ func TestNewLogFromString(t *testing.T) {
 		{
 			name: "ok",
 			args: args{
-				s: "5|set x 250|9|10",
+				s: "5|9|10|1|set x 250",
 			},
 			want: Log{
 				Term:        5,
 				Command:     "set x 250",
 				ClientID:    9,
 				SequenceNum: 10,
+				ClusterTime: 1,
 			},
 			wantErr: false,
 		},

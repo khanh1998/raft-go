@@ -29,6 +29,17 @@ type RegisterClientOutput struct {
 	Response   any                 `json:"response,omitempty"`
 }
 
+type KeepAliveClientInput struct {
+	ClientID    int `json:"client_id"`
+	SequenceNum int `json:"sequence_num"`
+}
+
+type KeepAliveClientOutput struct {
+	Status     ClientRequestStatus `json:"status"`
+	LeaderHint string              `json:"leader_hint"`
+	Response   any                 `json:"response,omitempty"`
+}
+
 type ClientQueryInput struct {
 	Query any `json:"query"`
 }

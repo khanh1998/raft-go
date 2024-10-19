@@ -1,6 +1,10 @@
 package common
 
-import "github.com/go-playground/validator/v10"
+import (
+	"time"
+
+	"github.com/go-playground/validator/v10"
+)
 
 type ClusterMode string
 
@@ -37,6 +41,7 @@ type Config struct {
 	DataFolder            string              `mapstructure:"data_folder" default:"data/" validate:"required"`
 	StateMachineSnapshot  bool                `mapstructure:"state_machine_snapshot"`
 	Observability         ObservabilityConfig `mapstructure:"observability"`
+	ClientSessionDuration time.Duration       `mapstructure:"client_session_duration"`
 }
 
 // appModeValidator is a custom validator function to check if the mode is valid

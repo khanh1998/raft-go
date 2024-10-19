@@ -4,12 +4,11 @@ import (
 	"errors"
 	"fmt"
 	"khanh/raft-go/common"
+	"khanh/raft-go/observability"
 	"sort"
 	"strconv"
 	"strings"
 	"sync"
-
-	"github.com/rs/zerolog/log"
 )
 
 var (
@@ -27,6 +26,7 @@ var (
 type ClientEntry struct {
 	LastSequenceNum int
 	LastResponse    any
+	ExpiryTime      uint64
 }
 
 type ConsensusModule interface {
@@ -80,27 +80,33 @@ func (s snapshot) copy() snapshot {
 }
 
 type KeyValueStateMachine struct {
-	current     snapshot // live snapshot to serve the users
-	previous    snapshot // the latest snapshot that got persisted in disk
-	sessions    map[int]ClientEntry
-	persistance Persistance
-	cm          ConsensusModule
-	lock        sync.RWMutex
-	doSnapshot  bool
+	current               snapshot // live snapshot to serve the users
+	previous              snapshot // the latest snapshot that got persisted in disk
+	sessions              map[int]ClientEntry
+	persistance           Persistance
+	cm                    ConsensusModule
+	lock                  sync.RWMutex
+	doSnapshot            bool
+	clientSessionDuration uint64 // duration in nanosecond
+	logger                observability.Logger
 }
 
 type NewKeyValueStateMachineParams struct {
-	DB         Persistance
-	DoSnapshot bool
+	DB                    Persistance
+	DoSnapshot            bool
+	ClientSessionDuration uint64 // duration in nanosecond
+	Logger                observability.Logger
 }
 
 func NewKeyValueStateMachine(params NewKeyValueStateMachineParams) (*KeyValueStateMachine, error) {
 	k := &KeyValueStateMachine{
-		current:     newSnapshot(),
-		sessions:    make(map[int]ClientEntry),
-		persistance: params.DB,
-		cm:          nil,
-		doSnapshot:  params.DoSnapshot,
+		current:               newSnapshot(),
+		sessions:              make(map[int]ClientEntry),
+		persistance:           params.DB,
+		cm:                    nil,
+		doSnapshot:            params.DoSnapshot,
+		clientSessionDuration: params.ClientSessionDuration,
+		logger:                params.Logger,
 	}
 
 	snapshotFile, err := k.findLatestSnapshot()
@@ -121,6 +127,14 @@ func NewKeyValueStateMachine(params NewKeyValueStateMachineParams) (*KeyValueSta
 	}
 
 	return k, nil
+}
+
+func (k *KeyValueStateMachine) log() observability.Logger {
+	sub := k.logger.With(
+		"source", "state machine",
+	)
+
+	return sub
 }
 
 func (k *KeyValueStateMachine) findLatestSnapshot() (fileName string, err error) {
@@ -290,12 +304,11 @@ func (k *KeyValueStateMachine) takeSnapshot() map[string]string {
 
 func (k *KeyValueStateMachine) setSession(clientID int, sequenceNum int, response any) {
 	if clientID > 0 && sequenceNum >= 0 { // when client register, clientID > 0 and sequenceNum == 0
-		data := ClientEntry{
-			LastSequenceNum: sequenceNum,
-			LastResponse:    response,
-		}
+		tmp := k.sessions[clientID]
+		tmp.LastResponse = response
+		tmp.LastSequenceNum = sequenceNum
 
-		k.sessions[clientID] = data
+		k.sessions[clientID] = tmp
 	}
 }
 
@@ -320,9 +333,25 @@ func (k *KeyValueStateMachine) GetBase() (lastIndex int, lastTerm int) {
 	return k.previous.lastIndex, k.previous.lastTerm
 }
 
-func (k *KeyValueStateMachine) Process(clientID int, sequenceNum int, commandIn any, logIndex int) (result any, err error) {
+func (k *KeyValueStateMachine) InvalidateExpiredSession(clusterTime uint64) {
+	for key, session := range k.sessions {
+		if session.ExpiryTime < clusterTime {
+			k.log().Debug(
+				"session was expired",
+				"clientId", key,
+				"clusterTime", clusterTime,
+				"session", session,
+			)
+			delete(k.sessions, key)
+		}
+	}
+}
+
+func (k *KeyValueStateMachine) Process(clientID int, sequenceNum int, commandIn any, logIndex int, clusterTime uint64) (result any, err error) {
 	k.lock.Lock()
 	defer k.lock.Unlock()
+
+	k.InvalidateExpiredSession(clusterTime)
 
 	// if logIndex < k.previous.lastIndex {
 	// 	return nil, ErrCommandWasSnapshot
@@ -336,21 +365,20 @@ func (k *KeyValueStateMachine) Process(clientID int, sequenceNum int, commandIn 
 	defer func() {
 		k.setSession(clientID, sequenceNum, result)
 
-		log.Info().
-			Int("client id", clientID).
-			Int("sequence num", sequenceNum).
-			Interface("command", commandIn).
-			Int("log index", logIndex).
-			Msg("Process")
-		log.Info().
-			Interface("data", k.current.data).
-			Interface("cache", k.sessions).
-			Msg("Process")
+		k.log().Debug(
+			"Process",
+			"clientId", clientID,
+			"sequenceNum", sequenceNum,
+			"command", commandIn,
+			"logIndex", logIndex,
+			"data", k.current.data,
+			"cache", k.sessions,
+		)
 
 		if err == nil && k.doSnapshot {
 			err1 := k.saveSnapshotToFile()
 			if err != nil {
-				log.Err(err1).Msg("Process_SaveSnapshotToFile")
+				k.log().Error("Process_SaveSnapshotToFile", err1)
 			}
 		}
 	}()
@@ -401,7 +429,28 @@ func (k *KeyValueStateMachine) Process(clientID int, sequenceNum int, commandIn 
 		clientID = logIndex
 		sequenceNum = 0
 		result = nil
-		k.sessions[clientID] = ClientEntry{LastSequenceNum: 0, LastResponse: nil} // register
+		expiryTime := clusterTime + k.clientSessionDuration
+		k.sessions[clientID] = ClientEntry{LastSequenceNum: 0, LastResponse: nil, ExpiryTime: expiryTime} // register
+
+		k.log().Debug(
+			"register-session",
+			"clientId", clientID,
+			"expiryTime", expiryTime,
+			"session", k.sessions[clientID],
+		)
+
+		return nil, nil
+	case "keep-alive":
+		expiryTime := clusterTime + k.clientSessionDuration
+		tmp := k.sessions[clientID]
+		k.sessions[clientID] = ClientEntry{LastSequenceNum: tmp.LastSequenceNum, LastResponse: tmp.LastResponse, ExpiryTime: expiryTime}
+
+		k.log().Debug(
+			"keep-session",
+			"clientId", clientID,
+			"expiryTime", expiryTime,
+			"session", k.sessions[clientID],
+		)
 
 		return nil, nil
 	case "addServer":

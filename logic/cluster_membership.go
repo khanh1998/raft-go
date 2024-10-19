@@ -100,6 +100,7 @@ func (r *RaftBrainImpl) RemoveServer(ctx context.Context, input common.RemoveSer
 		ClientID:    0,
 		SequenceNum: 0,
 		Command:     common.ComposeRemoveServerCommand(input.ID, input.NewServerHttpUrl, input.NewServerRpcUrl),
+		ClusterTime: r.clusterClock.Interpolate(),
 	})
 
 	msg := fmt.Sprintf("server %d can be shut down now", input.ID)
@@ -211,6 +212,7 @@ func (r *RaftBrainImpl) AddServer(ctx context.Context, input common.AddServerInp
 		ClientID:    0,
 		SequenceNum: 0,
 		Command:     common.ComposeAddServerCommand(input.ID, input.NewServerHttpUrl, input.NewServerRpcUrl),
+		ClusterTime: r.clusterClock.Interpolate(),
 	})
 
 	// after append new config to log, we use it immediately without wating commit

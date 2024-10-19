@@ -16,9 +16,10 @@ func (r *RaftBrainImpl) GetState() common.RaftState {
 
 func (n *RaftBrainImpl) GetInfo() common.GetStatusResponse {
 	return common.GetStatusResponse{
-		ID:       n.id,
-		State:    n.state,
-		Term:     n.currentTerm,
-		LeaderId: n.leaderID,
+		ID:          n.id,
+		State:       n.state,
+		Term:        n.currentTerm,
+		LeaderId:    n.leaderID,
+		ClusterTime: n.clusterClock.clusterTimeAtEpoch,
 	}
 }

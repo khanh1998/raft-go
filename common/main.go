@@ -106,10 +106,11 @@ func (s RaftState) String() string {
 }
 
 type GetStatusResponse struct {
-	ID       int
-	State    RaftState
-	Term     int
-	LeaderId int
+	ID          int       `json:"id"`
+	State       RaftState `json:"state"`
+	Term        int       `json:"term"`
+	LeaderId    int       `json:"leader_id"`
+	ClusterTime uint64    `json:"cluster_time"`
 }
 
 type PeerRPCProxy struct {

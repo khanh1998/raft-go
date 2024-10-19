@@ -24,9 +24,11 @@ type RaftBrain interface {
 	// todo: remove returned error, error should be included in output
 	ClientRequest(ctx context.Context, input *common.ClientRequestInput, output *common.ClientRequestOutput) (err error)
 	RegisterClient(ctx context.Context, input *common.RegisterClientInput, output *common.RegisterClientOutput) (err error)
+	KeepAlive(ctx context.Context, input *common.KeepAliveClientInput, output *common.KeepAliveClientOutput) (err error)
 	ClientQuery(ctx context.Context, input *common.ClientQueryInput, output *common.ClientQueryOutput) (err error)
 	AddServer(ctx context.Context, input common.AddServerInput, output *common.AddServerOutput) (err error)
 	RemoveServer(ctx context.Context, input common.RemoveServerInput, output *common.RemoveServerOutput) (err error)
+	GetInfo() common.GetStatusResponse
 }
 
 type HttpProxy struct {
@@ -81,6 +83,13 @@ func (h *HttpProxy) SetBrain(brain RaftBrain) {
 }
 func (h *HttpProxy) prometheus(r *gin.Engine) {
 	r.GET("/metrics", gin.WrapH(promhttp.Handler()))
+}
+
+func (h *HttpProxy) info(r *gin.Engine) {
+	r.GET("/info", func(c *gin.Context) {
+		info := h.brain.GetInfo()
+		c.IndentedJSON(200, info)
+	})
 }
 
 func (h *HttpProxy) cli(r *gin.Engine) {
@@ -144,6 +153,15 @@ func (h *HttpProxy) cli(r *gin.Engine) {
 			var request common.RegisterClientInput
 			var response common.RegisterClientOutput
 			err = h.brain.RegisterClient(ctx, &request, &response)
+			responseData = common.ClientRequestOutput{
+				Status:     response.Status,
+				LeaderHint: response.LeaderHint,
+				Response:   response.Response,
+			}
+		case CommandTypeKeepAlive:
+			var request common.KeepAliveClientInput
+			var response common.KeepAliveClientOutput
+			err = h.brain.KeepAlive(ctx, &request, &response)
 			responseData = common.ClientRequestOutput{
 				Status:     response.Status,
 				LeaderHint: response.LeaderHint,
@@ -215,6 +233,7 @@ const (
 	CommandTypeGet CommandType = iota
 	CommandTypeSet
 	CommandTypeRegister
+	CommandTypeKeepAlive
 	CommandTypeAddServer
 	CommandTypeRemoveServer
 )
@@ -223,6 +242,7 @@ var (
 	get, _          = regexp.Compile(`^get\s[a-zA-A0-9\-\_]+$`)
 	set, _          = regexp.Compile(`^set\s[a-zA-A0-9\-\_]+\s.+$`)
 	register, _     = regexp.Compile(`^register$`)
+	keepAlive, _    = regexp.Compile(`^keep-alive$`)
 	addServer, _    = regexp.Compile(`^addServer\s[0-9]+\s.+\s.+$`)
 	removeServer, _ = regexp.Compile(`^removeServer\s[0-9]+\s.+\s.+$`)
 )
@@ -248,6 +268,11 @@ func verifyRequest(request common.ClientRequestInput) (errs []error, cmdType Com
 	if register.MatchString(cmd) {
 		valid = true
 		cmdType = CommandTypeRegister
+	}
+
+	if keepAlive.MatchString(cmd) {
+		valid = true
+		cmdType = CommandTypeKeepAlive
 	}
 
 	if addServer.MatchString(cmd) {
@@ -287,6 +312,7 @@ func (h *HttpProxy) Start() {
 
 	h.cli(r)
 	h.prometheus(r)
+	h.info(r)
 
 	httpServer := &http.Server{
 		Addr:    h.host,

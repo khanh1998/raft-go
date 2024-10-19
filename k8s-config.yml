@@ -21,6 +21,7 @@ min_heartbeat_timeout_ms: 2000
 max_heartbeat_timeout_ms: 5000
 data_folder: data/
 state_machine_snapshot: false
+client_session_duration: 5m
 observability:
   disabled: true
   trace_endpoint: 'tempo:4318'

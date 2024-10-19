@@ -22,6 +22,7 @@ type MembershipManager interface {
 }
 
 type RaftBrainImpl struct {
+	clusterClock              *ClusterClock
 	dataFolder                string
 	logger                    observability.Logger
 	db                        Persistence
@@ -82,7 +83,7 @@ type LogAppliedEvent struct {
 
 type SimpleStateMachine interface {
 	Reset() error
-	Process(clientID int, sequenceNum int, commandIn any, logIndex int) (result any, err error)
+	Process(clientID int, sequenceNum int, commandIn any, logIndex int, clusterTime uint64) (result any, err error)
 	GetBase() (lastIndex int, lastTerm int)
 }
 
@@ -143,10 +144,11 @@ func NewRaftBrain(params NewRaftBrainParams) (*RaftBrainImpl, error) {
 
 		lastHeartbeatReceivedTime: time.Now(),
 
-		logger:     params.Logger,
-		members:    []common.ClusterMember{},
-		nextIndex:  make(map[int]int),
-		matchIndex: make(map[int]int),
+		logger:       params.Logger,
+		members:      []common.ClusterMember{},
+		nextIndex:    make(map[int]int),
+		matchIndex:   make(map[int]int),
+		clusterClock: NewClusterClock(),
 	}
 
 	ctx, span := tracer.Start(context.Background(), "NewRaftBrain")
@@ -170,7 +172,7 @@ func NewRaftBrain(params NewRaftBrainParams) (*RaftBrainImpl, error) {
 			}
 
 			// if this is the first node of cluster and the first time the node get boosted up,
-			// initialy add members to the cluster. otherwise, it's already in the log.
+			// initially add members to the cluster. otherwise, it's already in the log.
 			if len(n.logs) == 0 {
 				mem := params.Members[0]
 
@@ -179,6 +181,7 @@ func NewRaftBrain(params NewRaftBrainParams) (*RaftBrainImpl, error) {
 					ClientID:    0,
 					SequenceNum: 0,
 					Command:     common.ComposeAddServerCommand(mem.ID, mem.HttpUrl, mem.RpcUrl),
+					ClusterTime: 0,
 				})
 			} else {
 				n.restoreClusterMemberInfoFromLogs(ctx)

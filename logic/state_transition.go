@@ -27,8 +27,11 @@ func (n *RaftBrainImpl) toLeader(ctx context.Context) {
 	}
 
 	n.appendLog(ctx, common.Log{
-		Term:    n.currentTerm,
-		Command: common.NoOperation,
+		Term:        n.currentTerm,
+		Command:     common.NoOperation,
+		ClusterTime: n.clusterClock.Interpolate(),
+		ClientID:    0,
+		SequenceNum: 0,
 	})
 }
 

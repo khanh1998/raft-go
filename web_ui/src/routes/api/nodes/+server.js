@@ -1,23 +1,29 @@
 // src/routes/api/nodes/+server.js
 import { json } from '@sveltejs/kit';
+import { } from '../../../type.js';
 
-let nodeUrlsStr = import.meta.env.VITE_NODE_URLS;
-let nodes = nodeUrlsStr.split(',').map((/** @type {string} */ url) => ({ url: 'http://' + url, leader: false }));
 /**
-     * @type {any | null}
-     */
-let leaderNode = null;
-
-// Set a node as the leader
-/**
- * @param {string} url
+ * List of urls splitted by commas
+ * @type {string}
  */
-function markLeader(url) {
-    for (let i = 0; i < nodes.length; i++) {
-        nodes[i].leader = nodes[i].url == url;
-        if (nodes[i].leader) { leaderNode = nodes[i] }
-    }
-}
+let nodeUrlsStr = import.meta.env.VITE_NODE_URLS;
+
+
+
+
+/**
+ * List of nodes in cluster.
+ * @type {import('../../../type.js').Node[]}
+ */
+let nodes = nodeUrlsStr.split(',')
+    .map((url) => ({
+        url: 'http://' + url,
+        id: 0,
+        state: '',
+        term: 0,
+        leader_id: 0,
+        cluster_time: 0,
+    }));
 
 // Utility to make a request to a node
 /**
@@ -27,25 +33,18 @@ function markLeader(url) {
  * @param {number} sequenceNum
  */
 async function sendCommand(command, nodeUrl, clientId, sequenceNum) {
+    console.log({ command, nodeUrl, clientId, sequenceNum })
     try {
         const response = await fetch(`${nodeUrl}/cli`, {
             method: 'POST',
             headers: { 'Content-Type': 'application/json' },
             body: JSON.stringify({ 'command': command, 'client_id': clientId, 'sequence_num': sequenceNum }),
         });
+        console.log({ response })
 
-        if (!response.ok) throw new Error('Failed to connect');
+        if (!response.ok) throw new Error('Failed to connect', { cause: response.statusText });
 
-        const data = await response.json();
-
-        // If the node is not the leader, retry with the leader URL
-        if (data?.response == 'NOT_LEADER') {
-            let leaderUrl = 'http://' + data?.leader_hint;
-            markLeader(leaderUrl)
-            return sendCommand(command, leaderUrl, clientId, sequenceNum);
-        } else {
-            markLeader(nodeUrl)
-        }
+        let data = await response.json();
 
         return Promise.resolve(data);
     } catch (error) {
@@ -63,11 +62,8 @@ async function sendCommand(command, nodeUrl, clientId, sequenceNum) {
  * @returns {Promise<Response>} - The server's response, wrapped in a promise.
  */
 export async function POST({ request }) {
-    let nodeUrl;
-
-    if (leaderNode) {
-        nodeUrl = leaderNode.url;
-    } else {
+    let nodeUrl = nodes.find(n => n.state == 'leader')?.url;
+    if (!nodeUrl) {
         nodeUrl = nodes[Math.floor(Math.random() * nodes.length)].url;
     }
 
@@ -81,6 +77,54 @@ export async function POST({ request }) {
 
 // Manage nodes: allow adding/removing nodes
 export async function GET() {
+    let urls = nodes.map(n => n.url);
+    try {
+
+        /**
+         * @typedef {Object} ResponseObject
+         * @property {string} url - The URL of the request
+         * @property {Error} error - The URL of the request
+         * @property {import('../../../type.js').Node} data - The data returned from the server
+         */
+
+        /**
+         * @type {ResponseObject[]}
+         */
+        // @ts-ignore
+        const responses = await Promise.all(
+            urls.map(async url => {
+                try {
+                    const res = await fetch(url + "/info");
+                    if (!res.ok) {
+                        // If the response status is not OK, throw an error
+                        throw new Error(`Failed to fetch from ${url}`);
+                    }
+
+                    const data = await res.json();
+                    return { url, data };
+                } catch (error) {
+                    return { url, error: error };
+                }
+            })
+        );
+
+        for (let res of responses) {
+            let idx = nodes.findIndex(n => n.url == res.url)
+            if (res.error) {
+                nodes[idx].state = 'unavailable';
+            } else {
+                if (idx >= 0) {
+                    nodes[idx] = {
+                        ...res.data,
+                        url: res.url,
+                    }
+                }
+            }
+        }
+    } catch (error) {
+        console.error('Error fetching data:', error);
+    }
+
     return json(nodes);
 }
 

@@ -12,17 +12,18 @@ type Log struct {
 	Term        int
 	ClientID    int
 	SequenceNum int
+	ClusterTime uint64
 	Command     any
 }
 
 func (l Log) ToString() string {
-	return fmt.Sprintf("%d|%s|%d|%d", l.Term, l.Command, l.ClientID, l.SequenceNum)
+	return fmt.Sprintf("%d|%d|%d|%s|%s", l.Term, l.ClientID, l.SequenceNum, strconv.FormatUint(l.ClusterTime, 10), l.Command)
 }
 
 // TODO: fix this
 func NewLogFromString(s string) (Log, error) {
 	tokens := strings.Split(s, "|")
-	if len(tokens) != 4 {
+	if len(tokens) != 5 {
 		return Log{}, errors.New("not enough token to create log")
 	}
 
@@ -31,17 +32,22 @@ func NewLogFromString(s string) (Log, error) {
 		return Log{}, err
 	}
 
-	clientID, err := strconv.ParseInt(tokens[2], 10, 32)
+	clientID, err := strconv.ParseInt(tokens[1], 10, 32)
 	if err != nil {
 		return Log{}, err
 	}
 
-	sequenceNum, err := strconv.ParseInt(tokens[3], 10, 32)
+	sequenceNum, err := strconv.ParseInt(tokens[2], 10, 32)
 	if err != nil {
 		return Log{}, err
 	}
 
-	command := tokens[1]
+	clusterTime, err := strconv.ParseUint(tokens[3], 10, 64)
+	if err != nil {
+		return Log{}, err
+	}
 
-	return Log{Term: int(term), Command: command, ClientID: int(clientID), SequenceNum: int(sequenceNum)}, nil
+	command := tokens[4]
+
+	return Log{Term: int(term), Command: command, ClientID: int(clientID), SequenceNum: int(sequenceNum), ClusterTime: clusterTime}, nil
 }
