@@ -7,3 +7,9 @@ min_heartbeat_timeout_ms: 1
 max_heartbeat_timeout_ms: 20
 data_folder: data/
 state_machine_snapshot: false
+client_session_duration: 2m
+observability:
+  disabled: true
+  trace_endpoint: 'localhost:4318'
+  log_endpoint: 'localhost:3100'
+  loki_push_url: 'http://localhost:3100/loki/api/v1/push'

@@ -111,7 +111,20 @@ func (h *HttpProxy) cli(r *gin.Engine) {
 
 		errs, cmdType := verifyRequest(requestData)
 		if len(errs) > 0 {
-			c.IndentedJSON(http.StatusBadRequest, errs)
+			errStr := ""
+			for _, err := range errs {
+				errStr += err.Error() + ";"
+			}
+
+			responseData = common.ClientRequestOutput{
+				Status:     "Not OK",
+				Response:   errStr,
+				LeaderHint: "",
+			}
+
+			c.IndentedJSON(http.StatusBadRequest, responseData)
+
+			return
 		}
 
 		span.SetAttributes(
@@ -136,7 +149,7 @@ func (h *HttpProxy) cli(r *gin.Engine) {
 				Response:   response.Response,
 				LeaderHint: response.LeaderHint,
 			}
-		case CommandTypeSet:
+		case CommandTypeSet, CommandTypeDel:
 			request := common.ClientRequestInput{
 				ClientID:    requestData.ClientID,
 				SequenceNum: requestData.SequenceNum,
@@ -232,6 +245,7 @@ type CommandType int
 const (
 	CommandTypeGet CommandType = iota
 	CommandTypeSet
+	CommandTypeDel
 	CommandTypeRegister
 	CommandTypeKeepAlive
 	CommandTypeAddServer
@@ -241,6 +255,7 @@ const (
 var (
 	get, _          = regexp.Compile(`^get\s[a-zA-A0-9\-\_]+$`)
 	set, _          = regexp.Compile(`^set\s[a-zA-A0-9\-\_]+\s.+$`)
+	del, _          = regexp.Compile(`^del\s[a-zA-A0-9\-\_]+$`)
 	register, _     = regexp.Compile(`^register$`)
 	keepAlive, _    = regexp.Compile(`^keep-alive$`)
 	addServer, _    = regexp.Compile(`^addServer\s[0-9]+\s.+\s.+$`)
@@ -263,6 +278,11 @@ func verifyRequest(request common.ClientRequestInput) (errs []error, cmdType Com
 	if set.MatchString(cmd) {
 		valid = true
 		cmdType = CommandTypeSet
+	}
+
+	if del.MatchString(cmd) {
+		valid = true
+		cmdType = CommandTypeDel
 	}
 
 	if register.MatchString(cmd) {

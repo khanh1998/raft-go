@@ -95,7 +95,10 @@ func Test_nodeImpl_AppendEntries(t *testing.T) {
 
 	logger := observability.NewZerolog(common.ObservabilityConfig{}, 1)
 
-	sm, err := state_machine.NewKeyValueStateMachine(state_machine.NewKeyValueStateMachineParams{DB: common.NewPersistenceMock()})
+	sm, err := state_machine.NewKeyValueStateMachine(state_machine.NewKeyValueStateMachineParams{
+		DB:     common.NewPersistenceMock(),
+		Logger: logger,
+	})
 	assert.NoError(t, err)
 
 	testCases := []TestCase{
@@ -110,6 +113,7 @@ func Test_nodeImpl_AppendEntries(t *testing.T) {
 				electionTimeOutMin:  300,
 				electionTimeOutMax:  500,
 				stateMachine:        sm,
+				clusterClock:        NewClusterClock(),
 			},
 			in: common.AppendEntriesInput{
 				Term: 4,
@@ -132,6 +136,7 @@ func Test_nodeImpl_AppendEntries(t *testing.T) {
 				electionTimeOutMin:  300,
 				electionTimeOutMax:  500,
 				stateMachine:        sm,
+				clusterClock:        NewClusterClock(),
 			},
 			in: common.AppendEntriesInput{
 				Term:         3,
@@ -156,6 +161,7 @@ func Test_nodeImpl_AppendEntries(t *testing.T) {
 				electionTimeOutMin:  300,
 				electionTimeOutMax:  500,
 				stateMachine:        sm,
+				clusterClock:        NewClusterClock(),
 			},
 			in: common.AppendEntriesInput{
 				Term:         3,
@@ -180,6 +186,7 @@ func Test_nodeImpl_AppendEntries(t *testing.T) {
 				electionTimeOutMin:  300,
 				electionTimeOutMax:  500,
 				stateMachine:        sm,
+				clusterClock:        NewClusterClock(),
 			},
 			in: common.AppendEntriesInput{
 				Term:         3,
@@ -209,6 +216,7 @@ func Test_nodeImpl_AppendEntries(t *testing.T) {
 				electionTimeOutMin:  300,
 				electionTimeOutMax:  500,
 				stateMachine:        sm,
+				clusterClock:        NewClusterClock(),
 			},
 			in: common.AppendEntriesInput{
 				Term:         3,
@@ -235,6 +243,7 @@ func Test_nodeImpl_AppendEntries(t *testing.T) {
 				electionTimeOutMin:  300,
 				electionTimeOutMax:  500,
 				stateMachine:        sm,
+				clusterClock:        NewClusterClock(),
 			},
 			in: common.AppendEntriesInput{
 				Term:         3,
@@ -267,6 +276,7 @@ func Test_nodeImpl_AppendEntries(t *testing.T) {
 				electionTimeOutMin:  300,
 				electionTimeOutMax:  500,
 				stateMachine:        sm,
+				clusterClock:        NewClusterClock(),
 			},
 			in: common.AppendEntriesInput{
 				Term:         3,
@@ -299,6 +309,7 @@ func Test_nodeImpl_AppendEntries(t *testing.T) {
 				electionTimeOutMin:  300,
 				electionTimeOutMax:  500,
 				stateMachine:        sm,
+				clusterClock:        NewClusterClock(),
 			},
 			in: common.AppendEntriesInput{
 				Term:         3,
@@ -325,6 +336,7 @@ func Test_nodeImpl_AppendEntries(t *testing.T) {
 				electionTimeOutMin:  300,
 				electionTimeOutMax:  500,
 				stateMachine:        sm,
+				clusterClock:        NewClusterClock(),
 			},
 			in: common.AppendEntriesInput{
 				Term:         1,

@@ -104,6 +104,24 @@
                 result = await res.json();
                 waitingForApi = false;
                 break;
+            case "del":
+                waitingForApi = true;
+                setSequenceNum(sequenceNum + 1);
+                cmd = command + " " + key;
+                res = await fetch("/api/nodes", {
+                    method: "POST",
+                    headers: {
+                        "Content-Type": "application/json",
+                    },
+                    body: JSON.stringify({
+                        command: cmd,
+                        clientId,
+                        sequenceNum,
+                    }),
+                });
+                result = await res.json();
+                waitingForApi = false;
+                break;
             default:
                 result = "Unknown command";
                 waitingForApi = false;
@@ -137,6 +155,12 @@
         console.log({ result });
     }
 
+    async function fetchNodeInfo() {
+        const response = await fetch("/api/nodes");
+        const data = await response.json();
+        nodes = data;
+    }
+
     onMount(() => {
         const savedClientId = Cookies.get("clientId");
         if (savedClientId) {
@@ -149,9 +173,13 @@
         }
 
         const intervalId = setInterval(sendKeepSessionAlive, 60000);
+        const intervalId1 = setInterval(fetchNodeInfo, 30000);
 
         // Clean up interval when component is destroyed
-        return () => clearInterval(intervalId);
+        return () => {
+            clearInterval(intervalId)
+            clearInterval(intervalId1)
+        };
     });
 
     function clearSession() {
@@ -226,9 +254,12 @@
                 <option value="register">Register (Get Session ID)</option>
                 <option value="get" hidden={registerRequired}>Get Value</option>
                 <option value="set" hidden={registerRequired}>Set Value</option>
+                <option value="del" hidden={registerRequired}
+                    >Delete Value</option
+                >
             </select>
 
-            {#if command === "get" || command === "set"}
+            {#if command === "get" || command === "set" || command === "del"}
                 <input
                     type="text"
                     bind:value={key}

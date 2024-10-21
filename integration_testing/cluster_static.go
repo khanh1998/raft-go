@@ -97,8 +97,10 @@ func (c *Cluster) init(filePath string) {
 					Logger: log,
 				},
 				StateMachine: state_machine.NewKeyValueStateMachineParams{
-					DB:         common.NewPersistence(dataFolder, ""),
-					DoSnapshot: config.StateMachineSnapshot,
+					DB:                    common.NewPersistence(dataFolder, ""),
+					DoSnapshot:            config.StateMachineSnapshot,
+					ClientSessionDuration: uint64(config.ClientSessionDuration),
+					Logger:                log,
 				},
 				Logger:     log,
 				DataFolder: dataFolder,

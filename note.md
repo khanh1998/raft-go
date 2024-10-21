@@ -36,3 +36,8 @@ todos:
 - compare and set
 - upgrade rpc to gRPC
 - make a Go client
+- support cluster configuration change
+- support transaction
+- set key-value with timeout, setnx
+- get data from follower (not up-to-date data)
+- delete key

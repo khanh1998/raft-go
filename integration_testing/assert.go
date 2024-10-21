@@ -32,7 +32,7 @@ func IncreaseBy(t *testing.T, c *Cluster, key string, count int) {
 func IncreaseByOne(t *testing.T, c *Cluster, key string) {
 	value, err := c.HttpAgent.ClientQuery(key)
 	if err != nil {
-		err = c.HttpAgent.ClientRequest(key, "0")
+		err = c.HttpAgent.ClientRequest("set", key, "0")
 		assert.NoError(t, err)
 		value, err = c.HttpAgent.ClientQuery(key)
 	}
@@ -40,7 +40,7 @@ func IncreaseByOne(t *testing.T, c *Cluster, key string) {
 	intVal, err := strconv.Atoi(value)
 	assert.NoError(t, err)
 	nextVal := strconv.Itoa(intVal + 1)
-	err = c.HttpAgent.ClientRequest(key, nextVal)
+	err = c.HttpAgent.ClientRequest("set", key, nextVal)
 	assert.NoError(t, err)
 }
 
@@ -48,12 +48,22 @@ func AssertSetAndGet(t *testing.T, c *Cluster, key, value string) {
 	setValue := value
 
 	seqNum := c.HttpAgent.sequenceNum
-	err := c.HttpAgent.ClientRequest("count", setValue)
+	err := c.HttpAgent.ClientRequest("set", key, setValue)
 	assert.NoError(t, err)
 
-	getValue, err := c.HttpAgent.ClientQuery("count")
+	getValue, err := c.HttpAgent.ClientQuery(key)
 	assert.NoError(t, err)
 	assert.Equal(t, setValue, getValue)
+	assert.Greater(t, c.HttpAgent.sequenceNum, seqNum)
+}
+
+func AssertDelAndGet(t *testing.T, c *Cluster, key string) {
+	seqNum := c.HttpAgent.sequenceNum
+	err := c.HttpAgent.ClientRequest("del", key, "")
+	assert.NoError(t, err)
+
+	_, err = c.HttpAgent.ClientQuery(key)
+	assert.Error(t, err)
 	assert.Greater(t, c.HttpAgent.sequenceNum, seqNum)
 }
 

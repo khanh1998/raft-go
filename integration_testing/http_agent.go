@@ -106,10 +106,19 @@ func (h *HttpAgent) AddServer(id int, httpUrl, rpcUrl string) (err error) {
 	return nil
 }
 
-func (h *HttpAgent) ClientRequest(key string, value string) (err error) {
+func (h *HttpAgent) ClientRequest(cmd string, key string, value string) (err error) {
 	h.sequenceNum += 1
+	command := ""
+	switch cmd {
+	case "set":
+		command = fmt.Sprintf("set %s %s", key, value)
+	case "del":
+		command = fmt.Sprintf("del %s", key)
+	default:
+		return fmt.Errorf("unknown command")
+	}
 	payload := Request{
-		Command:     fmt.Sprintf("set %s %s", key, value),
+		Command:     command,
 		ClientId:    h.clientId,
 		SequenceNum: h.sequenceNum,
 	}

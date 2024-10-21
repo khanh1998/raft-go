@@ -34,8 +34,9 @@ func TestIsSnapshotFile(t *testing.T) {
 
 func TestKeyValueStateMachine_Process(t *testing.T) {
 	type fields struct {
-		data    map[string]string
-		clients map[int]ClientEntry
+		data                  map[string]string
+		clients               map[int]ClientEntry
+		clientSessionDuration uint64
 	}
 	type args struct {
 		command     any
@@ -155,6 +156,53 @@ func TestKeyValueStateMachine_Process(t *testing.T) {
 			wantErr:    false,
 		},
 		{
+			name: "del ok",
+			fields: fields{
+				data: map[string]string{
+					"address": "ho chi minh city",
+					"name":    "khanh",
+				},
+				clients: map[int]ClientEntry{},
+			},
+			args: args{
+				command:     "del name",
+				clientID:    0,
+				sequenceNum: 0,
+			},
+			wantFields: &fields{
+				data: map[string]string{
+					"address": "ho chi minh city",
+				},
+				clients: map[int]ClientEntry{},
+			},
+			wantResult: nil,
+			wantErr:    false,
+		},
+		{
+			name: "del failed",
+			fields: fields{
+				data: map[string]string{
+					"address": "ho chi minh city",
+					"name":    "khanh",
+				},
+				clients: map[int]ClientEntry{},
+			},
+			args: args{
+				command:     "del nation",
+				clientID:    0,
+				sequenceNum: 0,
+			},
+			wantFields: &fields{
+				data: map[string]string{
+					"address": "ho chi minh city",
+					"name":    "khanh",
+				},
+				clients: map[int]ClientEntry{},
+			},
+			wantResult: nil,
+			wantErr:    true,
+		},
+		{
 			name: "set no-op",
 			fields: fields{
 				data: map[string]string{
@@ -262,7 +310,8 @@ func TestKeyValueStateMachine_Process(t *testing.T) {
 				data: map[string]string{
 					"name": "khanh",
 				},
-				clients: map[int]ClientEntry{},
+				clients:               map[int]ClientEntry{},
+				clientSessionDuration: 5,
 			},
 			args: args{
 				command:     "register",
@@ -345,6 +394,38 @@ func TestKeyValueStateMachine_Process(t *testing.T) {
 			wantResult: nil,
 			wantErr:    true,
 		},
+		{
+			name: "keep-alive",
+			fields: fields{
+				data: map[string]string{
+					"name": "khanh",
+				},
+				clients: map[int]ClientEntry{
+					1: {ExpiryTime: 28},
+					2: {ExpiryTime: 29},
+					3: {ExpiryTime: 30},
+					4: {ExpiryTime: 31},
+				},
+				clientSessionDuration: 5,
+			},
+			args: args{
+				command:     "keep-alive",
+				clientID:    3,
+				sequenceNum: 1,
+				clusterTime: 30,
+			},
+			wantFields: &fields{
+				data: map[string]string{
+					"name": "khanh",
+				},
+				clients: map[int]ClientEntry{
+					3: {ExpiryTime: 35, LastSequenceNum: 1, LastResponse: nil},
+					4: {ExpiryTime: 31},
+				},
+			},
+			wantResult: nil,
+			wantErr:    false,
+		},
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
@@ -354,7 +435,7 @@ func TestKeyValueStateMachine_Process(t *testing.T) {
 				},
 				sessions:              tt.fields.clients,
 				logger:                observability.NewZerolog(common.ObservabilityConfig{Disabled: true}, 0),
-				clientSessionDuration: 5,
+				clientSessionDuration: tt.fields.clientSessionDuration,
 			}
 			gotResult, err := k.Process(tt.args.clientID, tt.args.sequenceNum, tt.args.command, tt.args.logIndex, tt.args.clusterTime)
 			if (err != nil) != tt.wantErr {

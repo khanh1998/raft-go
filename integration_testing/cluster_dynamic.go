@@ -83,8 +83,10 @@ func (c *Cluster) createNewNode(ctx context.Context, id int) error {
 			Logger: c.log,
 		},
 		StateMachine: state_machine.NewKeyValueStateMachineParams{
-			DB:         common.NewPersistence(dataFolder, ""),
-			DoSnapshot: c.config.StateMachineSnapshot,
+			DB:                    common.NewPersistence(dataFolder, ""),
+			DoSnapshot:            c.config.StateMachineSnapshot,
+			ClientSessionDuration: uint64(c.config.ClientSessionDuration),
+			Logger:                c.log,
 		},
 		Logger:     c.log,
 		DataFolder: dataFolder,

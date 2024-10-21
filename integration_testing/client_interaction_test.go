@@ -61,3 +61,15 @@ func TestWithLeaderCrashed(t *testing.T) {
 	c.StartNode(stopNodeId)
 	AssertLiveNode(t, c, 3)
 }
+
+func TestDeleteKey(t *testing.T) {
+	c := NewCluster("config/3-nodes.yml")
+	defer c.Clean()
+
+	AssertHavingOneLeader(t, c)
+	AssertLiveNode(t, c, 3)
+	AssertClientRegister(t, c)
+
+	AssertSetAndGet(t, c, "name", "khanh")
+	AssertDelAndGet(t, c, "name")
+}

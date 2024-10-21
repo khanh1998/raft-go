@@ -425,6 +425,14 @@ func (k *KeyValueStateMachine) Process(clientID int, sequenceNum int, commandIn 
 		value := strings.Join(tokens[2:], " ")
 
 		return k.set(key, value)
+	case "del":
+		if len(tokens) < 2 {
+			return nil, ErrNotEnoughParameters
+		}
+
+		key := tokens[1]
+
+		return nil, k.del(key)
 	case "register":
 		clientID = logIndex
 		sequenceNum = 0
@@ -487,6 +495,17 @@ func (k *KeyValueStateMachine) get(key string) (value string, err error) {
 	}
 
 	return value, nil
+}
+
+func (k *KeyValueStateMachine) del(key string) (err error) {
+	_, ok := k.current.data[key]
+	if !ok {
+		return ErrKeyDoesNotExist
+	}
+
+	delete(k.current.data, key)
+
+	return nil
 }
 
 func (k *KeyValueStateMachine) set(key string, value string) (string, error) {

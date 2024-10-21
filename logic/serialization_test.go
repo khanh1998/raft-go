@@ -3,6 +3,7 @@ package logic
 import (
 	"context"
 	"khanh/raft-go/common"
+	"khanh/raft-go/observability"
 	"reflect"
 	"testing"
 )
@@ -43,8 +44,8 @@ func Test_nodeImpl_Serialize(t *testing.T) {
 				"current_term": "3",
 				"voted_for":    "1",
 				"log_count":    "2",
-				"log_0":        "1|set x 1|0|0",
-				"log_1":        "2|set y 3|0|0",
+				"log_0":        common.Log{Term: 1, Command: "set x 1"}.ToString(),
+				"log_1":        common.Log{Term: 2, Command: "set y 3"}.ToString(),
 			},
 		},
 	}
@@ -54,6 +55,7 @@ func Test_nodeImpl_Serialize(t *testing.T) {
 				currentTerm: tt.fields.CurrentTerm,
 				votedFor:    tt.fields.VotedFor,
 				logs:        tt.fields.Logs,
+				logger:      observability.NewOtelLogger(),
 			}
 			if got := n.serialize(false, false, ""); !reflect.DeepEqual(got, tt.want) {
 				t.Errorf("nodeImpl.Serialize() = %v, want %v", got, tt.want)
@@ -106,8 +108,8 @@ func Test_nodeImpl_Deserialize(t *testing.T) {
 					"current_term": "1",
 					"voted_for":    "3",
 					"log_count":    "2",
-					"log_0":        "1|set x 1|3|2",
-					"log_1":        "2|set y 3|5|1",
+					"log_0":        common.Log{Term: 1, Command: "set x 1", ClientID: 3, SequenceNum: 2}.ToString(),
+					"log_1":        common.Log{Term: 2, Command: "set y 3", ClientID: 5, SequenceNum: 1}.ToString(),
 				},
 			},
 			wantErr: false,
