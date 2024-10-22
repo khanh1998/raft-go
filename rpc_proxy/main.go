@@ -30,17 +30,20 @@ type RaftBrain interface {
 }
 
 type RPCProxyImpl struct {
-	peers       map[int]common.PeerRPCProxy
-	hostID      int
-	hostURL     string
-	brain       RaftBrain
-	rpcServer   *rpc.Server
-	logger      observability.Logger
-	stop        chan struct{}
-	accessible  bool
-	listener    net.Listener
-	lock        sync.RWMutex
-	connections []net.Conn // TODO: unsafe, memory leak
+	peers                map[int]common.PeerRPCProxy
+	hostID               int
+	hostURL              string
+	brain                RaftBrain
+	rpcServer            *rpc.Server
+	logger               observability.Logger
+	stop                 chan struct{}
+	accessible           bool
+	listener             net.Listener
+	lock                 sync.RWMutex
+	connections          []net.Conn // TODO: unsafe, memory leak
+	rpcDialTimeout       time.Duration
+	rpcReconnectDuration time.Duration
+	rpcRequestTimeout    time.Duration
 }
 
 type PeerRPCProxyConnectInfo struct {
@@ -51,7 +54,7 @@ type PeerRPCProxyConnectInfo struct {
 func (r *RPCProxyImpl) log() observability.Logger {
 	l := r.logger.With(
 		"RPC_ID", r.hostID,
-		"RPC_URL", r.hostURL,
+		"peers", r.peers,
 	)
 
 	return l
@@ -84,19 +87,25 @@ func (r *RPCProxyImpl) deletePeer(peerId int) {
 }
 
 type NewRPCImplParams struct {
-	HostID  int
-	HostURL string
-	Logger  observability.Logger
+	HostID               int
+	HostURL              string
+	Logger               observability.Logger
+	RpcDialTimeout       time.Duration
+	RpcReconnectDuration time.Duration
+	RpcRequestTimeout    time.Duration
 }
 
 func NewRPCImpl(params NewRPCImplParams) (*RPCProxyImpl, error) {
 	r := RPCProxyImpl{
-		hostID:     params.HostID,
-		hostURL:    params.HostURL,
-		logger:     params.Logger,
-		stop:       make(chan struct{}),
-		accessible: true,
-		peers:      make(map[int]common.PeerRPCProxy),
+		hostID:               params.HostID,
+		hostURL:              params.HostURL,
+		logger:               params.Logger,
+		stop:                 make(chan struct{}),
+		accessible:           true,
+		peers:                make(map[int]common.PeerRPCProxy),
+		rpcDialTimeout:       params.RpcDialTimeout,
+		rpcReconnectDuration: params.RpcReconnectDuration,
+		rpcRequestTimeout:    params.RpcRequestTimeout,
 	}
 
 	return &r, nil
@@ -110,7 +119,8 @@ func (r *RPCProxyImpl) SetBrain(brain RaftBrain) {
 }
 
 func (r *RPCProxyImpl) ConnectToNewPeer(ctx context.Context, peerID int, peerURL string, retry int, retryDelay time.Duration) error {
-	return r.connectToPeer(ctx, peerID, peerURL, retry, retryDelay)
+	r.setPeer(peerID, common.PeerRPCProxy{Conn: nil, URL: peerURL})
+	return r.connectToPeer(ctx, peerID, retry, retryDelay)
 }
 
 func (r *RPCProxyImpl) DisconnectToAllPeers(ctx context.Context) {
@@ -127,7 +137,7 @@ func (r *RPCProxyImpl) disconnectToPeer(ctx context.Context, peerID int) error {
 		return err
 	}
 
-	r.log().DebugContext(ctx, "disconnectToPeer")
+	r.log().DebugContext(ctx, "disconnectToPeer", "peerId", peerID)
 
 	r.setPeer(peerID, common.PeerRPCProxy{Conn: nil, URL: peer.URL})
 
@@ -138,13 +148,20 @@ func (r *RPCProxyImpl) disconnectToPeer(ctx context.Context, peerID int) error {
 	return nil
 }
 
-func (r *RPCProxyImpl) connectToPeer(ctx context.Context, peerID int, peerURL string, retry int, retryDelay time.Duration) error {
-	timeout := 150 * time.Millisecond
+func (r *RPCProxyImpl) connectToPeer(ctx context.Context, peerID int, retry int, retryDelay time.Duration) error {
+	start := time.Now()
+	defer func() {
+		r.log().InfoContext(
+			ctx, "connectToPeer",
+			"duration(ms)", time.Since(start).Milliseconds(),
+			"peerID", peerID,
+		)
+	}()
 
-	// an connection exist
+	// an connection exist, test connection
 	peer, err := r.getPeer(peerID)
 	if err == nil && peer.Conn != nil {
-		res, err := r.SendPing(ctx, peerID, &timeout)
+		res, err := r.pingWithNoRetry(ctx, peerID, &r.rpcRequestTimeout)
 		if err == nil {
 			if res.ID == peerID {
 				return nil
@@ -152,29 +169,30 @@ func (r *RPCProxyImpl) connectToPeer(ctx context.Context, peerID int, peerURL st
 		}
 	}
 
-	// non connection exist
+	// non connection exist or connection test failed
 	r.setPeer(peerID, common.PeerRPCProxy{
 		Conn: nil,
-		URL:  peerURL,
+		URL:  peer.URL,
 	})
 
 	for i := 0; i < retry; i++ {
-		client, err := rpc.Dial("tcp", peerURL)
+		conn, err := net.DialTimeout("tcp", peer.URL, r.rpcDialTimeout)
+		// client, err := rpc.Dial("tcp", peerURL)
 		if err != nil {
-			r.log().ErrorContext(ctx, fmt.Sprintf("ConnectToPeer: can't connect to %s ", peerURL), err)
+			r.log().ErrorContext(ctx, fmt.Sprintf("ConnectToPeer: can't connect to %s ", peer.URL), err)
 
 			time.Sleep(retryDelay)
 		} else {
-			r.log().ErrorContext(ctx, fmt.Sprintf("ConnectToPeer: connect to %s successfully", peerURL), err)
+			r.log().InfoContext(ctx, fmt.Sprintf("ConnectToPeer: connect to %s successfully", peer.URL), err)
 
 			r.setPeer(peerID, common.PeerRPCProxy{
-				Conn: client,
-				URL:  peerURL,
+				Conn: rpc.NewClient(conn),
+				URL:  peer.URL,
 			})
 
-			res, err := r.SendPing(ctx, peerID, &timeout)
+			res, err := r.pingWithNoRetry(ctx, peerID, &r.rpcRequestTimeout)
 			if err != nil {
-				r.log().ErrorContext(ctx, fmt.Sprintf("ConnectToPeer: cannot ping %s", peerURL), err)
+				r.log().ErrorContext(ctx, fmt.Sprintf("ConnectToPeer: cannot ping %s", peer.URL), err)
 			} else {
 				if res.ID != peerID {
 					return ErrServerIdDoesNotMatch
@@ -224,7 +242,7 @@ func (r *RPCProxyImpl) initServer(ctx context.Context, url string) error {
 			}
 		}
 
-		r.connections = []net.Conn{} // delete all closed connnections
+		r.connections = []net.Conn{} // delete all closed connections
 	}()
 
 	go func() {
@@ -259,6 +277,25 @@ func (r *RPCProxyImpl) initServer(ctx context.Context, url string) error {
 	return nil
 }
 
+// this function attempt to connecting crashed peers
+func (r *RPCProxyImpl) reconnectPeer() {
+	ticker := time.NewTicker(r.rpcReconnectDuration)
+	for {
+		select {
+		case <-r.stop:
+			return
+		case <-ticker.C:
+			for peerId, peer := range r.peers {
+				if peer.Conn == nil {
+					ctx := context.Background()
+					r.log().DebugContext(ctx, "reconnectPeer_connectToPeer", "peerId", peerId)
+					go r.connectToPeer(ctx, peerId, 1, r.rpcDialTimeout)
+				}
+			}
+		}
+	}
+}
+
 func (r *RPCProxyImpl) Start(ctx context.Context) {
 	ctx, span := tracer.Start(ctx, "Start RPC Server")
 	defer span.End()
@@ -273,7 +310,8 @@ func (r *RPCProxyImpl) Start(ctx context.Context) {
 			if r.hostID != member.ID {
 				if member.Add {
 					r.logger.Info("connect new member", "member", member)
-					r.connectToPeer(ctx, member.ID, member.RpcUrl, 5, 150*time.Millisecond)
+					r.setPeer(member.ID, common.PeerRPCProxy{Conn: nil, URL: member.RpcUrl})
+					r.connectToPeer(ctx, member.ID, 5, r.rpcDialTimeout)
 				} else {
 					r.logger.Info("disconnect new member", "member", member)
 					r.disconnectToPeer(ctx, member.ID)
@@ -282,38 +320,8 @@ func (r *RPCProxyImpl) Start(ctx context.Context) {
 		}
 	}()
 
-}
+	go r.reconnectPeer()
 
-func (r *RPCProxyImpl) reconnect(ctx context.Context, peerIdx int) error {
-	peer, err := r.getPeer(peerIdx)
-	if err != nil {
-		return err
-	}
-	targetUrl := peer.URL
-
-	r.log().InfoContext(ctx, "reconnect", "targetURL", targetUrl)
-
-	client, err := rpc.Dial("tcp", targetUrl)
-	if err != nil {
-		return err
-	}
-
-	r.setPeer(peerIdx, common.PeerRPCProxy{
-		Conn: client,
-		URL:  targetUrl,
-	})
-
-	timeout := 150 * time.Millisecond
-	res, err := r.SendPing(ctx, peerIdx, &timeout)
-	if err != nil {
-		r.log().ErrorContext(ctx, fmt.Sprintf("ConnectToPeer: cannot ping %s", targetUrl), err)
-	} else {
-		if res.ID != peerIdx {
-			return ErrServerIdDoesNotMatch
-		}
-	}
-
-	return nil
 }
 
 var (
@@ -325,20 +333,9 @@ var (
 func (r *RPCProxyImpl) callWithoutTimeout(ctx context.Context, peerID int, serviceMethod string, args any, reply any) (err error) {
 	var peer common.PeerRPCProxy
 
-	for i := 0; i < 2; i++ {
-		peer, err = r.getPeer(peerID)
-		if err != nil {
-			return err
-		}
-
-		if peer.Conn == nil {
-			err := r.connectToPeer(ctx, peerID, peer.URL, 1, 150*time.Millisecond)
-			if err != nil {
-				return err
-			}
-		} else {
-			break
-		}
+	peer, err = r.getPeer(peerID)
+	if err != nil {
+		return err
 	}
 
 	if peer.Conn != nil {
@@ -347,20 +344,42 @@ func (r *RPCProxyImpl) callWithoutTimeout(ctx context.Context, peerID int, servi
 	return ErrRpcPeerConnectionIsNull
 }
 
+// internal use, to test connection after dial,
+// no retry
+func (r *RPCProxyImpl) pingWithNoRetry(ctx context.Context, peerID int, timeout *time.Duration) (reply common.PingResponse, err error) {
+	peer, err := r.getPeer(peerID)
+	if err != nil {
+		return reply, err
+	}
+
+	reply = common.PingResponse{}
+	serviceMethod := "RPCProxyImpl.Ping"
+	args := "ping test after dial"
+
+	if peer.Conn != nil {
+		call := peer.Conn.Go(serviceMethod, args, &reply, nil)
+		select {
+		case <-time.After(*timeout):
+			r.disconnectToPeer(ctx, peerID)
+			return reply, ErrRpcTimeout
+		case resp := <-call.Done:
+			if resp != nil && resp.Error != nil {
+				r.disconnectToPeer(ctx, peerID)
+				return reply, resp.Error
+			}
+		}
+
+		return reply, nil
+	}
+	return reply, ErrRpcPeerConnectionIsNull
+}
+
 func (r *RPCProxyImpl) callWithTimeout(ctx context.Context, peerID int, serviceMethod string, args any, reply any, timeout time.Duration) (err error) {
 	var peer common.PeerRPCProxy
 
-	for i := 0; i < 2; i++ {
-		peer, err = r.getPeer(peerID)
-		if err != nil {
-			return err
-		}
-
-		if peer.Conn == nil {
-			r.reconnect(ctx, peerID)
-		} else {
-			break
-		}
+	peer, err = r.getPeer(peerID)
+	if err != nil {
+		return err
 	}
 
 	if peer.Conn != nil {

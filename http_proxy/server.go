@@ -172,7 +172,10 @@ func (h *HttpProxy) cli(r *gin.Engine) {
 				Response:   response.Response,
 			}
 		case CommandTypeKeepAlive:
-			var request common.KeepAliveClientInput
+			request := common.KeepAliveClientInput{
+				ClientID:    requestData.ClientID,
+				SequenceNum: requestData.SequenceNum,
+			}
 			var response common.KeepAliveClientOutput
 			err = h.brain.KeepAlive(ctx, &request, &response)
 			responseData = common.ClientRequestOutput{

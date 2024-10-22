@@ -29,6 +29,21 @@ func ReadConfigFromFile(filePath *string) (*Config, error) {
 		return nil, err
 	}
 
+	config.RpcDialTimeout, err = time.ParseDuration(viper.GetString("rpc_dial_timeout"))
+	if err != nil {
+		return nil, err
+	}
+
+	config.RpcRequestTimeout, err = time.ParseDuration(viper.GetString("rpc_request_timeout"))
+	if err != nil {
+		return nil, err
+	}
+
+	config.RpcReconnectDuration, err = time.ParseDuration(viper.GetString("rpc_reconnect_duration"))
+	if err != nil {
+		return nil, err
+	}
+
 	validate := validator.New()
 	validate.RegisterValidation("clustermode", clusterModeValidator)
 

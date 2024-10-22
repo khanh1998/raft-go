@@ -1,0 +1,3 @@
+- after the RPC Proxy gets created, it will listen on `r.brain.GetNewMembersChannel()` for a list of members (nodes) that need to connect
+- the function `reconnectPeer` will attempt to connect to the crashed node again every 30s.
+- After a failed RPC call, the connection will be deleted, but it will still keep the ID and URL of the failed node. the failed node will be reconnected by `reconnectPeer`

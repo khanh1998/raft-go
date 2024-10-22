@@ -71,12 +71,16 @@ func (c *Cluster) createNewNode(ctx context.Context, id int) error {
 				}
 				return []common.ClusterMember{}
 			}(),
-			DB: common.NewPersistenceMock(),
+			DB:                common.NewPersistenceMock(),
+			RpcRequestTimeout: c.config.RpcRequestTimeout,
 		},
 		RPCProxy: rpc_proxy.NewRPCImplParams{
-			HostURL: rpcUrl,
-			Logger:  c.log,
-			HostID:  id,
+			HostURL:              rpcUrl,
+			Logger:               c.log,
+			HostID:               id,
+			RpcRequestTimeout:    c.config.RpcRequestTimeout,
+			RpcDialTimeout:       c.config.RpcDialTimeout,
+			RpcReconnectDuration: c.config.RpcReconnectDuration,
 		},
 		HTTPProxy: http_proxy.NewHttpProxyParams{
 			URL:    httpUrl,

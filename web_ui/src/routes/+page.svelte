@@ -369,6 +369,11 @@
         color: white;
     }
 
+    .state.candidate {
+        background-color: #2d8ad5; /* Follower: orange */
+        color: white;
+    }
+
     .session-command-container {
         display: flex;
         justify-content: space-between;

@@ -46,6 +46,7 @@ type RaftBrainImpl struct {
 	changeMemberLock          sync.Mutex   // lock for adding or removing a member from the cluster
 	dataLock                  sync.RWMutex // lock for reading or modifying internal data of the brain (consensus module)
 	lastHeartbeatReceivedTime time.Time
+	RpcRequestTimeout         time.Duration
 	// Persistent state on all servers:
 	// Updated on stable storage before responding to RPCs
 	currentTerm int          // latest term server has seen (initialized to 0 on first boot, increases monotonically)
@@ -119,6 +120,7 @@ type NewRaftBrainParams struct {
 	Logger              observability.Logger
 	DB                  Persistence // help to persist raft server's state to file
 	CachingUp           bool        // will be ignored if the cluster mode is STATIC
+	RpcRequestTimeout   time.Duration
 }
 
 func NewRaftBrain(params NewRaftBrainParams) (*RaftBrainImpl, error) {
@@ -144,11 +146,12 @@ func NewRaftBrain(params NewRaftBrainParams) (*RaftBrainImpl, error) {
 
 		lastHeartbeatReceivedTime: time.Now(),
 
-		logger:       params.Logger,
-		members:      []common.ClusterMember{},
-		nextIndex:    make(map[int]int),
-		matchIndex:   make(map[int]int),
-		clusterClock: NewClusterClock(),
+		logger:            params.Logger,
+		members:           []common.ClusterMember{},
+		nextIndex:         make(map[int]int),
+		matchIndex:        make(map[int]int),
+		clusterClock:      NewClusterClock(),
+		RpcRequestTimeout: params.RpcRequestTimeout,
 	}
 
 	ctx, span := tracer.Start(context.Background(), "NewRaftBrain")

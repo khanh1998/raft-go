@@ -142,10 +142,15 @@ func main() {
 			Members:             clusterMembers,
 			DB:                  common.NewPersistence(dataFolder, walFileName),
 			CachingUp:           catchingUp,
+			RpcRequestTimeout:   config.RpcRequestTimeout,
 		},
 		RPCProxy: rpc_proxy.NewRPCImplParams{
-			HostURL: rpcUrl,
-			Logger:  logger,
+			HostID:               id,
+			HostURL:              rpcUrl,
+			Logger:               logger,
+			RpcDialTimeout:       config.RpcDialTimeout,
+			RpcRequestTimeout:    config.RpcRequestTimeout,
+			RpcReconnectDuration: config.RpcReconnectDuration,
 		},
 		HTTPProxy: http_proxy.NewHttpProxyParams{
 			URL:    httpUrl,

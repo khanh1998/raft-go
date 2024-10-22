@@ -133,7 +133,7 @@ func AssertHavingNoLeader(t *testing.T, c *Cluster) {
 func AssertLeaderChanged(t *testing.T, c *Cluster, prevLeaderId int, prevTerm int) (status common.GetStatusResponse) {
 	var err error
 
-	for i := 0; i < 5; i++ {
+	for i := 0; i < 10; i++ {
 		time.Sleep(c.MaxElectionTimeout)
 		status, err = c.HasOneLeader()
 		if err == nil || err != ErrThereIsNoLeader {

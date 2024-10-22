@@ -52,7 +52,7 @@ func (n *RaftBrainImpl) BroadCastRequestVote(ctx context.Context) {
 
 	var count sync.WaitGroup
 
-	timeout := 150 * time.Millisecond
+	timeout := n.RpcRequestTimeout
 
 	for _, peer := range n.members {
 		if peer.ID == n.id {
@@ -65,7 +65,7 @@ func (n *RaftBrainImpl) BroadCastRequestVote(ctx context.Context) {
 
 			output, err := n.rpcProxy.SendRequestVote(ctx, peerID, &timeout, input)
 			if err != nil {
-				n.log().ErrorContext(ctx, "n.rpcProxy.SendRequestVote", err)
+				n.log().ErrorContext(ctx, "n.rpcProxy.SendRequestVote", err, "peerId", peerID, "input", input)
 			} else {
 				responsesMutex.Lock()
 				defer responsesMutex.Unlock()
@@ -175,7 +175,7 @@ func (n *RaftBrainImpl) BroadcastAppendEntries(ctx context.Context) (majorityOK 
 				input.Entries = []common.Log{logItem}
 			}
 
-			timeout := 150 * time.Millisecond
+			timeout := n.RpcRequestTimeout
 
 			output, err := n.rpcProxy.SendAppendEntries(ctx, peerID, &timeout, input)
 			if err != nil {

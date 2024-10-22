@@ -85,11 +85,17 @@ func (l *zerologLogger) FatalContext(ctx context.Context, msg string, attrs ...a
 }
 
 func (l *zerologLogger) logWithSpan(ctx context.Context, level zerolog.Level, msg string, attrs ...any) {
-	span := trace.SpanFromContext(ctx)
-	event := l.logger.WithLevel(level).
-		Str("trace_id", span.SpanContext().TraceID().String()).
-		Str("span_id", span.SpanContext().SpanID().String()).
-		Fields(convertAttrsToMap(attrs...))
+	var event *zerolog.Event
+	spanCtx := trace.SpanFromContext(ctx).SpanContext()
+	if spanCtx.IsValid() {
+		event = l.logger.WithLevel(level).
+			Str("trace_id", spanCtx.TraceID().String()).
+			Str("span_id", spanCtx.SpanID().String()).
+			Fields(convertAttrsToMap(attrs...))
+	} else {
+		event = l.logger.WithLevel(level).
+			Fields(convertAttrsToMap(attrs...))
+	}
 
 	event.Msg(msg)
 }
