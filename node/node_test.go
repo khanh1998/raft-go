@@ -37,11 +37,15 @@ func TestRpcConnection(t *testing.T) {
 			ElectionTimeOutMax:  500,
 			Logger:              logger,
 			DB:                  common.NewPersistenceMock(),
+			RpcRequestTimeout:   150 * time.Millisecond,
 		},
 		RPCProxy: rpc_proxy.NewRPCImplParams{
-			HostID:  1,
-			HostURL: "localhost:1234",
-			Logger:  logger,
+			HostID:               1,
+			HostURL:              "localhost:1234",
+			Logger:               logger,
+			RpcRequestTimeout:    150 * time.Millisecond,
+			RpcDialTimeout:       time.Second,
+			RpcReconnectDuration: 30 * time.Second,
 		},
 		HTTPProxy: http_proxy.NewHttpProxyParams{
 			URL:    "localhost:8080",

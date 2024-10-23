@@ -24,6 +24,7 @@
     let command = "";
     let key = "";
     let value = "";
+    let lockKey = false;
     let waitingForApi = false;
     /**
      * @type {any | null}
@@ -90,6 +91,9 @@
                 waitingForApi = true;
                 setSequenceNum(sequenceNum + 1);
                 cmd = command + " " + key + " " + value;
+                if (lockKey) {
+                    cmd = command + " --lock " + key + " " + value;
+                }
                 res = await fetch("/api/nodes", {
                     method: "POST",
                     headers: {
@@ -177,8 +181,8 @@
 
         // Clean up interval when component is destroyed
         return () => {
-            clearInterval(intervalId)
-            clearInterval(intervalId1)
+            clearInterval(intervalId);
+            clearInterval(intervalId1);
         };
     });
 
@@ -275,6 +279,12 @@
                     placeholder="Value"
                     class="command-field"
                 />
+            {/if}
+            {#if command === "set"}
+                <label>
+                    Lock:
+                    <input type="checkbox" bind:checked={lockKey} />
+                </label>
             {/if}
 
             <button on:click={executeCommand}>Send Command</button>

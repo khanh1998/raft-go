@@ -16,13 +16,11 @@ questions:
     after the node A, step down, it will request vote again and become leader again, as it has most up to date log.
 
 todos:
-- write test :')
-- fix client interaction
 - support log compaction
 - using try-lock instead
 - using subscriber pattern
-- distributed lock
-- support viper to read config from cluster
+- distributed lock (support client leader election, like consul)
+- support viper to read config from cluster (need to make a interface as same as etcd, too complicated)
 - shorten critical region in outbound
 
 - using observer design patter:
@@ -41,3 +39,4 @@ todos:
 - set key-value with timeout, setnx
 - get data from follower (not up-to-date data)
 - delete key
+- do benchmark
