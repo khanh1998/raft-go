@@ -17,6 +17,7 @@ func random(min, max int, unit time.Duration) time.Duration {
 	return time.Duration(r * unit.Nanoseconds())
 }
 
+// This test demonstrates how you can use the key-locking feature to coordinate multiple concurrent processes taking turns and working together.
 func TestKeyLocking(t *testing.T) {
 	c := NewCluster("config/3-nodes.yml")
 	defer c.Clean()
@@ -55,6 +56,7 @@ func TestKeyLocking(t *testing.T) {
 					continue
 				}
 
+				// get current value of the counter
 				countStr, err := ag.ClientQuery("count")
 				if err != nil {
 					ag.log.Error("ClientQuery count", err, "clientId", ag.clientId)
@@ -64,6 +66,8 @@ func TestKeyLocking(t *testing.T) {
 					}
 				}
 
+				// increase value of the counter,
+				// set new value of counter back
 				if initCounter {
 					ag.ClientRequest("set", false, "count", "1")
 					initCounter = false
