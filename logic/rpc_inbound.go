@@ -17,6 +17,8 @@ var (
 	MsgTheResponderAlreadyMakeAVote         = "the responder already made a vote"
 	MsgTheRequesterLogsAreOutOfDate         = "the requestor logs are out of date"
 	MsgTheLeaderIsStillAlive                = "the leader is still alive"
+	MsgCannotAppendLog                      = "cannot append log"
+	MsgCannotDeleteLog                      = "cannot delete log"
 )
 
 // AppendEntries Invoked by leader to replicate log entries (§5.3); also used as heartbeat (§5.2).
@@ -69,7 +71,7 @@ func (n *RaftBrainImpl) AppendEntries(ctx context.Context, input *common.AppendE
 		// 2. Reply false if log doesn’t contain an entry at prevLogIndex whose term matches prevLogTerm (§5.3)
 		logItem, err := n.GetLog(input.PrevLogIndex)
 		switch err {
-		case ErrLogIsEmtpy:
+		case ErrLogIsEmpty:
 			*output = common.AppendEntriesOutput{Term: n.currentTerm, Success: false, Message: MsgTheResponderHasNoLog, NodeID: n.id}
 
 			return nil
@@ -89,7 +91,12 @@ func (n *RaftBrainImpl) AppendEntries(ctx context.Context, input *common.AppendE
 		logItem, err = n.GetLog(input.PrevLogIndex + 1)
 		if err == nil {
 			if logItem.Term != input.Term {
-				n.deleteLogFrom(ctx, input.PrevLogIndex+1)
+				err := n.deleteLogFrom(ctx, input.PrevLogIndex+1)
+				if err != nil {
+					*output = common.AppendEntriesOutput{Term: n.currentTerm, Success: false, Message: MsgCannotDeleteLog, NodeID: n.id}
+
+					return nil
+				}
 				*output = common.AppendEntriesOutput{Term: n.currentTerm, Success: false, Message: MsgCurrentLogTermsAreNotMatched, NodeID: n.id}
 
 				return nil
@@ -101,7 +108,12 @@ func (n *RaftBrainImpl) AppendEntries(ctx context.Context, input *common.AppendE
 	if len(input.Entries) > 0 {
 		_, err = n.GetLog(input.PrevLogIndex + 1)
 		if err != nil { // entries are not already in the log
-			n.appendLogs(ctx, input.Entries)
+			err := n.appendLogs(ctx, input.Entries)
+			if err != nil {
+				*output = common.AppendEntriesOutput{Term: n.currentTerm, Success: false, Message: MsgCannotAppendLog, NodeID: n.id}
+
+				return nil
+			}
 		}
 	}
 

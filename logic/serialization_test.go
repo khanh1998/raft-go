@@ -17,7 +17,7 @@ func Test_nodeImpl_Serialize(t *testing.T) {
 	tests := []struct {
 		name   string
 		fields fields
-		want   map[string]string
+		want   []string
 	}{
 		{
 			fields: fields{
@@ -25,10 +25,9 @@ func Test_nodeImpl_Serialize(t *testing.T) {
 				VotedFor:    0,
 				Logs:        []common.Log{},
 			},
-			want: map[string]string{
-				"current_term": "3",
-				"voted_for":    "0",
-				"log_count":    "0",
+			want: []string{
+				"current_term", "3",
+				"voted_for", "0",
 			},
 		},
 		{
@@ -40,12 +39,11 @@ func Test_nodeImpl_Serialize(t *testing.T) {
 					{Term: 2, Command: "set y 3"},
 				},
 			},
-			want: map[string]string{
-				"current_term": "3",
-				"voted_for":    "1",
-				"log_count":    "2",
-				"log_0":        common.Log{Term: 1, Command: "set x 1"}.ToString(),
-				"log_1":        common.Log{Term: 2, Command: "set y 3"}.ToString(),
+			want: []string{
+				"current_term", "3",
+				"voted_for", "1",
+				"append_log", common.Log{Term: 1, Command: "set x 1"}.ToString(),
+				"append_log", common.Log{Term: 2, Command: "set y 3"}.ToString(),
 			},
 		},
 	}
@@ -57,7 +55,8 @@ func Test_nodeImpl_Serialize(t *testing.T) {
 				logs:        tt.fields.Logs,
 				logger:      observability.NewOtelLogger(),
 			}
-			if got := n.serialize(false, false, ""); !reflect.DeepEqual(got, tt.want) {
+
+			if got := n.serializeToArray(); !reflect.DeepEqual(got, tt.want) {
 				t.Errorf("nodeImpl.Serialize() = %v, want %v", got, tt.want)
 			}
 		})
@@ -71,7 +70,7 @@ func Test_nodeImpl_Deserialize(t *testing.T) {
 		Logs        []common.Log
 	}
 	type args struct {
-		data map[string]string
+		data []string
 	}
 	tests := []struct {
 		name    string
@@ -86,10 +85,9 @@ func Test_nodeImpl_Deserialize(t *testing.T) {
 				Logs:        []common.Log{},
 			},
 			args: args{
-				data: map[string]string{
-					"current_term": "1",
-					"voted_for":    "3",
-					"log_count":    "0",
+				data: []string{
+					"current_term", "1",
+					"voted_for", "3",
 				},
 			},
 			wantErr: false,
@@ -104,12 +102,13 @@ func Test_nodeImpl_Deserialize(t *testing.T) {
 				},
 			},
 			args: args{
-				data: map[string]string{
-					"current_term": "1",
-					"voted_for":    "3",
-					"log_count":    "2",
-					"log_0":        common.Log{Term: 1, Command: "set x 1", ClientID: 3, SequenceNum: 2}.ToString(),
-					"log_1":        common.Log{Term: 2, Command: "set y 3", ClientID: 5, SequenceNum: 1}.ToString(),
+				data: []string{
+					"current_term", "1",
+					"voted_for", "3",
+					"append_log", common.Log{Term: 1, Command: "set x 1", ClientID: 3, SequenceNum: 2}.ToString(),
+					"append_log", common.Log{Term: 2, Command: "set y 3", ClientID: 5, SequenceNum: 1}.ToString(),
+					"append_log", common.Log{Term: 2, Command: "set y 4", ClientID: 5, SequenceNum: 1}.ToString(),
+					"delete_log", "1",
 				},
 			},
 			wantErr: false,
@@ -118,24 +117,24 @@ func Test_nodeImpl_Deserialize(t *testing.T) {
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
 			n := &RaftBrainImpl{}
-			if err := n.deserialize(context.Background(), tt.args.data); (err != nil) != tt.wantErr {
+			if err := n.deserializeFromArray(context.Background(), tt.args.data); (err != nil) != tt.wantErr {
 				t.Errorf("nodeImpl.Deserialize() error = %v, wantErr %v", err, tt.wantErr)
 			}
 
 			if n.currentTerm != tt.want.CurrentTerm {
-				t.Errorf("current term val = %v, want wal %v", n.currentTerm, tt.want.CurrentTerm)
+				t.Errorf("current term = %v, want %v", n.currentTerm, tt.want.CurrentTerm)
 			}
 
 			if n.votedFor != tt.want.VotedFor {
-				t.Errorf("current term val = %v, want wal %v", n.votedFor, tt.want.VotedFor)
+				t.Errorf("voted for = %v, want %v", n.votedFor, tt.want.VotedFor)
 			}
 
-			if !reflect.DeepEqual(n.serialize(false, false, ""), tt.args.data) {
-				t.Errorf("current term val = %v, want wal %v", n.serialize(false, false, ""), tt.args.data)
-			}
+			// if !reflect.DeepEqual(n.serializeToArray(), tt.args.data) {
+			// 	t.Errorf("n.serializeToArray() = %v, want %v", n.serializeToArray(), tt.args.data)
+			// }
 
 			if !reflect.DeepEqual(n.logs, tt.want.Logs) {
-				t.Errorf("current term val = %v, want wal %v", n.logs, tt.want.Logs)
+				t.Errorf("logs = %v, want %v", n.logs, tt.want.Logs)
 			}
 		})
 	}

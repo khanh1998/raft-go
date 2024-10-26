@@ -49,13 +49,24 @@ func (r *RaftBrainImpl) KeepAlive(ctx context.Context, input *common.KeepAliveCl
 		return nil
 	}
 
-	index := r.appendLog(ctx, common.Log{
+	newLog := common.Log{
 		Term:        r.currentTerm,
 		Command:     "keep-alive",
 		ClientID:    input.ClientID,
 		SequenceNum: input.SequenceNum,
 		ClusterTime: r.clusterClock.Interpolate(),
-	})
+	}
+
+	index, err := r.appendLog(ctx, newLog)
+	if err != nil {
+		r.log().ErrorContext(ctx, "KeepAlive_appendLog", err)
+
+		*output = common.KeepAliveClientOutput{
+			Status:     common.StatusNotOK,
+			Response:   "append log err: " + err.Error(),
+			LeaderHint: "",
+		}
+	}
 
 	r.inOutLock.Unlock()
 
@@ -125,13 +136,24 @@ func (r *RaftBrainImpl) ClientRequest(ctx context.Context, input *common.ClientR
 		return nil
 	}
 
-	index := r.appendLog(ctx, common.Log{
+	newLog := common.Log{
 		Term:        r.currentTerm,
 		Command:     input.Command,
 		ClientID:    input.ClientID,
 		SequenceNum: input.SequenceNum,
 		ClusterTime: r.clusterClock.Interpolate(),
-	})
+	}
+
+	index, err := r.appendLog(ctx, newLog)
+	if err != nil {
+		r.log().ErrorContext(ctx, "ClientRequest_appendLog", err)
+
+		*output = common.ClientRequestOutput{
+			Status:     common.StatusNotOK,
+			Response:   "append log err: " + err.Error(),
+			LeaderHint: "",
+		}
+	}
 
 	r.inOutLock.Unlock()
 
@@ -202,13 +224,24 @@ func (r *RaftBrainImpl) RegisterClient(ctx context.Context, input *common.Regist
 		return nil
 	}
 
-	index := r.appendLog(ctx, common.Log{
+	newLog := common.Log{
 		Term:        r.currentTerm,
 		ClientID:    0,
 		SequenceNum: 0,
 		Command:     "register",
 		ClusterTime: r.clusterClock.Interpolate(),
-	})
+	}
+
+	index, err := r.appendLog(ctx, newLog)
+	if err != nil {
+		r.log().ErrorContext(ctx, "RegisterClient_appendLog", err)
+
+		*output = common.RegisterClientOutput{
+			Status:     common.StatusNotOK,
+			Response:   "append log err: " + err.Error(),
+			LeaderHint: "",
+		}
+	}
 
 	r.inOutLock.Unlock()
 

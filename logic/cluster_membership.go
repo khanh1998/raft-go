@@ -95,13 +95,24 @@ func (r *RaftBrainImpl) RemoveServer(ctx context.Context, input common.RemoveSer
 	}
 	defer r.changeMemberLock.Unlock()
 
-	index := r.appendLog(ctx, common.Log{
+	newLog := common.Log{
 		Term:        r.currentTerm,
 		ClientID:    0,
 		SequenceNum: 0,
 		Command:     common.ComposeRemoveServerCommand(input.ID, input.NewServerHttpUrl, input.NewServerRpcUrl),
 		ClusterTime: r.clusterClock.Interpolate(),
-	})
+	}
+
+	index, err := r.appendLog(ctx, newLog)
+	if err != nil {
+		r.log().ErrorContext(ctx, "RemoveServer_appendLog", err)
+
+		*output = common.RemoveServerOutput{
+			Status:     common.StatusNotOK,
+			Response:   "append log err: " + err.Error(),
+			LeaderHint: "",
+		}
+	}
 
 	msg := fmt.Sprintf("server %d can be shut down now", input.ID)
 	err = r.WaitForLogCommited(30*time.Second, index)
@@ -207,13 +218,24 @@ func (r *RaftBrainImpl) AddServer(ctx context.Context, input common.AddServerInp
 		log.Info().Msgf("AddServer catchup end round %d", i)
 	}
 
-	index := r.appendLog(ctx, common.Log{
+	newLog := common.Log{
 		Term:        r.currentTerm,
 		ClientID:    0,
 		SequenceNum: 0,
 		Command:     common.ComposeAddServerCommand(input.ID, input.NewServerHttpUrl, input.NewServerRpcUrl),
 		ClusterTime: r.clusterClock.Interpolate(),
-	})
+	}
+
+	index, err := r.appendLog(ctx, newLog)
+	if err != nil {
+		r.log().ErrorContext(ctx, "AddServer_appendLog", err)
+
+		*output = common.AddServerOutput{
+			Status:     common.StatusNotOK,
+			Response:   "append log err: " + err.Error(),
+			LeaderHint: "",
+		}
+	}
 
 	// after append new config to log, we use it immediately without wating commit
 

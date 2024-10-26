@@ -6,24 +6,12 @@ import (
 	"fmt"
 	"khanh/raft-go/common"
 	"strconv"
-	"time"
 )
 
-func (n *RaftBrainImpl) serialize(delimiter bool, createdAt bool, source string) map[string]string {
+func (n *RaftBrainImpl) serialize1() map[string]string {
 	data := make(map[string]string)
-	if delimiter {
-		data["a"] = "---------------------------------------------"
-	}
-	if len(source) > 0 {
-		data["a source"] = source
-	}
-	if createdAt {
-		data["time"] = time.Now().Format(time.RFC3339)
-	}
-
 	data["current_term"] = strconv.FormatInt(int64(n.currentTerm), 10)
 	data["voted_for"] = strconv.FormatInt(int64(n.votedFor), 10)
-	data["log_count"] = strconv.FormatInt(int64(len(n.logs)), 10)
 	for index, log := range n.logs {
 		key := fmt.Sprintf("log_%d", index)
 		data[key] = log.ToString()
@@ -31,7 +19,57 @@ func (n *RaftBrainImpl) serialize(delimiter bool, createdAt bool, source string)
 	return data
 }
 
-func (n *RaftBrainImpl) deserialize(ctx context.Context, data map[string]string) error {
+func (n *RaftBrainImpl) serializeToArray() []string {
+	data := []string{}
+	data = append(data, "current_term", strconv.FormatInt(int64(n.currentTerm), 10))
+	data = append(data, "voted_for", strconv.FormatInt(int64(n.votedFor), 10))
+	for _, log := range n.logs {
+		data = append(data, "append_log", log.ToString())
+	}
+	return data
+}
+
+func (n *RaftBrainImpl) deserializeFromArray(ctx context.Context, keyValuePairs []string) error {
+	n.logs = []common.Log{}
+	for i := 0; i < len(keyValuePairs); i += 2 {
+		key, value := keyValuePairs[i], keyValuePairs[i+1]
+		switch key {
+		case "current_term":
+			currentTerm, err := strconv.ParseInt(value, 10, 32)
+			if err != nil {
+				return err
+			}
+			n.currentTerm = int(currentTerm)
+		case "voted_for":
+			votedFor, err := strconv.ParseInt(value, 10, 32)
+			if err != nil {
+				return err
+			}
+			n.votedFor = int(votedFor)
+		case "append_log":
+			logItem, err := common.NewLogFromString(value)
+			if err != nil {
+				n.log().ErrorContext(ctx, "can not create log from string", err)
+
+				return err
+			} else {
+				n.logs = append(n.logs, logItem)
+			}
+		case "delete_log":
+			deletedLogCount, err := strconv.Atoi(value)
+			if err != nil {
+				return err
+			} else {
+				length := len(n.logs)
+				n.logs = n.logs[:length-deletedLogCount]
+			}
+		}
+	}
+
+	return nil
+}
+
+func (n *RaftBrainImpl) deserialize1(ctx context.Context, data map[string]string) error {
 	currentTerm, err := strconv.ParseInt(data["current_term"], 10, 32)
 	if err != nil {
 		return err
@@ -45,23 +83,25 @@ func (n *RaftBrainImpl) deserialize(ctx context.Context, data map[string]string)
 
 	n.votedFor = int(votedFor)
 
-	logCount, err := strconv.ParseInt(data["log_count"], 10, 32)
-	if err != nil {
-		return err
-	}
+	logCount := len(data) - 2
 
 	n.logs = []common.Log{}
 	for i := 0; i < int(logCount); i++ {
 		key := fmt.Sprintf("log_%d", i)
 
 		if value, ok := data[key]; ok {
-			logItem, err := common.NewLogFromString(value)
-			if err != nil {
-				n.log().ErrorContext(ctx, "can not create log from string", err)
-
-				return err
+			if value == TOMBSTONE {
+				// Remove the last item
+				n.logs = n.logs[:len(n.logs)-1]
 			} else {
-				n.logs = append(n.logs, logItem)
+				logItem, err := common.NewLogFromString(value)
+				if err != nil {
+					n.log().ErrorContext(ctx, "can not create log from string", err)
+
+					return err
+				} else {
+					n.logs = append(n.logs, logItem)
+				}
 			}
 		} else {
 			return errors.New("missing value to deserialize value of node")
@@ -98,7 +138,22 @@ func (n *RaftBrainImpl) getPersistanceKeyList() ([]string, error) {
 }
 
 func (n *RaftBrainImpl) restoreRaftStateFromFile(ctx context.Context) error {
-	keys, err := n.getPersistanceKeyList()
+	// keys, err := n.getPersistanceKeyList()
+	// if err != nil {
+	// 	if errors.Is(err, common.ErrEmptyData) {
+	// 		n.log().ErrorContext(ctx, "data file is empty", err)
+	// 		return nil
+	// 	}
+
+	// 	return err
+	// }
+
+	// data, err := n.db.ReadNewestLog(keys)
+	// if err != nil {
+	// 	return err
+	// }
+
+	data, err := n.db.ReadLogsToArray()
 	if err != nil {
 		if errors.Is(err, common.ErrEmptyData) {
 			n.log().ErrorContext(ctx, "data file is empty", err)
@@ -108,12 +163,7 @@ func (n *RaftBrainImpl) restoreRaftStateFromFile(ctx context.Context) error {
 		return err
 	}
 
-	data, err := n.db.ReadNewestLog(keys)
-	if err != nil {
-		return err
-	}
-
-	if err := n.deserialize(ctx, data); err != nil {
+	if err := n.deserializeFromArray(ctx, data); err != nil {
 		return err
 	}
 

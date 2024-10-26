@@ -4,8 +4,14 @@ import (
 	"context"
 	"khanh/raft-go/common"
 	"math"
+	"strconv"
 	"time"
 )
+
+// every time we got a new log,
+// we append it to WAL,
+// to delete a log we also need to append a tombstone for that log to WAL
+const TOMBSTONE = "deleted"
 
 func (n *RaftBrainImpl) isMemberOfCluster(id *int) bool {
 	if id == nil {
@@ -20,31 +26,9 @@ func (n *RaftBrainImpl) isMemberOfCluster(id *int) bool {
 	return false
 }
 
-func (n *RaftBrainImpl) deleteLogTo(index int) (err error) {
-	if len(n.logs) == 0 {
-		return ErrLogIsEmtpy
-	}
-
-	if index > len(n.logs) || index <= 0 {
-		return ErrIndexOutOfRange
-	}
-
-	realIndex := int(index - 1)
-	n.logs = n.logs[realIndex+1:]
-
-	return nil
-}
-
 func (n *RaftBrainImpl) deleteLogFrom(ctx context.Context, index int) (err error) {
-	defer func() {
-		data := n.serialize(true, true, "DeleteLogFrom")
-		if err := n.db.AppendLog(data); err != nil {
-			n.log().ErrorContext(ctx, "DeleteLogFrom save to db error: ", err)
-		}
-	}()
-
 	if len(n.logs) == 0 {
-		return ErrLogIsEmtpy
+		return ErrLogIsEmpty
 	}
 
 	if index > len(n.logs) || index <= 0 {
@@ -52,6 +36,16 @@ func (n *RaftBrainImpl) deleteLogFrom(ctx context.Context, index int) (err error
 	}
 
 	realIndex := int(index - 1)
+
+	// append changes to WAL
+	deletedLogCount := len(n.logs) - realIndex
+	if err := n.db.AppendLogArray("delete_log", strconv.Itoa(deletedLogCount)); err != nil {
+		n.log().ErrorContext(ctx, "DeleteLogFrom save to db error: ", err)
+
+		return err
+	}
+
+	// change in memory state
 	deletedLogs := n.logs[realIndex:]
 	n.logs = n.logs[:realIndex]
 
@@ -72,13 +66,17 @@ func (n *RaftBrainImpl) deleteLogFrom(ctx context.Context, index int) (err error
 	return nil
 }
 
-func (n *RaftBrainImpl) appendLogs(ctx context.Context, logItems []common.Log) {
-	defer func() {
-		data := n.serialize(true, true, "AppendLogs")
-		if err := n.db.AppendLog(data); err != nil {
-			n.log().ErrorContext(ctx, "DeleteLogFrom save to db error: ", err)
-		}
-	}()
+func (n *RaftBrainImpl) appendLogs(ctx context.Context, logItems []common.Log) (err error) {
+	keyValuePairs := []string{}
+	for i := 0; i < len(logItems); i++ {
+		keyValuePairs = append(keyValuePairs, "append_log", logItems[i].ToString())
+	}
+
+	if err := n.db.AppendLogArray(keyValuePairs...); err != nil {
+		n.log().ErrorContext(ctx, "appendLogs save to db error: ", err)
+
+		return err
+	}
 
 	n.logs = append(n.logs, logItems...)
 
@@ -87,31 +85,32 @@ func (n *RaftBrainImpl) appendLogs(ctx context.Context, logItems []common.Log) {
 	for _, logItem := range logItems {
 		n.changeMember(logItem.Command.(string))
 	}
+
+	return nil
 }
 
-func (n *RaftBrainImpl) appendLog(ctx context.Context, logItem common.Log) int {
-	defer func() {
-		data := n.serialize(true, true, "AppendLog")
-		if err := n.db.AppendLog(data); err != nil {
-			n.log().ErrorContext(ctx, "AppendLog save to db error: ", err)
-		}
-	}()
+func (n *RaftBrainImpl) appendLog(ctx context.Context, logItem common.Log) (int, error) {
+	if err := n.db.AppendLogArray("append_log", logItem.ToString()); err != nil {
+		n.log().ErrorContext(ctx, "AppendLog save to db error: ", err)
+
+		return 0, err
+	}
 
 	n.logs = append(n.logs, logItem)
 	index := len(n.logs)
 
 	n.log().InfoContext(ctx, "AppendLog", "log", logItem)
 
-	// we need to update cluster membership infomation as soon as we receive the log,
-	// don't need to wait until it get commited.
+	// we need to update cluster membership information as soon as we receive the log,
+	// don't need to wait until it get committed.
 	n.changeMember(logItem.Command.(string))
 
-	return index
+	return index, nil
 }
 
 func (n *RaftBrainImpl) GetLog(index int) (common.Log, error) {
 	if len(n.logs) == 0 {
-		return common.Log{}, ErrLogIsEmtpy
+		return common.Log{}, ErrLogIsEmpty
 	}
 
 	if index > len(n.logs) || index <= 0 {
@@ -124,36 +123,29 @@ func (n *RaftBrainImpl) GetLog(index int) (common.Log, error) {
 }
 
 func (n *RaftBrainImpl) setLeaderID(ctx context.Context, leaderId int) {
-	defer func() {
-		data := n.serialize(true, true, "SetLeaderID")
-		if err := n.db.AppendLog(data); err != nil {
-			n.log().ErrorContext(ctx, "SetLeaderID save to db error: ", err)
-		}
-	}()
-
 	n.leaderID = leaderId
 }
 
-func (n *RaftBrainImpl) setCurrentTerm(ctx context.Context, term int) {
-	defer func() {
-		data := n.serialize(true, true, "SetCurrentTerm")
-		if err := n.db.AppendLog(data); err != nil {
-			n.log().ErrorContext(ctx, "SetCurrentTerm save to db error: ", err)
-		}
-	}()
+func (n *RaftBrainImpl) setCurrentTerm(ctx context.Context, term int) error {
+	if err := n.db.AppendLogArray("current_term", strconv.Itoa(term)); err != nil {
+		n.log().ErrorContext(ctx, "SetCurrentTerm save to db error: ", err)
+
+		return err
+	}
 
 	n.currentTerm = term
+
+	return nil
 }
 
-func (n *RaftBrainImpl) setVotedFor(ctx context.Context, nodeID int) {
-	defer func() {
-		data := n.serialize(true, true, "SetVotedFor")
-		if err := n.db.AppendLog(data); err != nil {
-			n.log().ErrorContext(ctx, "SetVotedFor save to db error: ", err)
-		}
-	}()
+func (n *RaftBrainImpl) setVotedFor(ctx context.Context, nodeID int) error {
+	if err := n.db.AppendLogArray("voted_for", strconv.Itoa(nodeID)); err != nil {
+		n.log().ErrorContext(ctx, "SetVotedFor save to db error: ", err)
+		return err
+	}
 
 	n.votedFor = nodeID
+	return nil
 }
 
 func (n *RaftBrainImpl) SetRpcProxy(rpc RPCProxy) {

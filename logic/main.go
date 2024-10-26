@@ -99,7 +99,9 @@ type RPCProxy interface {
 
 type Persistence interface {
 	AppendLog(data map[string]string) error
+	AppendLogArray(keyValues ...string) error
 	ReadNewestLog(keys []string) (map[string]string, error)
+	ReadLogsToArray() ([]string, error)
 }
 
 type PeerInfo struct {

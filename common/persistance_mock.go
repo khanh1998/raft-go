@@ -93,3 +93,12 @@ func (p *PersistenceMockImpl) ReadNewestLog(keys []string) (map[string]string, e
 
 	return data, nil
 }
+
+func (p *PersistenceMockImpl) ReadLogsToArray() ([]string, error) {
+	return p.data, nil
+}
+
+func (p *PersistenceMockImpl) AppendLogArray(keyValues ...string) error {
+	p.data = append(p.data, keyValues...)
+	return nil
+}

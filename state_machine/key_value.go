@@ -323,7 +323,8 @@ func (k *KeyValueStateMachine) Reset() error {
 
 	k.current = newSnapshot()
 	k.previous = snapshot{}
-	return k.saveSnapshotToFile()
+	// return k.saveSnapshotToFile()
+	return nil
 }
 
 func (k *KeyValueStateMachine) ResetAndReloadFromFile() error {

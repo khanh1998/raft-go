@@ -3,6 +3,7 @@ package common
 import (
 	"bufio"
 	"errors"
+	"fmt"
 	"io"
 	"os"
 	"path/filepath"
@@ -13,7 +14,7 @@ import (
 var (
 	ErrEmptyData       = errors.New("empty data")
 	ErrFileExists      = errors.New("file exists")
-	ErrFileNameIsEmtpy = errors.New("file name is empty")
+	ErrFileNameIsEmpty = errors.New("file name is empty")
 )
 
 // this Persistence should be shared among goroutine
@@ -58,10 +59,44 @@ func (p *PersistenceImpl) CreateNewFile(fileName string) error {
 
 	return nil
 }
+func (p *PersistenceImpl) AppendLogArray(keyValues ...string) error {
+	length := len(keyValues)
+	if length%2 != 0 {
+		return fmt.Errorf("length of input array must be even: %d", len(keyValues))
+	}
+
+	if p.dataFileName == "" {
+		return ErrFileNameIsEmpty
+	}
+
+	path := p.dataFolderName + p.dataFileName
+
+	file, err := os.OpenFile(path, os.O_APPEND|os.O_CREATE|os.O_WRONLY, 0644)
+	if err != nil {
+		return err
+	}
+
+	defer file.Close()
+
+	content := ""
+	for i := 0; i < length; i += 2 {
+		key, value := keyValues[i], keyValues[i+1]
+		if len(key) > 0 {
+			content += key + "=" + value + "\n"
+		}
+	}
+
+	writer := bufio.NewWriter(file)
+	if _, err := writer.WriteString(content); err != nil {
+		return err
+	}
+
+	return writer.Flush()
+}
 
 func (p *PersistenceImpl) AppendLog(data map[string]string) error {
 	if p.dataFileName == "" {
-		return ErrFileNameIsEmtpy
+		return ErrFileNameIsEmpty
 	}
 
 	path := p.dataFolderName + p.dataFileName
@@ -94,9 +129,90 @@ func (p *PersistenceImpl) AppendLog(data map[string]string) error {
 	return nil
 }
 
+func (p *PersistenceImpl) ReadLogsToArray() ([]string, error) {
+
+	if p.dataFileName == "" {
+		return nil, ErrFileNameIsEmpty
+	}
+
+	data := []string{}
+	path := p.dataFolderName + p.dataFileName
+
+	file, err := os.OpenFile(path, os.O_RDONLY, 0644)
+	if err != nil {
+		if os.IsNotExist(err) {
+			return nil, ErrEmptyData
+		}
+		return nil, err
+	}
+
+	defer file.Close()
+
+	reader := bufio.NewReader(file)
+	for {
+		line, err := reader.ReadString('\n')
+		if err != nil {
+			if errors.Is(err, io.EOF) {
+				break
+			}
+
+			return data, err
+		}
+
+		tokens := strings.Split(line, "=")
+		if len(tokens) == 2 {
+			key, value := tokens[0], tokens[1]
+			data = append(data, key, strings.TrimSuffix(value, "\n"))
+		}
+	}
+
+	return data, nil
+}
+
+func (p *PersistenceImpl) ReadAllFromFile() (map[string]string, error) {
+	if p.dataFileName == "" {
+		return nil, ErrFileNameIsEmpty
+	}
+
+	data := make(map[string]string)
+	path := p.dataFolderName + p.dataFileName
+
+	file, err := os.OpenFile(path, os.O_RDONLY, 0644)
+	if err != nil {
+		if os.IsNotExist(err) {
+			return nil, ErrEmptyData
+		}
+		return nil, err
+	}
+
+	defer file.Close()
+
+	reader := bufio.NewReader(file)
+	for {
+		line, err := reader.ReadString('\n')
+		if err != nil {
+			if errors.Is(err, io.EOF) {
+				break
+			}
+
+			return data, err
+		}
+
+		tokens := strings.Split(line, "=")
+		if len(tokens) == 2 {
+			key, value := tokens[0], tokens[1]
+			if _, ok := data[key]; ok {
+				data[key] = strings.TrimSuffix(value, "\n")
+			}
+		}
+	}
+
+	return data, nil
+}
+
 func (p *PersistenceImpl) ReadNewestLog(keys []string) (map[string]string, error) {
 	if p.dataFileName == "" {
-		return nil, ErrFileNameIsEmtpy
+		return nil, ErrFileNameIsEmpty
 	}
 
 	data := make(map[string]string)

@@ -357,6 +357,11 @@ func Test_nodeImpl_AppendEntries(t *testing.T) {
 		testCase.n.stateMachine.Reset()
 		t.Run(fmt.Sprintf("[%d] %s", index, testCase.name), func(t *testing.T) {
 			log.Info().Int("index", index).Msg("test case AppendEntriesOutput")
+
+			data := testCase.n.serializeToArray()
+			err = testCase.n.db.AppendLogArray(data...)
+			assert.NoError(t, err)
+
 			var out common.AppendEntriesOutput
 			testCase.n.AppendEntries(context.TODO(), &testCase.in, &out)
 			assert.Equal(t, testCase.out, out, fmt.Sprintf("%d test case: %s", index, testCase.name))
@@ -371,16 +376,8 @@ func Test_nodeImpl_AppendEntries(t *testing.T) {
 					electionTimeOutMax:  500,
 					stateMachine:        testCase.n.stateMachine,
 				}
-				keys, err := n2.getPersistanceKeyList()
-				assert.NoError(t, err)
-				// assert.Equal(t, []string{}, keys)
-				data, err := n2.db.ReadNewestLog(keys)
-				assert.NoError(t, err)
-				// assert.Equal(t, map[string]string{}, data)
-				_ = data
 
 				err = n2.restoreRaftStateFromFile(context.TODO())
-
 				assert.NoError(t, err)
 
 				assert.Equal(t, testCase.n.currentTerm, n2.currentTerm)
