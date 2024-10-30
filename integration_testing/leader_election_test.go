@@ -77,7 +77,7 @@ func TestMajorityOfClusterIsCrashed(t *testing.T) {
 	// we only stop the follower,
 	// but after a election timeout elapsed,
 	// the leader need to step down as it can't make a successful round of heartbeat to majority
-	time.Sleep(c.MaxElectionTimeout)
+	time.Sleep(2 * c.MaxElectionTimeout)
 	AssertHavingNoLeader(t, c)
 
 }

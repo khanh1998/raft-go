@@ -45,7 +45,7 @@ func (a *AsyncResponseManager) Register(logIndex int) error {
 }
 
 // todo: adding buffer to the channel
-func (a *AsyncResponseManager) PutResponse(logIndex int, msg any, resErr error, timeout time.Duration) error {
+func (a *AsyncResponseManager) PutResponse(logIndex int, msg string, resErr error, timeout time.Duration) error {
 	a.lock.RLock()
 	index := AsyncResponseIndex{logIndex}
 
@@ -69,7 +69,7 @@ func (a *AsyncResponseManager) PutResponse(logIndex int, msg any, resErr error, 
 }
 
 // blocking call
-func (a *AsyncResponseManager) TakeResponse(logIndex int, timeout time.Duration) (any, error) {
+func (a *AsyncResponseManager) TakeResponse(logIndex int, timeout time.Duration) (string, error) {
 	a.lock.RLock()
 
 	index := AsyncResponseIndex{logIndex}
@@ -77,7 +77,7 @@ func (a *AsyncResponseManager) TakeResponse(logIndex int, timeout time.Duration)
 	if !ok {
 		a.lock.RUnlock()
 
-		return nil, fmt.Errorf("register log index: %d first", logIndex)
+		return "", fmt.Errorf("register log index: %d first", logIndex)
 	}
 
 	a.lock.RUnlock()
@@ -88,6 +88,6 @@ func (a *AsyncResponseManager) TakeResponse(logIndex int, timeout time.Duration)
 		delete(a.m, index)
 		return res.Response, res.Err
 	case <-time.After(timeout):
-		return nil, fmt.Errorf("timeout error: can't get messsage")
+		return "", fmt.Errorf("timeout error: can't get message")
 	}
 }

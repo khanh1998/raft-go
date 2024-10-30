@@ -9,6 +9,7 @@ import (
 	"khanh/raft-go/common"
 	"khanh/raft-go/observability"
 	"net/http"
+	"strconv"
 	"strings"
 	"time"
 
@@ -24,7 +25,7 @@ type Request struct {
 type Response struct {
 	Status   common.ClientRequestStatus `json:"status"`
 	Hint     string                     `json:"leader_hint"`
-	Response any                        `json:"response"`
+	Response string                     `json:"response"`
 }
 
 type HttpServerConnectionInfo struct {
@@ -156,10 +157,7 @@ func (h *HttpAgent) ClientQuery(key string) (value string, err error) {
 		return "", fmt.Errorf("response is not ok: %v", result.Response)
 	}
 
-	value, ok := result.Response.(string)
-	if !ok {
-		return "", fmt.Errorf("can't cast response value [%v] to string", result.Response)
-	}
+	value = result.Response
 
 	return value, nil
 }
@@ -180,7 +178,11 @@ func (h *HttpAgent) RegisterClient() (err error) {
 		return fmt.Errorf("response is not ok: %v", result.Response)
 	}
 
-	h.clientId = int(result.Response.(float64))
+	h.clientId, err = strconv.Atoi(result.Response)
+	if err != nil {
+		return err
+	}
+
 	return nil
 }
 

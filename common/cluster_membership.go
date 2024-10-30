@@ -16,7 +16,7 @@ type AddServerInput struct {
 type AddServerOutput struct {
 	Status     ClientRequestStatus `json:"status"`
 	LeaderHint string              `json:"leader_hint"`
-	Response   any                 `json:"response"`
+	Response   string              `json:"response"`
 }
 
 type RemoveServerInput struct {
@@ -28,7 +28,7 @@ type RemoveServerInput struct {
 type RemoveServerOutput struct {
 	Status     ClientRequestStatus `json:"status"`
 	LeaderHint string              `json:"leader_hint"`
-	Response   any                 `json:"response"`
+	Response   string              `json:"response"`
 }
 
 func ComposeAddServerCommand(serverId int, httpUrl string, rpcUrl string) string {

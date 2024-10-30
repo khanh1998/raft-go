@@ -12,9 +12,10 @@ import (
 )
 
 var (
-	ErrEmptyData       = errors.New("empty data")
-	ErrFileExists      = errors.New("file exists")
-	ErrFileNameIsEmpty = errors.New("file name is empty")
+	ErrEmptyData        = errors.New("empty data")
+	ErrFileExists       = errors.New("file exists")
+	ErrFileDoesNotExist = errors.New("file doesn't exist")
+	ErrFileNameIsEmpty  = errors.New("file name is empty")
 )
 
 // this Persistence should be shared among goroutine
@@ -23,15 +24,23 @@ type PersistenceImpl struct {
 	dataFolderName string
 }
 
-func NewPersistence(folder string, fileName string) *PersistenceImpl {
+func NewPersistence(folder string, fileName string) (*PersistenceImpl, error) {
+	if folder != "" {
+		if err := CreateFolderIfNotExists(folder); err != nil {
+			return nil, err
+		}
+	}
+
 	return &PersistenceImpl{
 		dataFileName:   fileName,
 		dataFolderName: folder,
-	}
+	}, nil
 }
 
 func (p *PersistenceImpl) OpenFile(fileName string) error {
-	file, err := os.Open(fileName)
+	path := p.dataFolderName + fileName
+
+	file, err := os.Open(path)
 	if err != nil {
 		return err
 	}
@@ -41,14 +50,33 @@ func (p *PersistenceImpl) OpenFile(fileName string) error {
 	p.dataFileName = fileName
 
 	return nil
+}
+
+func (p *PersistenceImpl) DeleteFile(fileName string) error {
+	return nil
+}
+
+func (p *PersistenceImpl) RenameFile(old string, new string) error {
+	oldPath, newPath := p.dataFolderName+old, p.dataFolderName+new
+
+	if !FileExists(oldPath) {
+		return fmt.Errorf("file %s %w", oldPath, ErrFileDoesNotExist)
+	}
+
+	if FileExists(newPath) {
+		return fmt.Errorf("file %s %w", newPath, ErrFileExists)
+	}
+
+	return os.Rename(oldPath, newPath)
 }
 
 func (p *PersistenceImpl) CreateNewFile(fileName string) error {
-	if FileExists(fileName) {
+	path := p.dataFolderName + fileName
+	if FileExists(path) {
 		return ErrFileExists
 	}
 
-	file, err := os.Create(fileName)
+	file, err := os.Create(path)
 	if err != nil {
 		return err
 	}
@@ -59,7 +87,35 @@ func (p *PersistenceImpl) CreateNewFile(fileName string) error {
 
 	return nil
 }
-func (p *PersistenceImpl) AppendLogArray(keyValues ...string) error {
+
+func (p *PersistenceImpl) AppendStrings(lines ...string) error {
+	if p.dataFileName == "" {
+		return ErrFileNameIsEmpty
+	}
+
+	path := p.dataFolderName + p.dataFileName
+
+	file, err := os.OpenFile(path, os.O_APPEND|os.O_CREATE|os.O_WRONLY, 0644)
+	if err != nil {
+		return err
+	}
+
+	defer file.Close()
+
+	content := ""
+	for _, line := range lines {
+		content += line + "\n"
+	}
+
+	writer := bufio.NewWriter(file)
+	if _, err := writer.WriteString(content); err != nil {
+		return err
+	}
+
+	return writer.Flush()
+}
+
+func (p *PersistenceImpl) AppendKeyValuePairsArray(keyValues ...string) error {
 	length := len(keyValues)
 	if length%2 != 0 {
 		return fmt.Errorf("length of input array must be even: %d", len(keyValues))
@@ -94,7 +150,7 @@ func (p *PersistenceImpl) AppendLogArray(keyValues ...string) error {
 	return writer.Flush()
 }
 
-func (p *PersistenceImpl) AppendLog(data map[string]string) error {
+func (p *PersistenceImpl) AppendKeyValuePairsMap(data map[string]string) error {
 	if p.dataFileName == "" {
 		return ErrFileNameIsEmpty
 	}
@@ -129,7 +185,7 @@ func (p *PersistenceImpl) AppendLog(data map[string]string) error {
 	return nil
 }
 
-func (p *PersistenceImpl) ReadLogsToArray() ([]string, error) {
+func (p *PersistenceImpl) ReadKeyValuePairsToArray() ([]string, error) {
 
 	if p.dataFileName == "" {
 		return nil, ErrFileNameIsEmpty
@@ -210,7 +266,7 @@ func (p *PersistenceImpl) ReadAllFromFile() (map[string]string, error) {
 	return data, nil
 }
 
-func (p *PersistenceImpl) ReadNewestLog(keys []string) (map[string]string, error) {
+func (p *PersistenceImpl) ReadKeyValuePairsToMap(keys []string) (map[string]string, error) {
 	if p.dataFileName == "" {
 		return nil, ErrFileNameIsEmpty
 	}

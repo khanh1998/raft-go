@@ -5,6 +5,7 @@ import (
 	"khanh/raft-go/common"
 	"khanh/raft-go/observability"
 	"reflect"
+	"sort"
 	"sync"
 	"testing"
 
@@ -41,17 +42,14 @@ func TestKeyValueStateMachine_Process(t *testing.T) {
 		keyLock               map[string]int
 	}
 	type args struct {
-		command     any
-		clientID    int
-		sequenceNum int
-		logIndex    int
-		clusterTime uint64
+		log      common.Log
+		logIndex int
 	}
 	tests := []struct {
 		name       string
 		fields     fields
 		args       args
-		wantResult any
+		wantResult string
 		wantFields *fields
 		wantErr    bool
 	}{
@@ -64,9 +62,7 @@ func TestKeyValueStateMachine_Process(t *testing.T) {
 				clients: map[int]ClientEntry{},
 			},
 			args: args{
-				command:     "get name",
-				clientID:    0,
-				sequenceNum: 0,
+				log: common.Log{Command: "get name"},
 			},
 			wantResult: "khanh",
 			wantErr:    false,
@@ -85,9 +81,7 @@ func TestKeyValueStateMachine_Process(t *testing.T) {
 				},
 			},
 			args: args{
-				command:     "get name",
-				clientID:    1,
-				sequenceNum: 5,
+				log: common.Log{Command: "get name", ClientID: 1, SequenceNum: 5},
 			},
 			wantResult: "hi you",
 			wantErr:    false,
@@ -106,9 +100,7 @@ func TestKeyValueStateMachine_Process(t *testing.T) {
 				},
 			},
 			args: args{
-				command:     "get name",
-				clientID:    1,
-				sequenceNum: 5,
+				log: common.Log{Command: "get name", ClientID: 1, SequenceNum: 5},
 			},
 			wantResult: "hi you",
 			wantErr:    false,
@@ -127,11 +119,9 @@ func TestKeyValueStateMachine_Process(t *testing.T) {
 				},
 			},
 			args: args{
-				command:     "get age",
-				clientID:    1,
-				sequenceNum: 4,
+				log: common.Log{Command: "get age", ClientID: 1, SequenceNum: 4},
 			},
-			wantResult: nil,
+			wantResult: "",
 			wantErr:    true,
 		},
 		{
@@ -143,9 +133,7 @@ func TestKeyValueStateMachine_Process(t *testing.T) {
 				clients: map[int]ClientEntry{},
 			},
 			args: args{
-				command:     "set address ho chi minh city",
-				clientID:    0,
-				sequenceNum: 0,
+				log: common.Log{Command: "set address ho chi minh city"},
 			},
 			wantFields: &fields{
 				data: map[string]string{
@@ -167,9 +155,7 @@ func TestKeyValueStateMachine_Process(t *testing.T) {
 				clients: map[int]ClientEntry{},
 			},
 			args: args{
-				command:     "del name",
-				clientID:    0,
-				sequenceNum: 0,
+				log: common.Log{Command: "del name"},
 			},
 			wantFields: &fields{
 				data: map[string]string{
@@ -177,7 +163,7 @@ func TestKeyValueStateMachine_Process(t *testing.T) {
 				},
 				clients: map[int]ClientEntry{},
 			},
-			wantResult: nil,
+			wantResult: "",
 			wantErr:    false,
 		},
 		{
@@ -190,9 +176,7 @@ func TestKeyValueStateMachine_Process(t *testing.T) {
 				clients: map[int]ClientEntry{},
 			},
 			args: args{
-				command:     "del nation",
-				clientID:    0,
-				sequenceNum: 0,
+				log: common.Log{Command: "del nation"},
 			},
 			wantFields: &fields{
 				data: map[string]string{
@@ -201,7 +185,7 @@ func TestKeyValueStateMachine_Process(t *testing.T) {
 				},
 				clients: map[int]ClientEntry{},
 			},
-			wantResult: nil,
+			wantResult: "",
 			wantErr:    true,
 		},
 		{
@@ -213,9 +197,7 @@ func TestKeyValueStateMachine_Process(t *testing.T) {
 				clients: map[int]ClientEntry{},
 			},
 			args: args{
-				command:     common.NoOperation,
-				clientID:    0,
-				sequenceNum: 0,
+				log: common.Log{Command: common.NoOperation},
 			},
 			wantFields: &fields{
 				data: map[string]string{
@@ -223,7 +205,7 @@ func TestKeyValueStateMachine_Process(t *testing.T) {
 				},
 				clients: map[int]ClientEntry{},
 			},
-			wantResult: nil,
+			wantResult: "",
 			wantErr:    false,
 		},
 		{
@@ -235,11 +217,9 @@ func TestKeyValueStateMachine_Process(t *testing.T) {
 				clients: map[int]ClientEntry{},
 			},
 			args: args{
-				command:     "",
-				clientID:    0,
-				sequenceNum: 0,
+				log: common.Log{},
 			},
-			wantResult: nil,
+			wantResult: "",
 			wantErr:    true,
 		},
 		{
@@ -251,11 +231,9 @@ func TestKeyValueStateMachine_Process(t *testing.T) {
 				clients: map[int]ClientEntry{},
 			},
 			args: args{
-				command:     "get",
-				clientID:    0,
-				sequenceNum: 0,
+				log: common.Log{Command: "get"},
 			},
-			wantResult: nil,
+			wantResult: "",
 			wantErr:    true,
 		},
 		{
@@ -267,27 +245,9 @@ func TestKeyValueStateMachine_Process(t *testing.T) {
 				clients: map[int]ClientEntry{},
 			},
 			args: args{
-				command:     "set name",
-				clientID:    0,
-				sequenceNum: 0,
+				log: common.Log{Command: "set name"},
 			},
-			wantResult: nil,
-			wantErr:    true,
-		},
-		{
-			name: "command is not string",
-			fields: fields{
-				data: map[string]string{
-					"name": "khanh",
-				},
-				clients: map[int]ClientEntry{},
-			},
-			args: args{
-				command:     123,
-				clientID:    0,
-				sequenceNum: -1,
-			},
-			wantResult: nil,
+			wantResult: "",
 			wantErr:    true,
 		},
 		{
@@ -299,11 +259,9 @@ func TestKeyValueStateMachine_Process(t *testing.T) {
 				clients: map[int]ClientEntry{},
 			},
 			args: args{
-				command:     "do whatever you want",
-				clientID:    5,
-				sequenceNum: 6,
+				log: common.Log{Command: "do whatever you want", ClientID: 5, SequenceNum: 6},
 			},
-			wantResult: nil,
+			wantResult: "",
 			wantErr:    true,
 		},
 		{
@@ -316,11 +274,8 @@ func TestKeyValueStateMachine_Process(t *testing.T) {
 				clientSessionDuration: 5,
 			},
 			args: args{
-				command:     "register",
-				clientID:    0,
-				sequenceNum: 0,
-				logIndex:    2,
-				clusterTime: 3,
+				logIndex: 2,
+				log:      common.Log{Command: "register", ClusterTime: 3},
 			},
 			wantFields: &fields{
 				data: map[string]string{
@@ -329,13 +284,13 @@ func TestKeyValueStateMachine_Process(t *testing.T) {
 				clients: map[int]ClientEntry{
 					2: {
 						LastSequenceNum: 0,
-						LastResponse:    nil,
+						LastResponse:    "",
 						ExpiryTime:      8,
 						LockedKeys:      make(map[string]struct{}),
 					},
 				},
 			},
-			wantResult: nil,
+			wantResult: "",
 			wantErr:    false,
 		},
 		{
@@ -349,10 +304,7 @@ func TestKeyValueStateMachine_Process(t *testing.T) {
 				},
 			},
 			args: args{
-				command:     "set address ho chi minh city",
-				clientID:    1,
-				sequenceNum: 1,
-				clusterTime: 10,
+				log: common.Log{Command: "set address ho chi minh city", ClientID: 1, SequenceNum: 1, ClusterTime: 10},
 			},
 			wantFields: &fields{
 				data: map[string]string{
@@ -380,10 +332,7 @@ func TestKeyValueStateMachine_Process(t *testing.T) {
 				},
 			},
 			args: args{
-				command:     "set address ho chi minh city",
-				clientID:    1,
-				sequenceNum: 1,
-				clusterTime: 30,
+				log: common.Log{Command: "set address ho chi minh city", ClientID: 1, SequenceNum: 1, ClusterTime: 30},
 			},
 			wantFields: &fields{
 				data: map[string]string{
@@ -394,7 +343,7 @@ func TestKeyValueStateMachine_Process(t *testing.T) {
 					4: {ExpiryTime: 31},
 				},
 			},
-			wantResult: nil,
+			wantResult: "",
 			wantErr:    true,
 		},
 		{
@@ -412,21 +361,18 @@ func TestKeyValueStateMachine_Process(t *testing.T) {
 				clientSessionDuration: 5,
 			},
 			args: args{
-				command:     "keep-alive",
-				clientID:    3,
-				sequenceNum: 1,
-				clusterTime: 30,
+				log: common.Log{Command: "keep-alive", ClientID: 3, SequenceNum: 1, ClusterTime: 30},
 			},
 			wantFields: &fields{
 				data: map[string]string{
 					"name": "khanh",
 				},
 				clients: map[int]ClientEntry{
-					3: {ExpiryTime: 35, LastSequenceNum: 1, LastResponse: nil},
+					3: {ExpiryTime: 35, LastSequenceNum: 1, LastResponse: ""},
 					4: {ExpiryTime: 31},
 				},
 			},
-			wantResult: nil,
+			wantResult: "",
 			wantErr:    false,
 		},
 	}
@@ -444,7 +390,7 @@ func TestKeyValueStateMachine_Process(t *testing.T) {
 				logger:                observability.NewZerolog(common.ObservabilityConfig{Disabled: true}, 0),
 				clientSessionDuration: tt.fields.clientSessionDuration,
 			}
-			gotResult, err := k.Process(tt.args.clientID, tt.args.sequenceNum, tt.args.command, tt.args.logIndex, tt.args.clusterTime)
+			gotResult, err := k.Process(tt.args.logIndex, tt.args.log)
 			if (err != nil) != tt.wantErr {
 				t.Errorf("KeyValueStateMachine.Process() error = %v, wantErr %v", err, tt.wantErr)
 				return
@@ -484,17 +430,14 @@ func TestKeyValueStateMachine_Process2(t *testing.T) {
 		keyLock               map[string]int
 	}
 	type args struct {
-		command     any
-		clientID    int
-		sequenceNum int
-		logIndex    int
-		clusterTime uint64
+		logIndex int
+		log      common.Log
 	}
 	tests := []struct {
 		name       string
 		fields     fields
 		args       args
-		wantResult any
+		wantResult string
 		wantFields *fields
 		wantErr    bool
 	}{
@@ -514,10 +457,7 @@ func TestKeyValueStateMachine_Process2(t *testing.T) {
 				keyLock:               map[string]int{},
 			},
 			args: args{
-				command:     "set --lock nation vietnam",
-				clientID:    1,
-				sequenceNum: 2,
-				clusterTime: 30,
+				log: common.Log{Command: "set --lock nation vietnam", ClientID: 1, SequenceNum: 2, ClusterTime: 30},
 			},
 			wantFields: &fields{
 				data: map[string]string{
@@ -553,10 +493,7 @@ func TestKeyValueStateMachine_Process2(t *testing.T) {
 				keyLock:               map[string]int{},
 			},
 			args: args{
-				command:     "set --lock name khanh",
-				clientID:    1,
-				sequenceNum: 2,
-				clusterTime: 30,
+				log: common.Log{Command: "set --lock name khanh", ClientID: 1, SequenceNum: 2, ClusterTime: 30},
 			},
 			wantFields: &fields{
 				data: map[string]string{
@@ -587,7 +524,7 @@ func TestKeyValueStateMachine_Process2(t *testing.T) {
 						LockedKeys: map[string]struct{}{"name": {}},
 					},
 					2: {
-						ExpiryTime: 50, LastSequenceNum: 1, LastResponse: nil,
+						ExpiryTime: 50, LastSequenceNum: 1, LastResponse: "",
 						LockedKeys: map[string]struct{}{},
 					},
 				},
@@ -597,10 +534,7 @@ func TestKeyValueStateMachine_Process2(t *testing.T) {
 				},
 			},
 			args: args{
-				command:     "set --lock name kelvin",
-				clientID:    2,
-				sequenceNum: 2,
-				clusterTime: 30,
+				log: common.Log{Command: "set --lock name kelvin", ClientID: 2, SequenceNum: 2, ClusterTime: 30},
 			},
 			wantFields: &fields{
 				data: map[string]string{
@@ -635,7 +569,7 @@ func TestKeyValueStateMachine_Process2(t *testing.T) {
 						LockedKeys: map[string]struct{}{"name": {}},
 					},
 					2: {
-						ExpiryTime: 50, LastSequenceNum: 1, LastResponse: nil,
+						ExpiryTime: 50, LastSequenceNum: 1, LastResponse: "",
 						LockedKeys: map[string]struct{}{},
 					},
 				},
@@ -645,10 +579,7 @@ func TestKeyValueStateMachine_Process2(t *testing.T) {
 				},
 			},
 			args: args{
-				command:     "set --lock name kelvin",
-				clientID:    2,
-				sequenceNum: 2,
-				clusterTime: 30,
+				log: common.Log{Command: "set --lock name kelvin", ClientID: 2, SequenceNum: 2, ClusterTime: 30},
 			},
 			wantFields: &fields{
 				data: map[string]string{
@@ -691,10 +622,7 @@ func TestKeyValueStateMachine_Process2(t *testing.T) {
 				},
 			},
 			args: args{
-				command:     "del name",
-				clientID:    1,
-				sequenceNum: 3,
-				clusterTime: 30,
+				log: common.Log{Command: "del name", ClientID: 1, SequenceNum: 3, ClusterTime: 30},
 			},
 			wantFields: &fields{
 				data: map[string]string{
@@ -702,7 +630,7 @@ func TestKeyValueStateMachine_Process2(t *testing.T) {
 				},
 				clients: map[int]ClientEntry{
 					1: {
-						ExpiryTime: 40, LastSequenceNum: 3, LastResponse: nil,
+						ExpiryTime: 40, LastSequenceNum: 3, LastResponse: "",
 						LockedKeys: map[string]struct{}{},
 					},
 					2: {
@@ -714,7 +642,7 @@ func TestKeyValueStateMachine_Process2(t *testing.T) {
 					"nation": 2,
 				},
 			},
-			wantResult: nil,
+			wantResult: "",
 			wantErr:    false,
 		},
 		{
@@ -741,10 +669,7 @@ func TestKeyValueStateMachine_Process2(t *testing.T) {
 				},
 			},
 			args: args{
-				command:     "del nation",
-				clientID:    1,
-				sequenceNum: 3,
-				clusterTime: 30,
+				log: common.Log{Command: "del nation", ClientID: 1, SequenceNum: 3, ClusterTime: 30},
 			},
 			wantFields: &fields{
 				data: map[string]string{
@@ -753,7 +678,7 @@ func TestKeyValueStateMachine_Process2(t *testing.T) {
 				},
 				clients: map[int]ClientEntry{
 					1: {
-						ExpiryTime: 40, LastSequenceNum: 3, LastResponse: nil,
+						ExpiryTime: 40, LastSequenceNum: 3, LastResponse: "",
 						LockedKeys: map[string]struct{}{"name": {}},
 					},
 					2: {
@@ -766,7 +691,7 @@ func TestKeyValueStateMachine_Process2(t *testing.T) {
 					"nation": 2,
 				},
 			},
-			wantResult: nil,
+			wantResult: "",
 			wantErr:    true,
 		},
 		{
@@ -793,10 +718,7 @@ func TestKeyValueStateMachine_Process2(t *testing.T) {
 				},
 			},
 			args: args{
-				command:     "del nation",
-				clientID:    1,
-				sequenceNum: 3,
-				clusterTime: 30,
+				log: common.Log{Command: "del nation", ClientID: 1, SequenceNum: 3, ClusterTime: 30},
 			},
 			wantFields: &fields{
 				data: map[string]string{
@@ -804,7 +726,7 @@ func TestKeyValueStateMachine_Process2(t *testing.T) {
 				},
 				clients: map[int]ClientEntry{
 					1: {
-						ExpiryTime: 40, LastSequenceNum: 3, LastResponse: nil,
+						ExpiryTime: 40, LastSequenceNum: 3, LastResponse: "",
 						LockedKeys: map[string]struct{}{"name": {}},
 					},
 				},
@@ -812,7 +734,7 @@ func TestKeyValueStateMachine_Process2(t *testing.T) {
 					"name": 1,
 				},
 			},
-			wantResult: nil,
+			wantResult: "",
 			wantErr:    false,
 		},
 	}
@@ -827,7 +749,7 @@ func TestKeyValueStateMachine_Process2(t *testing.T) {
 				logger:                observability.NewZerolog(common.ObservabilityConfig{Disabled: true}, 0),
 				clientSessionDuration: tt.fields.clientSessionDuration,
 			}
-			gotResult, err := k.Process(tt.args.clientID, tt.args.sequenceNum, tt.args.command, tt.args.logIndex, tt.args.clusterTime)
+			gotResult, err := k.Process(tt.args.logIndex, tt.args.log)
 			if (err != nil) != tt.wantErr {
 				t.Errorf("KeyValueStateMachine.Process() error = %v, wantErr %v", err, tt.wantErr)
 				return
@@ -861,7 +783,7 @@ func TestKeyValueStateMachine_setCache(t *testing.T) {
 	type args struct {
 		clientID    int
 		sequenceNum int
-		response    any
+		response    string
 	}
 	tests := []struct {
 		name   string
@@ -910,14 +832,14 @@ func TestKeyValueStateMachine_setCache(t *testing.T) {
 			args: args{
 				clientID:    1,
 				sequenceNum: 0,
-				response:    nil,
+				response:    "",
 			},
 			want: fields{
 				data: map[string]string{},
 				cache: map[int]ClientEntry{
 					1: {
 						LastSequenceNum: 0,
-						LastResponse:    nil,
+						LastResponse:    "",
 					},
 				},
 			},
@@ -964,7 +886,7 @@ func TestKeyValueStateMachine_setCache(t *testing.T) {
 	}
 }
 
-func TestKeyValueStateMachine_takeSnapshot(t *testing.T) {
+func TestKeyValueStateMachine_serializeSnapshot(t *testing.T) {
 	type fields struct {
 		current     snapshot
 		previous    snapshot
@@ -973,12 +895,20 @@ func TestKeyValueStateMachine_takeSnapshot(t *testing.T) {
 	tests := []struct {
 		name   string
 		fields fields
-		want   map[string]string
+		want   []string
 	}{
 		{
 			name: "case 1",
 			fields: fields{
-				current: snapshot{
+				previous: snapshot{
+					keyLock: map[string]int{
+						"name": 1,
+						"city": 2,
+					},
+					sessions: map[int]ClientEntry{
+						1: {LastSequenceNum: 2, LastResponse: "abc", ExpiryTime: 100},
+						2: {LastSequenceNum: 3, LastResponse: "", ExpiryTime: 130},
+					},
 					lastConfig: map[int]common.ClusterMember{
 						1: {
 							ID:      1,
@@ -996,23 +926,31 @@ func TestKeyValueStateMachine_takeSnapshot(t *testing.T) {
 						"city":        "hcm",
 						"citizenship": "vietnam",
 					},
+
 					lastTerm:  5,
 					lastIndex: 6,
 				},
 			},
-			want: map[string]string{
-				"last_index":   "6",
-				"last_term":    "5",
-				"member_count": "2",
-				"log_count":    "3",
-				"member_0":     "1|localhost:8080|localhost:1234",
-				"member_1":     "2|localhost:8081|localhost:1235",
-				"key_2":        "name",
-				"value_2":      "khanh",
-				"key_1":        "city",
-				"value_1":      "hcm",
-				"key_0":        "citizenship",
-				"value_0":      "vietnam",
+			want: []string{
+				"last_log_index=6",
+				"last_log_term=5",
+				"member_count=2",
+				"session_count=2",
+				"key_value_count=3",
+				"key_lock_count=2",
+
+				"1|localhost:8080|localhost:1234",
+				"2|localhost:8081|localhost:1235",
+
+				"1|2|100|abc",
+				"2|3|130|",
+
+				"name=khanh",
+				"city=hcm",
+				"citizenship=vietnam",
+
+				"name=1",
+				"city=2",
 			},
 		},
 	}
@@ -1023,66 +961,21 @@ func TestKeyValueStateMachine_takeSnapshot(t *testing.T) {
 				previous:    tt.fields.previous,
 				persistance: tt.fields.persistance,
 			}
-			if got := k.takeSnapshot(); !reflect.DeepEqual(got, tt.want) {
+			got := k.serializeSnapshot()
+			sort.Strings(got)
+			sort.Strings(tt.want)
+			if !reflect.DeepEqual(got, tt.want) {
 				t.Errorf("KeyValueStateMachine.takeSnapshot() = %v, want %v", got, tt.want)
 			}
 		})
 	}
 }
 
-func TestKeyValueStateMachine_prepareKeys(t *testing.T) {
-	type fields struct {
-		persistance Persistance
-		data        []string
-	}
-	tests := []struct {
-		name     string
-		fields   fields
-		wantKeys []string
-		wantErr  bool
-	}{
-		{
-			name: "case 1",
-			fields: fields{
-				persistance: common.NewPersistenceMock(),
-				data: []string{
-					"last_index=6",
-					"last_term=5",
-					"member_count=2",
-					"log_count=3",
-				},
-			},
-			wantKeys: []string{
-				"log_count", "member_count", "last_index", "last_term",
-				"member_0", "member_1",
-				"key_0", "value_0", "key_1", "value_1", "key_2", "value_2",
-			},
-		},
-	}
-	for _, tt := range tests {
-		t.Run(tt.name, func(t *testing.T) {
-			db := common.NewPersistenceMock()
-			db.SetData(tt.fields.data)
-			k := &KeyValueStateMachine{
-				persistance: db,
-			}
-			gotKeys, err := k.prepareKeys()
-			if (err != nil) != tt.wantErr {
-				t.Errorf("KeyValueStateMachine.prepareKeys() error = %v, wantErr %v", err, tt.wantErr)
-				return
-			}
-			if !reflect.DeepEqual(gotKeys, tt.wantKeys) {
-				t.Errorf("KeyValueStateMachine.prepareKeys() = %v, want %v", gotKeys, tt.wantKeys)
-			}
-		})
-	}
-}
-
-func TestKeyValueStateMachine_applySnapshot(t *testing.T) {
+func TestKeyValueStateMachine_deserializeSnapshot(t *testing.T) {
 	type fields struct {
 	}
 	type args struct {
-		data map[string]string
+		data []string
 	}
 	tests := []struct {
 		name    string
@@ -1094,19 +987,26 @@ func TestKeyValueStateMachine_applySnapshot(t *testing.T) {
 		{
 			name: "case 1",
 			args: args{
-				data: map[string]string{
-					"last_index":   "6",
-					"last_term":    "5",
-					"member_count": "2",
-					"log_count":    "3",
-					"member_0":     "1|localhost:8080|localhost:1234",
-					"member_1":     "2|localhost:8081|localhost:1235",
-					"key_2":        "name",
-					"value_2":      "khanh",
-					"key_1":        "city",
-					"value_1":      "hcm",
-					"key_0":        "citizenship",
-					"value_0":      "vietnam",
+				data: []string{
+					"last_log_index=6",
+					"last_log_term=5",
+					"member_count=2",
+					"session_count=2",
+					"key_value_count=3",
+					"key_lock_count=2",
+
+					"1|localhost:8080|localhost:1234",
+					"2|localhost:8081|localhost:1235",
+
+					"1|2|100|abc",
+					"2|3|130|",
+
+					"name=khanh",
+					"city=hcm",
+					"citizenship=vietnam",
+
+					"name=1",
+					"city=2",
 				},
 			},
 			want: snapshot{
@@ -1127,6 +1027,14 @@ func TestKeyValueStateMachine_applySnapshot(t *testing.T) {
 					"city":        "hcm",
 					"citizenship": "vietnam",
 				},
+				keyLock: map[string]int{
+					"name": 1,
+					"city": 2,
+				},
+				sessions: map[int]ClientEntry{
+					1: {LastSequenceNum: 2, LastResponse: "abc", ExpiryTime: 100},
+					2: {LastSequenceNum: 3, LastResponse: "", ExpiryTime: 130},
+				},
 				lastTerm:  5,
 				lastIndex: 6,
 			},
@@ -1135,7 +1043,7 @@ func TestKeyValueStateMachine_applySnapshot(t *testing.T) {
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
 			k := &KeyValueStateMachine{}
-			err := k.applySnapshot(tt.args.data)
+			err := k.deserializeSnapshot(tt.args.data)
 			if (err != nil) != tt.wantErr {
 				t.Errorf("KeyValueStateMachine.applySnapshot() error = %v, wantErr %v", err, tt.wantErr)
 			}
@@ -1160,18 +1068,25 @@ func TestKeyValueStateMachine_RestoreFromFile(t *testing.T) {
 			name: "case 1",
 			fields: fields{
 				data: []string{
-					"last_index=6",
-					"last_term=5",
+					"last_log_index=6",
+					"last_log_term=5",
 					"member_count=2",
-					"log_count=3",
-					"member_0=1|localhost:8080|localhost:1234",
-					"member_1=2|localhost:8081|localhost:1235",
-					"key_2=name",
-					"value_2=khanh",
-					"key_1=city",
-					"value_1=hcm",
-					"key_0=citizenship",
-					"value_0=vietnam",
+					"session_count=2",
+					"key_value_count=3",
+					"key_lock_count=2",
+
+					"1|localhost:8080|localhost:1234",
+					"2|localhost:8081|localhost:1235",
+
+					"1|2|100|abc",
+					"2|3|130|",
+
+					"name=khanh",
+					"city=hcm",
+					"citizenship=vietnam",
+
+					"name=1",
+					"city=2",
 				},
 			},
 			want: snapshot{
@@ -1283,12 +1198,12 @@ func TestKeyValueStateMachine_SaveSnapshotToFile(t *testing.T) {
 				persistance: db,
 			}
 
-			err := k.saveSnapshotToFile()
+			err := k.saveSnapshotToFile("")
 			if (err != nil) != tt.wantErr {
 				t.Errorf("KeyValueStateMachine.SaveSnapshotToFile() error = %v, wantErr %v", err, tt.wantErr)
 			}
 
-			data, err := db.ReadNewestLog(tt.fields.keys)
+			data, err := db.ReadKeyValuePairsToMap(tt.fields.keys)
 			if err != nil {
 				t.Errorf("KeyValueStateMachine.SaveSnapshotToFile() error = %v", err)
 			}
@@ -1309,7 +1224,7 @@ func TestKeyValueStateMachine_findLatestSnapshot(t *testing.T) {
 	}{
 		{
 			name:         "case 1",
-			args:         []string{"a", "snapshot.4.dat", "snapshot.9.dat", "snapshot.0.dat", "wal.dat", "snapshot.8.dat"},
+			args:         []string{"a", "snapshot.4.dat", "tmp.snapshot.10.dat", "snapshot.9.dat", "snapshot.0.dat", "wal.dat", "snapshot.8.dat"},
 			wantFileName: "snapshot.9.dat",
 		},
 	}

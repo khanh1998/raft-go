@@ -26,7 +26,7 @@ func Test_nodeImpl_DeleteFrom(t *testing.T) {
 
 	err = n.deleteLogFrom(ctx, 1)
 	assert.ErrorIs(t, err, ErrLogIsEmpty)
-	strLogs, err := n.db.ReadLogsToArray()
+	strLogs, err := n.db.ReadKeyValuePairsToArray()
 	assert.NoError(t, err)
 	assert.Equal(t, strLogs, []string{})
 
@@ -43,7 +43,7 @@ func Test_nodeImpl_DeleteFrom(t *testing.T) {
 	assert.ErrorIs(t, err, ErrIndexOutOfRange)
 	err = n.deleteLogFrom(ctx, 0)
 	assert.ErrorIs(t, err, ErrIndexOutOfRange)
-	strLogs, err = n.db.ReadLogsToArray()
+	strLogs, err = n.db.ReadKeyValuePairsToArray()
 	assert.NoError(t, err)
 	assert.Equal(t, strLogs, []string{})
 
@@ -53,7 +53,7 @@ func Test_nodeImpl_DeleteFrom(t *testing.T) {
 	err = n.deleteLogFrom(ctx, 3)
 	assert.NoError(t, err)
 	assert.Equal(t, data[:2], n.logs)
-	strLogs, err = n.db.ReadLogsToArray()
+	strLogs, err = n.db.ReadKeyValuePairsToArray()
 	assert.NoError(t, err)
 	assert.Equal(t, strLogs, []string{"delete_log", "1"})
 
@@ -63,7 +63,7 @@ func Test_nodeImpl_DeleteFrom(t *testing.T) {
 	err = n.deleteLogFrom(ctx, 2)
 	assert.NoError(t, err)
 	assert.Equal(t, data[:1], n.logs)
-	strLogs, err = n.db.ReadLogsToArray()
+	strLogs, err = n.db.ReadKeyValuePairsToArray()
 	assert.NoError(t, err)
 	assert.Equal(t, strLogs, []string{"delete_log", "2"})
 
@@ -73,7 +73,7 @@ func Test_nodeImpl_DeleteFrom(t *testing.T) {
 	err = n.deleteLogFrom(ctx, 1)
 	assert.NoError(t, err)
 	assert.Equal(t, []common.Log{}, n.logs)
-	strLogs, err = n.db.ReadLogsToArray()
+	strLogs, err = n.db.ReadKeyValuePairsToArray()
 	assert.NoError(t, err)
 	assert.Equal(t, strLogs, []string{"delete_log", "3"})
 }

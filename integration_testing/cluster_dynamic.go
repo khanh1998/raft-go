@@ -52,7 +52,11 @@ func (c *Cluster) createNewNode(ctx context.Context, id int) error {
 	catchingUp := id > 1
 
 	dataFolder := fmt.Sprintf("%s%d/", c.config.DataFolder, id)
-	common.CreateFolderIfNotExists(dataFolder)
+
+	smDb, err := common.NewPersistence(dataFolder, "")
+	if err != nil {
+		return err
+	}
 
 	param := node.NewNodeParams{
 		ID: id,
@@ -87,7 +91,7 @@ func (c *Cluster) createNewNode(ctx context.Context, id int) error {
 			Logger: c.log,
 		},
 		StateMachine: state_machine.NewKeyValueStateMachineParams{
-			DB:                    common.NewPersistence(dataFolder, ""),
+			DB:                    smDb,
 			DoSnapshot:            c.config.StateMachineSnapshot,
 			ClientSessionDuration: uint64(c.config.ClientSessionDuration),
 			Logger:                c.log,

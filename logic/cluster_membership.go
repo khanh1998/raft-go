@@ -408,7 +408,7 @@ func (r *RaftBrainImpl) restoreClusterMemberInfoFromLogs(ctx context.Context) (e
 	r.members = []common.ClusterMember{}
 
 	for _, log := range r.logs {
-		err = r.changeMember(log.Command.(string))
+		err = r.changeMember(log.Command)
 		if err != nil {
 			r.log().ErrorContext(ctx, "restoreClusterMemberInfoFromLogs", err)
 		}

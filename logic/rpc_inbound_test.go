@@ -359,7 +359,7 @@ func Test_nodeImpl_AppendEntries(t *testing.T) {
 			log.Info().Int("index", index).Msg("test case AppendEntriesOutput")
 
 			data := testCase.n.serializeToArray()
-			err = testCase.n.db.AppendLogArray(data...)
+			err = testCase.n.db.AppendKeyValuePairsArray(data...)
 			assert.NoError(t, err)
 
 			var out common.AppendEntriesOutput

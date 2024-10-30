@@ -39,7 +39,7 @@ func (n *RaftBrainImpl) deleteLogFrom(ctx context.Context, index int) (err error
 
 	// append changes to WAL
 	deletedLogCount := len(n.logs) - realIndex
-	if err := n.db.AppendLogArray("delete_log", strconv.Itoa(deletedLogCount)); err != nil {
+	if err := n.db.AppendKeyValuePairsArray("delete_log", strconv.Itoa(deletedLogCount)); err != nil {
 		n.log().ErrorContext(ctx, "DeleteLogFrom save to db error: ", err)
 
 		return err
@@ -60,7 +60,7 @@ func (n *RaftBrainImpl) deleteLogFrom(ctx context.Context, index int) (err error
 	}
 
 	for i := len(deletedLogs) - 1; i >= 0; i-- {
-		n.revertChangeMember(deletedLogs[i].Command.(string))
+		n.revertChangeMember(deletedLogs[i].Command)
 	}
 
 	return nil
@@ -72,7 +72,7 @@ func (n *RaftBrainImpl) appendLogs(ctx context.Context, logItems []common.Log) (
 		keyValuePairs = append(keyValuePairs, "append_log", logItems[i].ToString())
 	}
 
-	if err := n.db.AppendLogArray(keyValuePairs...); err != nil {
+	if err := n.db.AppendKeyValuePairsArray(keyValuePairs...); err != nil {
 		n.log().ErrorContext(ctx, "appendLogs save to db error: ", err)
 
 		return err
@@ -83,14 +83,14 @@ func (n *RaftBrainImpl) appendLogs(ctx context.Context, logItems []common.Log) (
 	// we need to update cluster membership infomation as soon as we receive the log,
 	// don't need to wait until it get commited.
 	for _, logItem := range logItems {
-		n.changeMember(logItem.Command.(string))
+		n.changeMember(logItem.Command)
 	}
 
 	return nil
 }
 
 func (n *RaftBrainImpl) appendLog(ctx context.Context, logItem common.Log) (int, error) {
-	if err := n.db.AppendLogArray("append_log", logItem.ToString()); err != nil {
+	if err := n.db.AppendKeyValuePairsArray("append_log", logItem.ToString()); err != nil {
 		n.log().ErrorContext(ctx, "AppendLog save to db error: ", err)
 
 		return 0, err
@@ -103,7 +103,7 @@ func (n *RaftBrainImpl) appendLog(ctx context.Context, logItem common.Log) (int,
 
 	// we need to update cluster membership information as soon as we receive the log,
 	// don't need to wait until it get committed.
-	n.changeMember(logItem.Command.(string))
+	n.changeMember(logItem.Command)
 
 	return index, nil
 }
@@ -127,7 +127,7 @@ func (n *RaftBrainImpl) setLeaderID(ctx context.Context, leaderId int) {
 }
 
 func (n *RaftBrainImpl) setCurrentTerm(ctx context.Context, term int) error {
-	if err := n.db.AppendLogArray("current_term", strconv.Itoa(term)); err != nil {
+	if err := n.db.AppendKeyValuePairsArray("current_term", strconv.Itoa(term)); err != nil {
 		n.log().ErrorContext(ctx, "SetCurrentTerm save to db error: ", err)
 
 		return err
@@ -139,7 +139,7 @@ func (n *RaftBrainImpl) setCurrentTerm(ctx context.Context, term int) error {
 }
 
 func (n *RaftBrainImpl) setVotedFor(ctx context.Context, nodeID int) error {
-	if err := n.db.AppendLogArray("voted_for", strconv.Itoa(nodeID)); err != nil {
+	if err := n.db.AppendKeyValuePairsArray("voted_for", strconv.Itoa(nodeID)); err != nil {
 		n.log().ErrorContext(ctx, "SetVotedFor save to db error: ", err)
 		return err
 	}
@@ -163,6 +163,14 @@ func (n *RaftBrainImpl) isLogUpToDate(lastLogIndex int, lastLogTerm int) bool {
 	}
 }
 
+// this function will pick committed logs and push it to state machine
+func (n *RaftBrainImpl) logInjector(ctx context.Context) {
+	for {
+		<-time.After(time.Duration(n.heartBeatTimeOutMax))
+		n.applyLog(ctx)
+	}
+}
+
 // All servers: If commitIndex > lastApplied: increment lastApplied,
 // apply log[lastApplied] to state machine (§5.3)
 func (n *RaftBrainImpl) applyLog(ctx context.Context) {
@@ -177,7 +185,7 @@ func (n *RaftBrainImpl) applyLog(ctx context.Context) {
 
 		n.clusterClock.NewEpoch(log.ClusterTime)
 
-		res, err := n.stateMachine.Process(log.ClientID, log.SequenceNum, log.Command, n.lastApplied, log.ClusterTime)
+		res, err := n.stateMachine.Process(n.lastApplied, log)
 
 		if n.state == common.StateLeader {
 			err = n.arm.PutResponse(n.lastApplied, res, err, 30*time.Second)
@@ -191,6 +199,12 @@ func (n *RaftBrainImpl) applyLog(ctx context.Context) {
 		if err != nil {
 			n.log().ErrorContext(ctx, "applyLog_Process", err)
 		}
+
+		go func() {
+			if err = n.stateMachine.StartSnapshot(); err != nil {
+				n.log().ErrorContext(ctx, "applyLog_startSnapshot", err)
+			}
+		}()
 	}
 }
 

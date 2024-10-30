@@ -32,10 +32,6 @@ type NewNodeParams struct {
 }
 
 func NewNode(ctx context.Context, params NewNodeParams) *Node {
-	if err := common.CreateFolderIfNotExists(params.DataFolder); err != nil {
-		params.Logger.FatalContext(ctx, "NewNode_CreateFolderIfNotExists", "error", err.Error())
-	}
-
 	stateMachine, err := state_machine.NewKeyValueStateMachine(params.StateMachine)
 	if err != nil {
 		params.Logger.FatalContext(ctx, "NewNode_NewKeyValueStateMachine", "error", err)

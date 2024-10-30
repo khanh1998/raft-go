@@ -70,7 +70,16 @@ func (c *Cluster) init(filePath string) {
 		l.Add(1)
 		go func(mem common.ClusterMember) {
 			dataFolder := fmt.Sprintf("%s%d/", c.config.DataFolder, mem.ID)
-			common.CreateFolderIfNotExists(dataFolder)
+
+			smDb, err := common.NewPersistence(dataFolder, "")
+			if err != nil {
+				log.Fatal("Static cluster node creating: ", err.Error())
+			}
+
+			walDb, err := common.NewPersistence(dataFolder, "wal.dat")
+			if err != nil {
+				log.Fatal("Static cluster node creating: ", err.Error())
+			}
 
 			param := node.NewNodeParams{
 				ID: mem.ID,
@@ -85,7 +94,7 @@ func (c *Cluster) init(filePath string) {
 					Logger:              log,
 					Members:             peers,
 					// DB:                persistance.NewPersistence(fmt.Sprintf("test.log.%d.dat", id+i)),
-					DB:                common.NewPersistence(dataFolder, "wal.txt"),
+					DB:                walDb,
 					RpcRequestTimeout: config.RpcRequestTimeout,
 				},
 				RPCProxy: rpc_proxy.NewRPCImplParams{
@@ -101,7 +110,7 @@ func (c *Cluster) init(filePath string) {
 					Logger: log,
 				},
 				StateMachine: state_machine.NewKeyValueStateMachineParams{
-					DB:                    common.NewPersistence(dataFolder, ""),
+					DB:                    smDb,
 					DoSnapshot:            config.StateMachineSnapshot,
 					ClientSessionDuration: uint64(config.ClientSessionDuration),
 					Logger:                log,

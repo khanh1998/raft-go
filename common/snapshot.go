@@ -6,6 +6,26 @@ import (
 	"time"
 )
 
+type SnapshotMetadata struct {
+	LastLogTerm  int
+	LastLogIndex int
+	FileName     string
+}
+
+func (s SnapshotMetadata) ToString() string {
+	return fmt.Sprintf("%s|%d|%d", s.FileName, s.LastLogIndex, s.LastLogTerm)
+}
+
+func (s *SnapshotMetadata) FromString(str string) error {
+	_, err := fmt.Scanf("%s|%d|%d", s.FileName, s.LastLogIndex, s.LastLogTerm)
+	return err
+}
+
+type BeginSnapshotResponse struct {
+	LastLogTerm  int
+	LastLogIndex int
+}
+
 type SnapshotNotification struct {
 	LastConfig map[int]ClusterMember // cluster members
 	LastTerm   int

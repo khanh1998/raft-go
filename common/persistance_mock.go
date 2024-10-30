@@ -31,6 +31,10 @@ func (p *PersistenceMockImpl) OpenFile(fileName string) error {
 	return nil
 }
 
+func (p *PersistenceMockImpl) RenameFile(old string, new string) error {
+	return nil
+}
+
 func (p PersistenceMockImpl) Data() []string {
 	return p.data
 }
@@ -43,7 +47,12 @@ func (p *PersistenceMockImpl) SetData(data []string) {
 	p.data = data
 }
 
-func (p *PersistenceMockImpl) AppendLog(data map[string]string) error {
+func (p *PersistenceMockImpl) AppendStrings(lines ...string) error {
+	p.data = append(p.data, lines...)
+	return nil
+}
+
+func (p *PersistenceMockImpl) AppendKeyValuePairsMap(data map[string]string) error {
 	sortedKeys := make([]string, 0, len(data))
 	for k := range data {
 		sortedKeys = append(sortedKeys, k)
@@ -61,7 +70,7 @@ func (p *PersistenceMockImpl) AppendLog(data map[string]string) error {
 	return nil
 }
 
-func (p *PersistenceMockImpl) ReadNewestLog(keys []string) (map[string]string, error) {
+func (p *PersistenceMockImpl) ReadKeyValuePairsToMap(keys []string) (map[string]string, error) {
 	data := make(map[string]string)
 	if len(p.data) == 0 {
 		return data, ErrEmptyData
@@ -94,11 +103,11 @@ func (p *PersistenceMockImpl) ReadNewestLog(keys []string) (map[string]string, e
 	return data, nil
 }
 
-func (p *PersistenceMockImpl) ReadLogsToArray() ([]string, error) {
+func (p *PersistenceMockImpl) ReadKeyValuePairsToArray() ([]string, error) {
 	return p.data, nil
 }
 
-func (p *PersistenceMockImpl) AppendLogArray(keyValues ...string) error {
+func (p *PersistenceMockImpl) AppendKeyValuePairsArray(keyValues ...string) error {
 	p.data = append(p.data, keyValues...)
 	return nil
 }

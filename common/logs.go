@@ -13,7 +13,7 @@ type Log struct {
 	ClientID    int
 	SequenceNum int
 	ClusterTime uint64
-	Command     any
+	Command     string
 }
 
 func (l Log) ToString() string {

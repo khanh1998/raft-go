@@ -253,7 +253,7 @@ func (n *RaftBrainImpl) BroadcastAppendEntries(ctx context.Context) (majorityOK 
 		"quorum", n.Quorum(),
 	)
 
-	n.applyLog(ctx)
+	// n.applyLog(ctx)
 
 	span.SetStatus(codes.Ok, "finished send append entries")
 

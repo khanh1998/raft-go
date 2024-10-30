@@ -13,7 +13,7 @@ func TestPersistenceMock_AppendLog(t *testing.T) {
 		"age":  "25",
 	}
 
-	err := mock.AppendLog(data)
+	err := mock.AppendKeyValuePairsMap(data)
 	assert.NoError(t, err)
 
 	assert.Equal(t, 2, len(mock.Data()))
@@ -21,7 +21,7 @@ func TestPersistenceMock_AppendLog(t *testing.T) {
 	assert.Equal(t, "name=khanh\n", mock.Data()[1])
 }
 
-func TestPersistenceMock_ReadNewestLog(t *testing.T) {
+func TestPersistenceMock_ReadKeyValuePairsToMap(t *testing.T) {
 	mock := NewPersistenceMock()
 	mock.SetData([]string{
 		"name=khang\n",
@@ -31,7 +31,7 @@ func TestPersistenceMock_ReadNewestLog(t *testing.T) {
 		"country=vietnam\n",
 	})
 
-	data, err := mock.ReadNewestLog([]string{"name", "age", "address"})
+	data, err := mock.ReadKeyValuePairsToMap([]string{"name", "age", "address"})
 	assert.NoError(t, err)
 
 	expectedData := map[string]string{

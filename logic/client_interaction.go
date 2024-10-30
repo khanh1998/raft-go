@@ -5,6 +5,7 @@ import (
 	"errors"
 	"fmt"
 	"khanh/raft-go/common"
+	"strconv"
 	"time"
 
 	"go.opentelemetry.io/otel/codes"
@@ -28,7 +29,7 @@ func (r *RaftBrainImpl) KeepAlive(ctx context.Context, input *common.KeepAliveCl
 	defer span.End()
 	defer func() {
 		if output.Status == common.StatusNotOK {
-			span.SetStatus(codes.Error, output.Response.(string))
+			span.SetStatus(codes.Error, output.Response)
 		} else {
 			span.SetStatus(codes.Ok, "finished client request")
 		}
@@ -73,7 +74,7 @@ func (r *RaftBrainImpl) KeepAlive(ctx context.Context, input *common.KeepAliveCl
 	span.AddEvent("log appended")
 
 	var status common.ClientRequestStatus = common.StatusOK
-	var response any = nil
+	var response string = ""
 
 	if err := r.arm.Register(index); err != nil {
 		r.log().ErrorContext(ctx, "KeepAlive_Register", err)
@@ -115,7 +116,7 @@ func (r *RaftBrainImpl) ClientRequest(ctx context.Context, input *common.ClientR
 
 	defer func() {
 		if output.Status == common.StatusNotOK {
-			span.SetStatus(codes.Error, output.Response.(string))
+			span.SetStatus(codes.Error, output.Response)
 		} else {
 			span.SetStatus(codes.Ok, "finished client request")
 		}
@@ -160,7 +161,7 @@ func (r *RaftBrainImpl) ClientRequest(ctx context.Context, input *common.ClientR
 	span.AddEvent("log appended")
 
 	var status common.ClientRequestStatus = common.StatusOK
-	var response any = nil
+	var response string = ""
 
 	if err := r.arm.Register(index); err != nil {
 		r.log().ErrorContext(ctx, "ClientRequest_Register", err)
@@ -202,7 +203,7 @@ func (r *RaftBrainImpl) RegisterClient(ctx context.Context, input *common.Regist
 
 	defer func() {
 		if output.Status == common.StatusNotOK {
-			span.SetStatus(codes.Error, output.Response.(string))
+			span.SetStatus(codes.Error, output.Response)
 		} else {
 			span.SetStatus(codes.Ok, "finished client request")
 		}
@@ -273,7 +274,7 @@ func (r *RaftBrainImpl) RegisterClient(ctx context.Context, input *common.Regist
 
 	*output = common.RegisterClientOutput{
 		Status:     status,
-		Response:   index,
+		Response:   strconv.Itoa(index),
 		LeaderHint: "",
 	}
 
@@ -286,7 +287,7 @@ func (r *RaftBrainImpl) ClientQuery(ctx context.Context, input *common.ClientQue
 
 	defer func() {
 		if err != nil {
-			span.SetStatus(codes.Error, output.Response.(string))
+			span.SetStatus(codes.Error, output.Response)
 		} else {
 			span.SetStatus(codes.Ok, "query success")
 		}
@@ -353,7 +354,7 @@ func (r *RaftBrainImpl) ClientQuery(ctx context.Context, input *common.ClientQue
 		return nil
 	}
 
-	res, err := r.stateMachine.Process(0, 0, input.Query, 0, r.clusterClock.clusterTimeAtEpoch)
+	res, err := r.stateMachine.Process(0, common.Log{Command: input.Query, ClusterTime: r.clusterClock.clusterTimeAtEpoch})
 	if err != nil {
 		*output = common.ClientQueryOutput{
 			Status:     common.StatusNotOK,

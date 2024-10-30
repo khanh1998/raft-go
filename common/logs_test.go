@@ -76,7 +76,7 @@ func TestNewLogFromString(t *testing.T) {
 			},
 			want: Log{
 				Term:        0,
-				Command:     nil,
+				Command:     "",
 				ClientID:    0,
 				SequenceNum: 0,
 			},

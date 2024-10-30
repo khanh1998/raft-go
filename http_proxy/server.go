@@ -130,7 +130,7 @@ func (h *HttpProxy) cli(r *gin.Engine) {
 		span.SetAttributes(
 			attribute.Int("sequence", requestData.SequenceNum),
 			attribute.Int("clientID", requestData.ClientID),
-			attribute.String("command", requestData.Command.(string)),
+			attribute.String("command", requestData.Command),
 		)
 
 		var (
@@ -188,7 +188,7 @@ func (h *HttpProxy) cli(r *gin.Engine) {
 				httpUrl, rpcUrl string
 				id              int
 			)
-			id, httpUrl, rpcUrl, err = common.DecomposeAddServerCommand(requestData.Command.(string))
+			id, httpUrl, rpcUrl, err = common.DecomposeAddServerCommand(requestData.Command)
 			if err != nil {
 				responseData = common.ClientRequestOutput{
 					Status:   common.StatusNotOK,
@@ -213,7 +213,7 @@ func (h *HttpProxy) cli(r *gin.Engine) {
 				httpUrl, rpcUrl string
 				id              int
 			)
-			id, httpUrl, rpcUrl, err = common.DecomposeRemoveServerCommand(requestData.Command.(string))
+			id, httpUrl, rpcUrl, err = common.DecomposeRemoveServerCommand(requestData.Command)
 			if err != nil {
 				responseData = common.ClientRequestOutput{
 					Status:   common.StatusNotOK,
@@ -266,11 +266,7 @@ var (
 )
 
 func verifyRequest(request common.ClientRequestInput) (errs []error, cmdType CommandType) {
-	cmd, ok := request.Command.(string)
-	if !ok {
-		errs = append(errs, errors.New("command must be a string"))
-	}
-
+	cmd := request.Command
 	valid := false
 
 	if get.MatchString(cmd) {

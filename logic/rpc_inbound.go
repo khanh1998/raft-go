@@ -122,7 +122,7 @@ func (n *RaftBrainImpl) AppendEntries(ctx context.Context, input *common.AppendE
 		n.commitIndex = common.Min(input.LeaderCommit, len(n.logs)) // data race
 	}
 
-	n.applyLog(ctx)
+	// n.applyLog(ctx)
 
 	*output = common.AppendEntriesOutput{Term: n.currentTerm, Success: true, Message: "", NodeID: n.id}
 

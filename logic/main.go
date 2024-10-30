@@ -47,6 +47,7 @@ type RaftBrainImpl struct {
 	dataLock                  sync.RWMutex // lock for reading or modifying internal data of the brain (consensus module)
 	lastHeartbeatReceivedTime time.Time
 	RpcRequestTimeout         time.Duration
+	snapshot                  *common.SnapshotMetadata
 	// Persistent state on all servers:
 	// Updated on stable storage before responding to RPCs
 	currentTerm int          // latest term server has seen (initialized to 0 on first boot, increases monotonically)
@@ -64,7 +65,7 @@ type RaftBrainImpl struct {
 }
 
 type AsyncResponseItem struct {
-	Response any
+	Response string
 	Err      error
 }
 type AsyncResponse struct {
@@ -78,13 +79,14 @@ type AsyncResponseIndex struct {
 
 type LogAppliedEvent struct {
 	SequenceNum int
-	Response    any
+	Response    string
 	Err         error
 }
 
 type SimpleStateMachine interface {
 	Reset() error
-	Process(clientID int, sequenceNum int, commandIn any, logIndex int, clusterTime uint64) (result any, err error)
+	Process(logIndex int, log common.Log) (result string, err error)
+	StartSnapshot() error
 	GetBase() (lastIndex int, lastTerm int)
 }
 
@@ -98,10 +100,10 @@ type RPCProxy interface {
 }
 
 type Persistence interface {
-	AppendLog(data map[string]string) error
-	AppendLogArray(keyValues ...string) error
-	ReadNewestLog(keys []string) (map[string]string, error)
-	ReadLogsToArray() ([]string, error)
+	AppendKeyValuePairsMap(data map[string]string) error
+	AppendKeyValuePairsArray(keyValues ...string) error
+	ReadKeyValuePairsToMap(keys []string) (map[string]string, error)
+	ReadKeyValuePairsToArray() ([]string, error)
 }
 
 type PeerInfo struct {
@@ -204,7 +206,8 @@ func NewRaftBrain(params NewRaftBrainParams) (*RaftBrainImpl, error) {
 		}
 	}
 
-	n.applyLog(ctx)
+	// periodically inject committed logs to state machine
+	go n.logInjector(ctx)
 
 	return n, nil
 }

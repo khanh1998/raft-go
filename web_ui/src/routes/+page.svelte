@@ -66,7 +66,7 @@
                     body: JSON.stringify({ command, clientId, sequenceNum }),
                 });
                 result = await res.json();
-                setClientId(result?.response);
+                setClientId(Number(result?.response));
                 sequenceNum = 1;
                 waitingForApi = false;
                 break;

@@ -126,8 +126,17 @@ func main() {
 
 	logger.InfoContext(ctx, "config content", "config", config)
 
-	walFileName := fmt.Sprintf("log.%d.dat", id)
+	walFileName := fmt.Sprintf("wal.%d.dat", id)
 	dataFolder := fmt.Sprintf("%s%d/", config.DataFolder, id)
+	walDB, err := common.NewPersistence(dataFolder, walFileName)
+	if err != nil {
+		logger.Fatal("can not create persistence: ", err.Error())
+	}
+
+	smDB, err := common.NewPersistence(dataFolder, walFileName)
+	if err != nil {
+		logger.Fatal("can not create persistence: ", err.Error())
+	}
 
 	params := node.NewNodeParams{
 		ID: id,
@@ -140,7 +149,7 @@ func main() {
 			ElectionTimeOutMax:  config.MaxElectionTimeoutMs,
 			Logger:              logger,
 			Members:             clusterMembers,
-			DB:                  common.NewPersistence(dataFolder, walFileName),
+			DB:                  walDB,
 			CachingUp:           catchingUp,
 			RpcRequestTimeout:   config.RpcRequestTimeout,
 		},
@@ -157,7 +166,7 @@ func main() {
 			Logger: logger,
 		},
 		StateMachine: state_machine.NewKeyValueStateMachineParams{
-			DB:                    common.NewPersistence(dataFolder, ""),
+			DB:                    smDB,
 			DoSnapshot:            config.StateMachineSnapshot,
 			ClientSessionDuration: uint64(config.ClientSessionDuration.Nanoseconds()),
 			Logger:                logger,
