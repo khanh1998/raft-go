@@ -8,6 +8,15 @@ import (
 	"github.com/rs/zerolog/log"
 )
 
+func CopySlice[T any](source []T) []T {
+	if source == nil {
+		return nil
+	}
+	destination := make([]T, len(source))
+	copy(destination, source)
+	return destination
+}
+
 func trimAndLower(s string) string {
 	return strings.ToLower(strings.Trim(s, " "))
 }

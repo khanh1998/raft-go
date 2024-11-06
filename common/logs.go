@@ -7,7 +7,6 @@ import (
 	"strings"
 )
 
-// TODO: track the log status by ID
 type Log struct {
 	Term        int
 	ClientID    int
@@ -20,7 +19,6 @@ func (l Log) ToString() string {
 	return fmt.Sprintf("%d|%d|%d|%s|%s", l.Term, l.ClientID, l.SequenceNum, strconv.FormatUint(l.ClusterTime, 10), l.Command)
 }
 
-// TODO: fix this
 func NewLogFromString(s string) (Log, error) {
 	tokens := strings.Split(s, "|")
 	if len(tokens) != 5 {

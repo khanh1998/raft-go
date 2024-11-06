@@ -15,18 +15,43 @@ var (
 	logger = otelslog.NewLogger("rpc-proxy")
 )
 
-type SessionManager interface{}
 type MembershipManager interface {
 	Process(command any) error
 	AddServer(input common.AddServerInput) error
 }
 
+// Persistent state on all servers:
+// Updated on stable storage before responding to RPCs
+// - currentTerm
+// - votedFor
+// - logs
+type RaftPersistanceState interface {
+	AppendLog(ctx context.Context, logItems []common.Log) (index int, err error)
+	DeleteLogFrom(ctx context.Context, index int) (deletedLogs []common.Log, err error)
+	SetCurrentTerm(ctx context.Context, currentTerm int) (err error)
+	SetVotedFor(ctx context.Context, votedFor int) (err error)
+
+	GetCurrentTerm() int            // latest term server has seen (initialized to 0 on first boot, increases monotonically)
+	GetVotedFor() int               // candidateId that received vote in current term (or null if none)
+	LastLogInfo() (index, term int) // log entries; each entry contains command for state machine, and term when entry was received by leader (first index is 1)
+	LogLength() int
+	InMemoryLogLength() int // length of logs that exclude snapshot logs
+	GetLog(index int) (common.Log, error)
+	GetLatestSnapshotMetadata() (snap *common.SnapshotMetadata)
+}
+
+type MemberChangeSubscriber interface {
+	// we send the latest cluster member config to subscriber,
+	// they will figure out what are changed on they own
+	InformMemberChange(ctx context.Context, members map[int]common.ClusterMember)
+}
+
+// this struct only contains volatile data
 type RaftBrainImpl struct {
 	clusterClock              *ClusterClock
-	dataFolder                string
 	logger                    observability.Logger
-	db                        Persistence
 	members                   []common.ClusterMember
+	memberChangeSubscribers   []MemberChangeSubscriber
 	nextMemberId              int
 	state                     common.RaftState
 	id                        int
@@ -47,12 +72,13 @@ type RaftBrainImpl struct {
 	dataLock                  sync.RWMutex // lock for reading or modifying internal data of the brain (consensus module)
 	lastHeartbeatReceivedTime time.Time
 	RpcRequestTimeout         time.Duration
-	snapshot                  *common.SnapshotMetadata
+	logLengthLimit            int
 	// Persistent state on all servers:
 	// Updated on stable storage before responding to RPCs
-	currentTerm int          // latest term server has seen (initialized to 0 on first boot, increases monotonically)
-	votedFor    int          // candidateId that received vote in current term (or null if none)
-	logs        []common.Log // log entries; each entry contains command for state machine, and term when entry was received by leader (first index is 1)
+	// currentTerm int          // latest term server has seen (initialized to 0 on first boot, increases monotonically)
+	// votedFor    int          // candidateId that received vote in current term (or null if none)
+	// logs        []common.Log // log entries; each entry contains command for state machine, and term when entry was received by leader (first index is 1)
+	persistState RaftPersistanceState
 
 	// Volatile state on all servers:
 	commitIndex int // index of highest log entry known to be committed (initialized to 0, increases monotonically)
@@ -62,6 +88,19 @@ type RaftBrainImpl struct {
 	// Reinitialized after election
 	nextIndex  map[int]int // for each server, index of the next log entry to send to that server (initialized to leader last log index + 1)
 	matchIndex map[int]int // for each server, index of highest log entry known to be replicated on server (initialized to 0, increases monotonically)
+}
+
+func (k *RaftBrainImpl) NotifyMemberChange(ctx context.Context) {
+	members := map[int]common.ClusterMember{}
+	for _, subscriber := range k.memberChangeSubscribers {
+		subscriber.InformMemberChange(ctx, members)
+	}
+}
+
+func (k *RaftBrainImpl) SubscribeToMemberChangeEvent(subscriber MemberChangeSubscriber) {
+	k.memberChangeSubscribers = append(k.memberChangeSubscribers, subscriber)
+	// immediately send current cluster member config to new subscriber
+	go subscriber.InformMemberChange(context.Background(), nil)
 }
 
 type AsyncResponseItem struct {
@@ -84,10 +123,11 @@ type LogAppliedEvent struct {
 }
 
 type SimpleStateMachine interface {
-	Reset() error
-	Process(logIndex int, log common.Log) (result string, err error)
-	StartSnapshot() error
-	GetBase() (lastIndex int, lastTerm int)
+	Reset(ctx context.Context) error
+	Process(ctx context.Context, logIndex int, log common.Log) (result string, err error)
+	StartSnapshot(ctx context.Context) error
+	GetLastConfig() map[int]common.ClusterMember
+	GetMembers() []common.ClusterMember
 }
 
 type RPCProxy interface {
@@ -122,9 +162,10 @@ type NewRaftBrainParams struct {
 	ElectionTimeOutMin  int64
 	ElectionTimeOutMax  int64
 	Logger              observability.Logger
-	DB                  Persistence // help to persist raft server's state to file
-	CachingUp           bool        // will be ignored if the cluster mode is STATIC
+	CachingUp           bool // will be ignored if the cluster mode is STATIC
 	RpcRequestTimeout   time.Duration
+	PersistenceState    RaftPersistanceState // this will take care of raft's states that need to be persisted
+	LogLengthLimit      int
 }
 
 func NewRaftBrain(params NewRaftBrainParams) (*RaftBrainImpl, error) {
@@ -136,11 +177,9 @@ func NewRaftBrain(params NewRaftBrainParams) (*RaftBrainImpl, error) {
 			}
 			return common.StateFollower
 		}(),
-		votedFor:     0,
-		db:           params.DB,
 		arm:          NewAsyncResponseManager(100),
 		stop:         make(chan struct{}),
-		newMembers:   make(chan common.ClusterMemberChange, 10),
+		newMembers:   make(chan common.ClusterMemberChange, 25),
 		nextMemberId: params.ID + 1,
 
 		heartBeatTimeOutMin: params.HeartBeatTimeOutMin,
@@ -156,15 +195,13 @@ func NewRaftBrain(params NewRaftBrainParams) (*RaftBrainImpl, error) {
 		matchIndex:        make(map[int]int),
 		clusterClock:      NewClusterClock(),
 		RpcRequestTimeout: params.RpcRequestTimeout,
+
+		persistState:   params.PersistenceState,
+		logLengthLimit: params.LogLengthLimit,
 	}
 
 	ctx, span := tracer.Start(context.Background(), "NewRaftBrain")
 	defer span.End()
-
-	err := n.restoreRaftStateFromFile(ctx)
-	if err != nil {
-		return n, err
-	}
 
 	if params.Mode == common.Dynamic {
 		if params.CachingUp {
@@ -180,7 +217,7 @@ func NewRaftBrain(params NewRaftBrainParams) (*RaftBrainImpl, error) {
 
 			// if this is the first node of cluster and the first time the node get boosted up,
 			// initially add members to the cluster. otherwise, it's already in the log.
-			if len(n.logs) == 0 {
+			if n.persistState.LogLength() == 0 {
 				mem := params.Members[0]
 
 				n.appendLog(ctx, common.Log{
@@ -191,7 +228,9 @@ func NewRaftBrain(params NewRaftBrainParams) (*RaftBrainImpl, error) {
 					ClusterTime: 0,
 				})
 			} else {
-				n.restoreClusterMemberInfoFromLogs(ctx)
+				for _, mem := range params.Members {
+					n.notifyNewMember(mem)
+				}
 			}
 		}
 	}
@@ -236,9 +275,9 @@ func (n *RaftBrainImpl) log() observability.Logger {
 	sub := n.logger.With(
 		"id", n.id,
 		"state", n.state.String(),
-		"votedFor", n.votedFor,
+		"votedFor", n.GetVotedFor(),
 		"leaderID", n.leaderID,
-		"currentTerm", n.currentTerm,
+		"currentTerm", n.GetCurrentTerm(),
 		"commitIndex", n.commitIndex,
 		"lastApplied", n.lastApplied,
 		"nextIndex", n.nextIndex,

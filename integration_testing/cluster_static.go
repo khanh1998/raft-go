@@ -11,6 +11,7 @@ import (
 	"khanh/raft-go/observability"
 	"khanh/raft-go/rpc_proxy"
 	"khanh/raft-go/state_machine"
+	"khanh/raft-go/storage"
 	"log"
 	"os"
 	"sync"
@@ -71,15 +72,23 @@ func (c *Cluster) init(filePath string) {
 		go func(mem common.ClusterMember) {
 			dataFolder := fmt.Sprintf("%s%d/", c.config.DataFolder, mem.ID)
 
-			smDb, err := common.NewPersistence(dataFolder, "")
+			storage, err := storage.NewStorage(storage.NewStorageParams{
+				WalSize:    100,
+				DataFolder: dataFolder,
+				Logger:     c.log,
+			}, storage.FileWrapperImpl{})
 			if err != nil {
-				log.Fatal("Static cluster node creating: ", err.Error())
+				log.Error("new storage", err)
+				log.Fatal("new storage", err.Error())
 			}
 
-			walDb, err := common.NewPersistence(dataFolder, "wal.dat")
+			snapshot, raftPersistState, _, err := common.Deserialize(ctx, storage, common.Static)
 			if err != nil {
-				log.Fatal("Static cluster node creating: ", err.Error())
+				log.Error("deserialize system", err)
+				log.Fatal("deserialize system", err.Error())
 			}
+
+			raftPersistState.SetStorage(storage)
 
 			param := node.NewNodeParams{
 				ID: mem.ID,
@@ -93,9 +102,9 @@ func (c *Cluster) init(filePath string) {
 					ElectionTimeOutMax:  config.MaxElectionTimeoutMs,
 					Logger:              log,
 					Members:             peers,
-					// DB:                persistance.NewPersistence(fmt.Sprintf("test.log.%d.dat", id+i)),
-					DB:                walDb,
-					RpcRequestTimeout: config.RpcRequestTimeout,
+					RpcRequestTimeout:   config.RpcRequestTimeout,
+					PersistenceState:    raftPersistState,
+					LogLengthLimit:      config.LogLengthLimit,
 				},
 				RPCProxy: rpc_proxy.NewRPCImplParams{
 					HostURL:              mem.RpcUrl,
@@ -110,13 +119,13 @@ func (c *Cluster) init(filePath string) {
 					Logger: log,
 				},
 				StateMachine: state_machine.NewKeyValueStateMachineParams{
-					DB:                    smDb,
 					DoSnapshot:            config.StateMachineSnapshot,
 					ClientSessionDuration: uint64(config.ClientSessionDuration),
 					Logger:                log,
+					PersistState:          raftPersistState,
+					Snapshot:              snapshot,
 				},
-				Logger:     log,
-				DataFolder: dataFolder,
+				Logger: log,
 			}
 
 			n := node.NewNode(ctx, param)

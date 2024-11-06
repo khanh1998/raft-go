@@ -1,12 +1,11 @@
 package state_machine
 
 import (
+	"context"
 	"fmt"
 	"khanh/raft-go/common"
 	"khanh/raft-go/observability"
 	"reflect"
-	"sort"
-	"sync"
 	"testing"
 
 	"github.com/stretchr/testify/assert"
@@ -37,7 +36,7 @@ func TestIsSnapshotFile(t *testing.T) {
 func TestKeyValueStateMachine_Process(t *testing.T) {
 	type fields struct {
 		data                  map[string]string
-		clients               map[int]ClientEntry
+		clients               map[int]common.ClientEntry
 		clientSessionDuration uint64
 		keyLock               map[string]int
 	}
@@ -59,7 +58,7 @@ func TestKeyValueStateMachine_Process(t *testing.T) {
 				data: map[string]string{
 					"name": "khanh",
 				},
-				clients: map[int]ClientEntry{},
+				clients: map[int]common.ClientEntry{},
 			},
 			args: args{
 				log: common.Log{Command: "get name"},
@@ -73,7 +72,7 @@ func TestKeyValueStateMachine_Process(t *testing.T) {
 				data: map[string]string{
 					"name": "khanh",
 				},
-				clients: map[int]ClientEntry{
+				clients: map[int]common.ClientEntry{
 					1: {
 						LastSequenceNum: 5,
 						LastResponse:    "hi you",
@@ -92,7 +91,7 @@ func TestKeyValueStateMachine_Process(t *testing.T) {
 				data: map[string]string{
 					"name": "khanh",
 				},
-				clients: map[int]ClientEntry{
+				clients: map[int]common.ClientEntry{
 					1: {
 						LastSequenceNum: 5,
 						LastResponse:    "hi you",
@@ -111,7 +110,7 @@ func TestKeyValueStateMachine_Process(t *testing.T) {
 				data: map[string]string{
 					"name": "khanh",
 				},
-				clients: map[int]ClientEntry{
+				clients: map[int]common.ClientEntry{
 					1: {
 						LastSequenceNum: 5,
 						LastResponse:    "ok",
@@ -130,7 +129,7 @@ func TestKeyValueStateMachine_Process(t *testing.T) {
 				data: map[string]string{
 					"name": "khanh",
 				},
-				clients: map[int]ClientEntry{},
+				clients: map[int]common.ClientEntry{},
 			},
 			args: args{
 				log: common.Log{Command: "set address ho chi minh city"},
@@ -140,7 +139,7 @@ func TestKeyValueStateMachine_Process(t *testing.T) {
 					"name":    "khanh",
 					"address": "ho chi minh city",
 				},
-				clients: map[int]ClientEntry{},
+				clients: map[int]common.ClientEntry{},
 			},
 			wantResult: "ho chi minh city",
 			wantErr:    false,
@@ -152,7 +151,7 @@ func TestKeyValueStateMachine_Process(t *testing.T) {
 					"address": "ho chi minh city",
 					"name":    "khanh",
 				},
-				clients: map[int]ClientEntry{},
+				clients: map[int]common.ClientEntry{},
 			},
 			args: args{
 				log: common.Log{Command: "del name"},
@@ -161,7 +160,7 @@ func TestKeyValueStateMachine_Process(t *testing.T) {
 				data: map[string]string{
 					"address": "ho chi minh city",
 				},
-				clients: map[int]ClientEntry{},
+				clients: map[int]common.ClientEntry{},
 			},
 			wantResult: "",
 			wantErr:    false,
@@ -173,7 +172,7 @@ func TestKeyValueStateMachine_Process(t *testing.T) {
 					"address": "ho chi minh city",
 					"name":    "khanh",
 				},
-				clients: map[int]ClientEntry{},
+				clients: map[int]common.ClientEntry{},
 			},
 			args: args{
 				log: common.Log{Command: "del nation"},
@@ -183,7 +182,7 @@ func TestKeyValueStateMachine_Process(t *testing.T) {
 					"address": "ho chi minh city",
 					"name":    "khanh",
 				},
-				clients: map[int]ClientEntry{},
+				clients: map[int]common.ClientEntry{},
 			},
 			wantResult: "",
 			wantErr:    true,
@@ -194,7 +193,7 @@ func TestKeyValueStateMachine_Process(t *testing.T) {
 				data: map[string]string{
 					"name": "khanh",
 				},
-				clients: map[int]ClientEntry{},
+				clients: map[int]common.ClientEntry{},
 			},
 			args: args{
 				log: common.Log{Command: common.NoOperation},
@@ -203,7 +202,7 @@ func TestKeyValueStateMachine_Process(t *testing.T) {
 				data: map[string]string{
 					"name": "khanh",
 				},
-				clients: map[int]ClientEntry{},
+				clients: map[int]common.ClientEntry{},
 			},
 			wantResult: "",
 			wantErr:    false,
@@ -214,7 +213,7 @@ func TestKeyValueStateMachine_Process(t *testing.T) {
 				data: map[string]string{
 					"name": "khanh",
 				},
-				clients: map[int]ClientEntry{},
+				clients: map[int]common.ClientEntry{},
 			},
 			args: args{
 				log: common.Log{},
@@ -228,7 +227,7 @@ func TestKeyValueStateMachine_Process(t *testing.T) {
 				data: map[string]string{
 					"name": "khanh",
 				},
-				clients: map[int]ClientEntry{},
+				clients: map[int]common.ClientEntry{},
 			},
 			args: args{
 				log: common.Log{Command: "get"},
@@ -242,7 +241,7 @@ func TestKeyValueStateMachine_Process(t *testing.T) {
 				data: map[string]string{
 					"name": "khanh",
 				},
-				clients: map[int]ClientEntry{},
+				clients: map[int]common.ClientEntry{},
 			},
 			args: args{
 				log: common.Log{Command: "set name"},
@@ -256,7 +255,7 @@ func TestKeyValueStateMachine_Process(t *testing.T) {
 				data: map[string]string{
 					"name": "khanh",
 				},
-				clients: map[int]ClientEntry{},
+				clients: map[int]common.ClientEntry{},
 			},
 			args: args{
 				log: common.Log{Command: "do whatever you want", ClientID: 5, SequenceNum: 6},
@@ -270,7 +269,7 @@ func TestKeyValueStateMachine_Process(t *testing.T) {
 				data: map[string]string{
 					"name": "khanh",
 				},
-				clients:               map[int]ClientEntry{},
+				clients:               map[int]common.ClientEntry{},
 				clientSessionDuration: 5,
 			},
 			args: args{
@@ -281,7 +280,7 @@ func TestKeyValueStateMachine_Process(t *testing.T) {
 				data: map[string]string{
 					"name": "khanh",
 				},
-				clients: map[int]ClientEntry{
+				clients: map[int]common.ClientEntry{
 					2: {
 						LastSequenceNum: 0,
 						LastResponse:    "",
@@ -299,7 +298,7 @@ func TestKeyValueStateMachine_Process(t *testing.T) {
 				data: map[string]string{
 					"name": "khanh",
 				},
-				clients: map[int]ClientEntry{
+				clients: map[int]common.ClientEntry{
 					1: {ExpiryTime: 20},
 				},
 			},
@@ -311,7 +310,7 @@ func TestKeyValueStateMachine_Process(t *testing.T) {
 					"name":    "khanh",
 					"address": "ho chi minh city",
 				},
-				clients: map[int]ClientEntry{
+				clients: map[int]common.ClientEntry{
 					1: {ExpiryTime: 20, LastSequenceNum: 1, LastResponse: "ho chi minh city"},
 				},
 			},
@@ -324,7 +323,7 @@ func TestKeyValueStateMachine_Process(t *testing.T) {
 				data: map[string]string{
 					"name": "khanh",
 				},
-				clients: map[int]ClientEntry{
+				clients: map[int]common.ClientEntry{
 					1: {ExpiryTime: 28},
 					2: {ExpiryTime: 29},
 					3: {ExpiryTime: 30},
@@ -338,7 +337,7 @@ func TestKeyValueStateMachine_Process(t *testing.T) {
 				data: map[string]string{
 					"name": "khanh",
 				},
-				clients: map[int]ClientEntry{
+				clients: map[int]common.ClientEntry{
 					3: {ExpiryTime: 30},
 					4: {ExpiryTime: 31},
 				},
@@ -352,7 +351,7 @@ func TestKeyValueStateMachine_Process(t *testing.T) {
 				data: map[string]string{
 					"name": "khanh",
 				},
-				clients: map[int]ClientEntry{
+				clients: map[int]common.ClientEntry{
 					1: {ExpiryTime: 28},
 					2: {ExpiryTime: 29},
 					3: {ExpiryTime: 30},
@@ -367,7 +366,7 @@ func TestKeyValueStateMachine_Process(t *testing.T) {
 				data: map[string]string{
 					"name": "khanh",
 				},
-				clients: map[int]ClientEntry{
+				clients: map[int]common.ClientEntry{
 					3: {ExpiryTime: 35, LastSequenceNum: 1, LastResponse: ""},
 					4: {ExpiryTime: 31},
 				},
@@ -382,15 +381,15 @@ func TestKeyValueStateMachine_Process(t *testing.T) {
 				fmt.Println("breakpoint")
 			}
 			k := KeyValueStateMachine{
-				current: snapshot{
-					data:     tt.fields.data,
-					sessions: tt.fields.clients,
-					keyLock:  tt.fields.keyLock,
+				current: &common.Snapshot{
+					KeyValue: tt.fields.data,
+					Sessions: tt.fields.clients,
+					KeyLock:  tt.fields.keyLock,
 				},
 				logger:                observability.NewZerolog(common.ObservabilityConfig{Disabled: true}, 0),
 				clientSessionDuration: tt.fields.clientSessionDuration,
 			}
-			gotResult, err := k.Process(tt.args.logIndex, tt.args.log)
+			gotResult, err := k.Process(context.TODO(), tt.args.logIndex, tt.args.log)
 			if (err != nil) != tt.wantErr {
 				t.Errorf("KeyValueStateMachine.Process() error = %v, wantErr %v", err, tt.wantErr)
 				return
@@ -401,18 +400,18 @@ func TestKeyValueStateMachine_Process(t *testing.T) {
 			}
 
 			if tt.wantFields != nil {
-				if !reflect.DeepEqual(k.current.data, tt.wantFields.data) {
-					t.Errorf("KeyValueStateMachine.Process() data = %v, want %v", k.current.data, tt.wantFields.data)
+				if !reflect.DeepEqual(k.current.KeyValue, tt.wantFields.data) {
+					t.Errorf("KeyValueStateMachine.Process() data = %v, want %v", k.current.KeyValue, tt.wantFields.data)
 					return
 				}
 
-				if !reflect.DeepEqual(k.current.sessions, tt.wantFields.clients) {
-					t.Errorf("KeyValueStateMachine.Process() session = %v, want %v", k.current.sessions, tt.wantFields.clients)
+				if !reflect.DeepEqual(k.current.Sessions, tt.wantFields.clients) {
+					t.Errorf("KeyValueStateMachine.Process() session = %v, want %v", k.current.Sessions, tt.wantFields.clients)
 					return
 				}
 
-				if !reflect.DeepEqual(k.current.keyLock, tt.wantFields.keyLock) {
-					t.Errorf("KeyValueStateMachine.Process() keyLock = %v, want %v", k.current.keyLock, tt.wantFields.keyLock)
+				if !reflect.DeepEqual(k.current.KeyLock, tt.wantFields.keyLock) {
+					t.Errorf("KeyValueStateMachine.Process() keyLock = %v, want %v", k.current.KeyLock, tt.wantFields.keyLock)
 					return
 				}
 			}
@@ -425,7 +424,7 @@ func TestKeyValueStateMachine_Process(t *testing.T) {
 func TestKeyValueStateMachine_Process2(t *testing.T) {
 	type fields struct {
 		data                  map[string]string
-		clients               map[int]ClientEntry
+		clients               map[int]common.ClientEntry
 		clientSessionDuration uint64
 		keyLock               map[string]int
 	}
@@ -447,7 +446,7 @@ func TestKeyValueStateMachine_Process2(t *testing.T) {
 				data: map[string]string{
 					"name": "khanh",
 				},
-				clients: map[int]ClientEntry{
+				clients: map[int]common.ClientEntry{
 					1: {
 						ExpiryTime: 40, LastSequenceNum: 1, LastResponse: "khanh",
 						LockedKeys: map[string]struct{}{},
@@ -464,7 +463,7 @@ func TestKeyValueStateMachine_Process2(t *testing.T) {
 					"name":   "khanh",
 					"nation": "vietnam",
 				},
-				clients: map[int]ClientEntry{
+				clients: map[int]common.ClientEntry{
 					1: {
 						ExpiryTime: 40, LastSequenceNum: 2, LastResponse: "vietnam",
 						LockedKeys: map[string]struct{}{"nation": {}},
@@ -483,7 +482,7 @@ func TestKeyValueStateMachine_Process2(t *testing.T) {
 				data: map[string]string{
 					"name": "khanh",
 				},
-				clients: map[int]ClientEntry{
+				clients: map[int]common.ClientEntry{
 					1: {
 						ExpiryTime: 40, LastSequenceNum: 1, LastResponse: "khanh",
 						LockedKeys: map[string]struct{}{},
@@ -499,7 +498,7 @@ func TestKeyValueStateMachine_Process2(t *testing.T) {
 				data: map[string]string{
 					"name": "khanh",
 				},
-				clients: map[int]ClientEntry{
+				clients: map[int]common.ClientEntry{
 					1: {
 						ExpiryTime: 40, LastSequenceNum: 2, LastResponse: "khanh",
 						LockedKeys: map[string]struct{}{"name": {}},
@@ -518,7 +517,7 @@ func TestKeyValueStateMachine_Process2(t *testing.T) {
 				data: map[string]string{
 					"name": "khanh",
 				},
-				clients: map[int]ClientEntry{
+				clients: map[int]common.ClientEntry{
 					1: {
 						ExpiryTime: 40, LastSequenceNum: 1, LastResponse: "khanh",
 						LockedKeys: map[string]struct{}{"name": {}},
@@ -540,7 +539,7 @@ func TestKeyValueStateMachine_Process2(t *testing.T) {
 				data: map[string]string{
 					"name": "khanh",
 				},
-				clients: map[int]ClientEntry{
+				clients: map[int]common.ClientEntry{
 					1: {
 						ExpiryTime: 40, LastSequenceNum: 1, LastResponse: "khanh",
 						LockedKeys: map[string]struct{}{"name": {}},
@@ -563,7 +562,7 @@ func TestKeyValueStateMachine_Process2(t *testing.T) {
 				data: map[string]string{
 					"name": "khanh",
 				},
-				clients: map[int]ClientEntry{
+				clients: map[int]common.ClientEntry{
 					1: {
 						ExpiryTime: 28, LastSequenceNum: 1, LastResponse: "khanh",
 						LockedKeys: map[string]struct{}{"name": {}},
@@ -585,7 +584,7 @@ func TestKeyValueStateMachine_Process2(t *testing.T) {
 				data: map[string]string{
 					"name": "kelvin",
 				},
-				clients: map[int]ClientEntry{
+				clients: map[int]common.ClientEntry{
 					2: {
 						ExpiryTime: 50, LastSequenceNum: 2, LastResponse: "kelvin",
 						LockedKeys: map[string]struct{}{"name": {}},
@@ -605,7 +604,7 @@ func TestKeyValueStateMachine_Process2(t *testing.T) {
 					"name":   "khanh",
 					"nation": "vietnam",
 				},
-				clients: map[int]ClientEntry{
+				clients: map[int]common.ClientEntry{
 					1: {
 						ExpiryTime: 40, LastSequenceNum: 2, LastResponse: "khanh",
 						LockedKeys: map[string]struct{}{"name": {}},
@@ -628,7 +627,7 @@ func TestKeyValueStateMachine_Process2(t *testing.T) {
 				data: map[string]string{
 					"nation": "vietnam",
 				},
-				clients: map[int]ClientEntry{
+				clients: map[int]common.ClientEntry{
 					1: {
 						ExpiryTime: 40, LastSequenceNum: 3, LastResponse: "",
 						LockedKeys: map[string]struct{}{},
@@ -652,7 +651,7 @@ func TestKeyValueStateMachine_Process2(t *testing.T) {
 					"name":   "khanh",
 					"nation": "vietnam",
 				},
-				clients: map[int]ClientEntry{
+				clients: map[int]common.ClientEntry{
 					1: {
 						ExpiryTime: 40, LastSequenceNum: 2, LastResponse: "khanh",
 						LockedKeys: map[string]struct{}{"name": {}},
@@ -676,7 +675,7 @@ func TestKeyValueStateMachine_Process2(t *testing.T) {
 					"name":   "khanh",
 					"nation": "vietnam",
 				},
-				clients: map[int]ClientEntry{
+				clients: map[int]common.ClientEntry{
 					1: {
 						ExpiryTime: 40, LastSequenceNum: 3, LastResponse: "",
 						LockedKeys: map[string]struct{}{"name": {}},
@@ -701,7 +700,7 @@ func TestKeyValueStateMachine_Process2(t *testing.T) {
 					"name":   "khanh",
 					"nation": "vietnam",
 				},
-				clients: map[int]ClientEntry{
+				clients: map[int]common.ClientEntry{
 					1: {
 						ExpiryTime: 40, LastSequenceNum: 2, LastResponse: "khanh",
 						LockedKeys: map[string]struct{}{"name": {}},
@@ -724,7 +723,7 @@ func TestKeyValueStateMachine_Process2(t *testing.T) {
 				data: map[string]string{
 					"name": "khanh",
 				},
-				clients: map[int]ClientEntry{
+				clients: map[int]common.ClientEntry{
 					1: {
 						ExpiryTime: 40, LastSequenceNum: 3, LastResponse: "",
 						LockedKeys: map[string]struct{}{"name": {}},
@@ -741,15 +740,15 @@ func TestKeyValueStateMachine_Process2(t *testing.T) {
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
 			k := KeyValueStateMachine{
-				current: snapshot{
-					data:     tt.fields.data,
-					sessions: tt.fields.clients,
-					keyLock:  tt.fields.keyLock,
+				current: &common.Snapshot{
+					KeyValue: tt.fields.data,
+					Sessions: tt.fields.clients,
+					KeyLock:  tt.fields.keyLock,
 				},
 				logger:                observability.NewZerolog(common.ObservabilityConfig{Disabled: true}, 0),
 				clientSessionDuration: tt.fields.clientSessionDuration,
 			}
-			gotResult, err := k.Process(tt.args.logIndex, tt.args.log)
+			gotResult, err := k.Process(context.TODO(), tt.args.logIndex, tt.args.log)
 			if (err != nil) != tt.wantErr {
 				t.Errorf("KeyValueStateMachine.Process() error = %v, wantErr %v", err, tt.wantErr)
 				return
@@ -759,16 +758,16 @@ func TestKeyValueStateMachine_Process2(t *testing.T) {
 			}
 
 			if tt.wantFields != nil {
-				if !reflect.DeepEqual(k.current.data, tt.wantFields.data) {
-					t.Errorf("KeyValueStateMachine.Process() data = %v, want %v", k.current.data, tt.wantFields.data)
+				if !reflect.DeepEqual(k.current.KeyValue, tt.wantFields.data) {
+					t.Errorf("KeyValueStateMachine.Process() data = %v, want %v", k.current.KeyValue, tt.wantFields.data)
 				}
 
-				if !reflect.DeepEqual(k.current.sessions, tt.wantFields.clients) {
-					t.Errorf("KeyValueStateMachine.Process() session = %v, want %v", k.current.sessions, tt.wantFields.clients)
+				if !reflect.DeepEqual(k.current.Sessions, tt.wantFields.clients) {
+					t.Errorf("KeyValueStateMachine.Process() session = %v, want %v", k.current.Sessions, tt.wantFields.clients)
 				}
 
-				if !reflect.DeepEqual(k.current.keyLock, tt.wantFields.keyLock) {
-					t.Errorf("KeyValueStateMachine.Process() keyLock = %v, want %v", k.current.keyLock, tt.wantFields.keyLock)
+				if !reflect.DeepEqual(k.current.KeyLock, tt.wantFields.keyLock) {
+					t.Errorf("KeyValueStateMachine.Process() keyLock = %v, want %v", k.current.KeyLock, tt.wantFields.keyLock)
 				}
 			}
 		})
@@ -778,7 +777,7 @@ func TestKeyValueStateMachine_Process2(t *testing.T) {
 func TestKeyValueStateMachine_setCache(t *testing.T) {
 	type fields struct {
 		data  map[string]string
-		cache map[int]ClientEntry
+		cache map[int]common.ClientEntry
 	}
 	type args struct {
 		clientID    int
@@ -795,7 +794,7 @@ func TestKeyValueStateMachine_setCache(t *testing.T) {
 			name: "both 0",
 			fields: fields{
 				data:  map[string]string{},
-				cache: map[int]ClientEntry{},
+				cache: map[int]common.ClientEntry{},
 			},
 			args: args{
 				clientID:    0,
@@ -804,14 +803,14 @@ func TestKeyValueStateMachine_setCache(t *testing.T) {
 			},
 			want: fields{
 				data:  map[string]string{},
-				cache: map[int]ClientEntry{},
+				cache: map[int]common.ClientEntry{},
 			},
 		},
 		{
 			name: "client 0",
 			fields: fields{
 				data:  map[string]string{},
-				cache: map[int]ClientEntry{},
+				cache: map[int]common.ClientEntry{},
 			},
 			args: args{
 				clientID:    0,
@@ -820,14 +819,14 @@ func TestKeyValueStateMachine_setCache(t *testing.T) {
 			},
 			want: fields{
 				data:  map[string]string{},
-				cache: map[int]ClientEntry{},
+				cache: map[int]common.ClientEntry{},
 			},
 		},
 		{
 			name: "register new client: sequence 0",
 			fields: fields{
 				data:  map[string]string{},
-				cache: map[int]ClientEntry{},
+				cache: map[int]common.ClientEntry{},
 			},
 			args: args{
 				clientID:    1,
@@ -836,7 +835,7 @@ func TestKeyValueStateMachine_setCache(t *testing.T) {
 			},
 			want: fields{
 				data: map[string]string{},
-				cache: map[int]ClientEntry{
+				cache: map[int]common.ClientEntry{
 					1: {
 						LastSequenceNum: 0,
 						LastResponse:    "",
@@ -848,7 +847,7 @@ func TestKeyValueStateMachine_setCache(t *testing.T) {
 			name: "ok",
 			fields: fields{
 				data:  map[string]string{},
-				cache: map[int]ClientEntry{},
+				cache: map[int]common.ClientEntry{},
 			},
 			args: args{
 				clientID:    1,
@@ -857,7 +856,7 @@ func TestKeyValueStateMachine_setCache(t *testing.T) {
 			},
 			want: fields{
 				data: map[string]string{},
-				cache: map[int]ClientEntry{
+				cache: map[int]common.ClientEntry{
 					1: {
 						LastSequenceNum: 1,
 						LastResponse:    "khanh",
@@ -869,454 +868,18 @@ func TestKeyValueStateMachine_setCache(t *testing.T) {
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
 			k := KeyValueStateMachine{
-				current: snapshot{
-					data:     tt.fields.data,
-					sessions: tt.fields.cache,
+				current: &common.Snapshot{
+					KeyValue: tt.fields.data,
+					Sessions: tt.fields.cache,
 				},
 			}
 			k.setSession(tt.args.clientID, tt.args.sequenceNum, tt.args.response)
-			if !reflect.DeepEqual(k.current.sessions, tt.want.cache) {
-				t.Errorf("KeyValueStateMachine.setCache() = %v, want %v", k.current.sessions, tt.want.cache)
+			if !reflect.DeepEqual(k.current.Sessions, tt.want.cache) {
+				t.Errorf("KeyValueStateMachine.setCache() = %v, want %v", k.current.Sessions, tt.want.cache)
 			}
 
-			if !reflect.DeepEqual(k.current.data, tt.want.data) {
-				t.Errorf("KeyValueStateMachine.setCache() = %v, want %v", k.current.data, tt.want.data)
-			}
-		})
-	}
-}
-
-func TestKeyValueStateMachine_serializeSnapshot(t *testing.T) {
-	type fields struct {
-		current     snapshot
-		previous    snapshot
-		persistance Persistance
-	}
-	tests := []struct {
-		name   string
-		fields fields
-		want   []string
-	}{
-		{
-			name: "case 1",
-			fields: fields{
-				previous: snapshot{
-					keyLock: map[string]int{
-						"name": 1,
-						"city": 2,
-					},
-					sessions: map[int]ClientEntry{
-						1: {LastSequenceNum: 2, LastResponse: "abc", ExpiryTime: 100},
-						2: {LastSequenceNum: 3, LastResponse: "", ExpiryTime: 130},
-					},
-					lastConfig: map[int]common.ClusterMember{
-						1: {
-							ID:      1,
-							RpcUrl:  "localhost:1234",
-							HttpUrl: "localhost:8080",
-						},
-						2: {
-							ID:      2,
-							RpcUrl:  "localhost:1235",
-							HttpUrl: "localhost:8081",
-						},
-					},
-					data: map[string]string{
-						"name":        "khanh",
-						"city":        "hcm",
-						"citizenship": "vietnam",
-					},
-
-					lastTerm:  5,
-					lastIndex: 6,
-				},
-			},
-			want: []string{
-				"last_log_index=6",
-				"last_log_term=5",
-				"member_count=2",
-				"session_count=2",
-				"key_value_count=3",
-				"key_lock_count=2",
-
-				"1|localhost:8080|localhost:1234",
-				"2|localhost:8081|localhost:1235",
-
-				"1|2|100|abc",
-				"2|3|130|",
-
-				"name=khanh",
-				"city=hcm",
-				"citizenship=vietnam",
-
-				"name=1",
-				"city=2",
-			},
-		},
-	}
-	for _, tt := range tests {
-		t.Run(tt.name, func(t *testing.T) {
-			k := &KeyValueStateMachine{
-				current:     tt.fields.current,
-				previous:    tt.fields.previous,
-				persistance: tt.fields.persistance,
-			}
-			got := k.serializeSnapshot()
-			sort.Strings(got)
-			sort.Strings(tt.want)
-			if !reflect.DeepEqual(got, tt.want) {
-				t.Errorf("KeyValueStateMachine.takeSnapshot() = %v, want %v", got, tt.want)
-			}
-		})
-	}
-}
-
-func TestKeyValueStateMachine_deserializeSnapshot(t *testing.T) {
-	type fields struct {
-	}
-	type args struct {
-		data []string
-	}
-	tests := []struct {
-		name    string
-		fields  fields
-		args    args
-		wantErr bool
-		want    snapshot
-	}{
-		{
-			name: "case 1",
-			args: args{
-				data: []string{
-					"last_log_index=6",
-					"last_log_term=5",
-					"member_count=2",
-					"session_count=2",
-					"key_value_count=3",
-					"key_lock_count=2",
-
-					"1|localhost:8080|localhost:1234",
-					"2|localhost:8081|localhost:1235",
-
-					"1|2|100|abc",
-					"2|3|130|",
-
-					"name=khanh",
-					"city=hcm",
-					"citizenship=vietnam",
-
-					"name=1",
-					"city=2",
-				},
-			},
-			want: snapshot{
-				lastConfig: map[int]common.ClusterMember{
-					1: {
-						ID:      1,
-						RpcUrl:  "localhost:1234",
-						HttpUrl: "localhost:8080",
-					},
-					2: {
-						ID:      2,
-						RpcUrl:  "localhost:1235",
-						HttpUrl: "localhost:8081",
-					},
-				},
-				data: map[string]string{
-					"name":        "khanh",
-					"city":        "hcm",
-					"citizenship": "vietnam",
-				},
-				keyLock: map[string]int{
-					"name": 1,
-					"city": 2,
-				},
-				sessions: map[int]ClientEntry{
-					1: {LastSequenceNum: 2, LastResponse: "abc", ExpiryTime: 100},
-					2: {LastSequenceNum: 3, LastResponse: "", ExpiryTime: 130},
-				},
-				lastTerm:  5,
-				lastIndex: 6,
-			},
-		},
-	}
-	for _, tt := range tests {
-		t.Run(tt.name, func(t *testing.T) {
-			k := &KeyValueStateMachine{}
-			err := k.deserializeSnapshot(tt.args.data)
-			if (err != nil) != tt.wantErr {
-				t.Errorf("KeyValueStateMachine.applySnapshot() error = %v, wantErr %v", err, tt.wantErr)
-			}
-			if !reflect.DeepEqual(k.current, tt.want) {
-				t.Errorf("KeyValueStateMachine.applySnapshot() = %v, want %v", k.current, tt.want)
-			}
-		})
-	}
-}
-
-func TestKeyValueStateMachine_RestoreFromFile(t *testing.T) {
-	type fields struct {
-		data []string
-	}
-	tests := []struct {
-		name    string
-		fields  fields
-		wantErr bool
-		want    snapshot
-	}{
-		{
-			name: "case 1",
-			fields: fields{
-				data: []string{
-					"last_log_index=6",
-					"last_log_term=5",
-					"member_count=2",
-					"session_count=2",
-					"key_value_count=3",
-					"key_lock_count=2",
-
-					"1|localhost:8080|localhost:1234",
-					"2|localhost:8081|localhost:1235",
-
-					"1|2|100|abc",
-					"2|3|130|",
-
-					"name=khanh",
-					"city=hcm",
-					"citizenship=vietnam",
-
-					"name=1",
-					"city=2",
-				},
-			},
-			want: snapshot{
-				lastConfig: map[int]common.ClusterMember{
-					1: {
-						ID:      1,
-						RpcUrl:  "localhost:1234",
-						HttpUrl: "localhost:8080",
-					},
-					2: {
-						ID:      2,
-						RpcUrl:  "localhost:1235",
-						HttpUrl: "localhost:8081",
-					},
-				},
-				data: map[string]string{
-					"name":        "khanh",
-					"city":        "hcm",
-					"citizenship": "vietnam",
-				},
-				lastTerm:  5,
-				lastIndex: 6,
-			},
-		},
-	}
-	for _, tt := range tests {
-		t.Run(tt.name, func(t *testing.T) {
-			db := common.NewPersistenceMock()
-			db.SetData(tt.fields.data)
-			k := &KeyValueStateMachine{
-				persistance: db,
-			}
-			err := k.restoreFromFile()
-			if (err != nil) != tt.wantErr {
-				t.Errorf("KeyValueStateMachine.RestoreFromFile() error = %v, wantErr %v", err, tt.wantErr)
-			}
-
-			if !reflect.DeepEqual(k.current, tt.want) {
-				t.Errorf("KeyValueStateMachine.RestoreFromFile() = %v, want %v", k.current, tt.want)
-			}
-		})
-	}
-}
-
-func TestKeyValueStateMachine_SaveSnapshotToFile(t *testing.T) {
-	type fields struct {
-		current snapshot
-		keys    []string
-	}
-	tests := []struct {
-		name    string
-		fields  fields
-		wantErr bool
-		want    map[string]string
-	}{
-		{
-			name: "case 1",
-			fields: fields{
-				current: snapshot{
-					lastConfig: map[int]common.ClusterMember{
-						1: {
-							ID:      1,
-							RpcUrl:  "localhost:1234",
-							HttpUrl: "localhost:8080",
-						},
-						2: {
-							ID:      2,
-							RpcUrl:  "localhost:1235",
-							HttpUrl: "localhost:8081",
-						},
-					},
-					data: map[string]string{
-						"name":        "khanh",
-						"city":        "hcm",
-						"citizenship": "vietnam",
-					},
-					lastTerm:  5,
-					lastIndex: 6,
-				},
-				keys: []string{
-					"log_count", "member_count", "last_index", "last_term",
-					"member_0", "member_1",
-					"key_0", "value_0", "key_1", "value_1", "key_2", "value_2",
-				},
-			},
-			wantErr: false,
-			want: map[string]string{
-				"last_index":   "6",
-				"last_term":    "5",
-				"member_count": "2",
-				"log_count":    "3",
-				"member_0":     "1|localhost:8080|localhost:1234",
-				"member_1":     "2|localhost:8081|localhost:1235",
-				"key_2":        "name",
-				"value_2":      "khanh",
-				"key_1":        "city",
-				"value_1":      "hcm",
-				"key_0":        "citizenship",
-				"value_0":      "vietnam",
-			},
-		},
-	}
-	for _, tt := range tests {
-		t.Run(tt.name, func(t *testing.T) {
-			db := common.NewPersistenceMock()
-			k := &KeyValueStateMachine{
-				current:     tt.fields.current,
-				lock:        sync.RWMutex{},
-				persistance: db,
-			}
-
-			err := k.saveSnapshotToFile("")
-			if (err != nil) != tt.wantErr {
-				t.Errorf("KeyValueStateMachine.SaveSnapshotToFile() error = %v, wantErr %v", err, tt.wantErr)
-			}
-
-			data, err := db.ReadKeyValuePairsToMap(tt.fields.keys)
-			if err != nil {
-				t.Errorf("KeyValueStateMachine.SaveSnapshotToFile() error = %v", err)
-			}
-
-			if !reflect.DeepEqual(data, tt.want) {
-				t.Errorf("KeyValueStateMachine.SaveSnapshotToFile() = %v, want %v", data, tt.want)
-			}
-		})
-	}
-}
-
-func TestKeyValueStateMachine_findLatestSnapshot(t *testing.T) {
-	tests := []struct {
-		name         string
-		args         []string
-		wantFileName string
-		wantErr      bool
-	}{
-		{
-			name:         "case 1",
-			args:         []string{"a", "snapshot.4.dat", "tmp.snapshot.10.dat", "snapshot.9.dat", "snapshot.0.dat", "wal.dat", "snapshot.8.dat"},
-			wantFileName: "snapshot.9.dat",
-		},
-	}
-	for _, tt := range tests {
-		t.Run(tt.name, func(t *testing.T) {
-			db := common.NewPersistenceMock()
-			db.SetFileNames(tt.args)
-
-			k := &KeyValueStateMachine{
-				persistance: db,
-			}
-			gotFileName, err := k.findLatestSnapshot()
-			if (err != nil) != tt.wantErr {
-				t.Errorf("KeyValueStateMachine.findLatestSnapshot() error = %v, wantErr %v", err, tt.wantErr)
-				return
-			}
-			if gotFileName != tt.wantFileName {
-				t.Errorf("KeyValueStateMachine.findLatestSnapshot() = %v, want %v", gotFileName, tt.wantFileName)
-			}
-		})
-	}
-}
-
-func TestNewKeyValueStateMachine(t *testing.T) {
-	type args struct {
-		data      []string
-		fileNames []string
-	}
-	tests := []struct {
-		name    string
-		args    args
-		want    snapshot
-		wantErr bool
-	}{
-		{
-			name: "case 1",
-			args: args{
-				data: []string{
-					"last_index=6",
-					"last_term=5",
-					"member_count=2",
-					"log_count=3",
-					"member_0=1|localhost:8080|localhost:1234",
-					"member_1=2|localhost:8081|localhost:1235",
-					"key_2=name",
-					"value_2=khanh",
-					"key_1=city",
-					"value_1=hcm",
-					"key_0=citizenship",
-					"value_0=vietnam",
-				},
-				fileNames: []string{"snapshot.9.dat"},
-			},
-			want: snapshot{
-				lastConfig: map[int]common.ClusterMember{
-					1: {
-						ID:      1,
-						RpcUrl:  "localhost:1234",
-						HttpUrl: "localhost:8080",
-					},
-					2: {
-						ID:      2,
-						RpcUrl:  "localhost:1235",
-						HttpUrl: "localhost:8081",
-					},
-				},
-				data: map[string]string{
-					"name":        "khanh",
-					"city":        "hcm",
-					"citizenship": "vietnam",
-				},
-				lastTerm:  5,
-				lastIndex: 6,
-			},
-		},
-	}
-	for _, tt := range tests {
-		t.Run(tt.name, func(t *testing.T) {
-			db := common.NewPersistenceMock()
-			db.SetData(tt.args.data)
-			db.SetFileNames(tt.args.fileNames)
-
-			got, err := NewKeyValueStateMachine(NewKeyValueStateMachineParams{
-				DB:         db,
-				DoSnapshot: true,
-			})
-			if (err != nil) != tt.wantErr {
-				t.Errorf("NewKeyValueStateMachine() error = %v, wantErr %v", err, tt.wantErr)
-				return
-			}
-			if !reflect.DeepEqual(got.current, tt.want) {
-				t.Errorf("NewKeyValueStateMachine() = %v, want %v", got.current, tt.want)
+			if !reflect.DeepEqual(k.current.KeyValue, tt.want.data) {
+				t.Errorf("KeyValueStateMachine.setCache() = %v, want %v", k.current.KeyValue, tt.want.data)
 			}
 		})
 	}

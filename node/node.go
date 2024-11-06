@@ -27,15 +27,11 @@ type NewNodeParams struct {
 	HTTPProxy    http_proxy.NewHttpProxyParams
 	StateMachine state_machine.NewKeyValueStateMachineParams
 
-	Logger     observability.Logger
-	DataFolder string
+	Logger observability.Logger
 }
 
 func NewNode(ctx context.Context, params NewNodeParams) *Node {
-	stateMachine, err := state_machine.NewKeyValueStateMachine(params.StateMachine)
-	if err != nil {
-		params.Logger.FatalContext(ctx, "NewNode_NewKeyValueStateMachine", "error", err)
-	}
+	stateMachine := state_machine.NewKeyValueStateMachine(params.StateMachine)
 
 	brain, err := logic.NewRaftBrain(params.Brain)
 	if err != nil {

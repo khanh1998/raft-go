@@ -40,6 +40,8 @@ type Config struct {
 	MaxHeartbeatTimeoutMs int64               `mapstructure:"max_heartbeat_timeout_ms" validate:"required,gt=0"`
 	DataFolder            string              `mapstructure:"data_folder" default:"data/" validate:"required"`
 	StateMachineSnapshot  bool                `mapstructure:"state_machine_snapshot"`
+	WalSizeLimit          int64               `mapstructure:"wal_size_limit"`
+	LogLengthLimit        int                 `mapstructure:"log_length_limit"`
 	Observability         ObservabilityConfig `mapstructure:"observability"`
 	ClientSessionDuration time.Duration       `mapstructure:"client_session_duration"`
 	RpcDialTimeout        time.Duration       `mapstructure:"rpc_dial_timeout"`

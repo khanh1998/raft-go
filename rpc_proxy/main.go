@@ -93,6 +93,7 @@ type NewRPCImplParams struct {
 	RpcDialTimeout       time.Duration
 	RpcReconnectDuration time.Duration
 	RpcRequestTimeout    time.Duration
+	StaticClusterMembers []common.ClusterMember
 }
 
 func NewRPCImpl(params NewRPCImplParams) (*RPCProxyImpl, error) {
@@ -108,7 +109,67 @@ func NewRPCImpl(params NewRPCImplParams) (*RPCProxyImpl, error) {
 		rpcRequestTimeout:    params.RpcRequestTimeout,
 	}
 
+	// if len(params.StaticClusterMembers) > 0 {
+	// 	for _, peer := range params.StaticClusterMembers {
+	// 		r.peers[peer.ID] = common.PeerRPCProxy{
+	// 			Conn: nil,
+	// 			URL:  peer.RpcUrl,
+	// 		}
+	// 	}
+	// }
+
 	return &r, nil
+}
+
+func Difference(current, newConfig map[int]common.PeerRPCProxy) (toBeRemoved, toBeAdded map[int]common.PeerRPCProxy) {
+	toBeRemoved = make(map[int]common.PeerRPCProxy)
+	toBeAdded = make(map[int]common.PeerRPCProxy)
+
+	for k, v := range current {
+		if _, exists := newConfig[k]; !exists {
+			toBeRemoved[k] = v
+		}
+	}
+
+	for k, v := range newConfig {
+		if _, exists := current[k]; !exists {
+			toBeAdded[k] = v
+		}
+	}
+
+	return toBeRemoved, toBeAdded
+}
+
+func (r *RPCProxyImpl) InformMemberChange(ctx context.Context, members map[int]common.ClusterMember) {
+	newData := map[int]common.PeerRPCProxy{}
+	for _, mem := range members {
+		newData[mem.ID] = common.PeerRPCProxy{Conn: nil, URL: mem.RpcUrl}
+	}
+
+	toBeRemoved, toBeAdded := Difference(r.peers, newData)
+
+	for peerId, peer := range toBeRemoved {
+		err := r.disconnectToPeer(ctx, peerId)
+		if err != nil {
+			r.log().ErrorContext(
+				ctx, "InformMemberChange_DisconnectToPeer", err,
+				"peer", peer,
+				"peerId", peerId,
+			)
+		}
+	}
+
+	for peerId, peer := range toBeAdded {
+		r.peers[peerId] = peer
+		err := r.connectToPeer(ctx, peerId, 0, time.Second)
+		if err != nil {
+			r.log().ErrorContext(
+				ctx, "InformMemberChange_ConnectToPeer", err,
+				"peer", peer,
+				"peerId", peerId,
+			)
+		}
+	}
 }
 
 func (r *RPCProxyImpl) SetBrain(brain RaftBrain) {
@@ -277,7 +338,7 @@ func (r *RPCProxyImpl) initServer(ctx context.Context, url string) error {
 	return nil
 }
 
-// this function attempt to connecting crashed peers
+// this function periodically attempt to connecting crashed peers
 func (r *RPCProxyImpl) reconnectPeer() {
 	ticker := time.NewTicker(r.rpcReconnectDuration)
 	for {

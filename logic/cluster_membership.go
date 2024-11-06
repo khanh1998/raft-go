@@ -96,7 +96,7 @@ func (r *RaftBrainImpl) RemoveServer(ctx context.Context, input common.RemoveSer
 	defer r.changeMemberLock.Unlock()
 
 	newLog := common.Log{
-		Term:        r.currentTerm,
+		Term:        r.persistState.GetCurrentTerm(),
 		ClientID:    0,
 		SequenceNum: 0,
 		Command:     common.ComposeRemoveServerCommand(input.ID, input.NewServerHttpUrl, input.NewServerRpcUrl),
@@ -219,7 +219,7 @@ func (r *RaftBrainImpl) AddServer(ctx context.Context, input common.AddServerInp
 	}
 
 	newLog := common.Log{
-		Term:        r.currentTerm,
+		Term:        r.persistState.GetCurrentTerm(),
 		ClientID:    0,
 		SequenceNum: 0,
 		Command:     common.ComposeAddServerCommand(input.ID, input.NewServerHttpUrl, input.NewServerRpcUrl),
@@ -263,9 +263,9 @@ func (r *RaftBrainImpl) AddServer(ctx context.Context, input common.AddServerInp
 }
 
 func (r *RaftBrainImpl) catchUpWithNewMember(ctx context.Context, peerID int) error {
-	initNextIdx := len(r.logs)
+	initNextIdx := r.persistState.LogLength()
 	nextIdx := initNextIdx
-	currentTerm := r.currentTerm
+	currentTerm := r.persistState.GetCurrentTerm()
 	matchIndex := 0
 
 	for matchIndex < initNextIdx {
@@ -304,7 +304,7 @@ func (r *RaftBrainImpl) catchUpWithNewMember(ctx context.Context, peerID int) er
 
 				nextIdx = common.Min(nextIdx+1, initNextIdx+1)
 			} else {
-				if output.Term <= r.currentTerm {
+				if output.Term <= r.persistState.GetCurrentTerm() {
 					nextIdx = common.Max(0, nextIdx-1)
 				} else {
 					// the appendEntries request is failed,
@@ -396,7 +396,7 @@ func (r *RaftBrainImpl) addMember(id int, httpUrl, rpcUrl string) error {
 		}
 
 		if r.state == common.StateLeader {
-			r.nextIndex[id] = len(r.logs) + 1 // data race
+			r.nextIndex[id] = r.persistState.LogLength() + 1 // data race
 			r.matchIndex[id] = 0
 		}
 	}
@@ -404,15 +404,22 @@ func (r *RaftBrainImpl) addMember(id int, httpUrl, rpcUrl string) error {
 	return nil
 }
 
-func (r *RaftBrainImpl) restoreClusterMemberInfoFromLogs(ctx context.Context) (err error) {
-	r.members = []common.ClusterMember{}
+func (r *RaftBrainImpl) notifyNewMember(member common.ClusterMember) {
+	r.nextMemberId = common.Max(r.nextMemberId, member.ID+1)
 
-	for _, log := range r.logs {
-		err = r.changeMember(log.Command)
-		if err != nil {
-			r.log().ErrorContext(ctx, "restoreClusterMemberInfoFromLogs", err)
+	if r.id != member.ID {
+		r.newMembers <- common.ClusterMemberChange{
+			ClusterMember: common.ClusterMember{
+				ID:      member.ID,
+				RpcUrl:  member.RpcUrl,
+				HttpUrl: member.HttpUrl,
+			},
+			Add: true,
+		}
+
+		if r.state == common.StateLeader {
+			r.nextIndex[member.ID] = r.persistState.LogLength() + 1 // data race
+			r.matchIndex[member.ID] = 0
 		}
 	}
-
-	return nil
 }

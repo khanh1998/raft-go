@@ -21,13 +21,13 @@ func (n *RaftBrainImpl) toLeader(ctx context.Context) {
 
 	for _, peer := range n.members {
 		if peer.ID != n.id {
-			n.nextIndex[peer.ID] = len(n.logs) + 1
+			n.nextIndex[peer.ID] = n.GetLogLength() + 1
 			n.matchIndex[peer.ID] = 0
 		}
 	}
 
 	n.appendLog(ctx, common.Log{
-		Term:        n.currentTerm,
+		Term:        n.GetCurrentTerm(),
 		Command:     common.NoOperation,
 		ClusterTime: n.clusterClock.Interpolate(),
 		ClientID:    0,

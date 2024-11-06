@@ -10,6 +10,7 @@ import (
 	"khanh/raft-go/observability"
 	"khanh/raft-go/rpc_proxy"
 	"khanh/raft-go/state_machine"
+	"khanh/raft-go/storage"
 	"log"
 	"time"
 )
@@ -53,10 +54,21 @@ func (c *Cluster) createNewNode(ctx context.Context, id int) error {
 
 	dataFolder := fmt.Sprintf("%s%d/", c.config.DataFolder, id)
 
-	smDb, err := common.NewPersistence(dataFolder, "")
+	storage, err := storage.NewStorage(storage.NewStorageParams{
+		WalSize:    100,
+		DataFolder: dataFolder,
+		Logger:     c.log,
+	}, storage.FileWrapperImpl{})
 	if err != nil {
 		return err
 	}
+
+	snapshot, raftPersistState, clusterMembers, err := common.Deserialize(ctx, storage, common.Dynamic)
+	if err != nil {
+		return err
+	}
+
+	raftPersistState.SetStorage(storage)
 
 	param := node.NewNodeParams{
 		ID: id,
@@ -70,13 +82,14 @@ func (c *Cluster) createNewNode(ctx context.Context, id int) error {
 			ElectionTimeOutMax:  c.config.MaxElectionTimeoutMs,
 			Logger:              c.log,
 			Members: func() []common.ClusterMember {
-				if id == 1 {
+				if id == 1 { // first node of freshly new cluster
 					return []common.ClusterMember{{ID: id, RpcUrl: rpcUrl, HttpUrl: httpUrl}}
 				}
-				return []common.ClusterMember{}
+				return clusterMembers
 			}(),
-			DB:                common.NewPersistenceMock(),
 			RpcRequestTimeout: c.config.RpcRequestTimeout,
+			PersistenceState:  raftPersistState,
+			LogLengthLimit:    c.config.LogLengthLimit,
 		},
 		RPCProxy: rpc_proxy.NewRPCImplParams{
 			HostURL:              rpcUrl,
@@ -91,13 +104,13 @@ func (c *Cluster) createNewNode(ctx context.Context, id int) error {
 			Logger: c.log,
 		},
 		StateMachine: state_machine.NewKeyValueStateMachineParams{
-			DB:                    smDb,
 			DoSnapshot:            c.config.StateMachineSnapshot,
 			ClientSessionDuration: uint64(c.config.ClientSessionDuration),
 			Logger:                c.log,
+			PersistState:          raftPersistState,
+			Snapshot:              snapshot,
 		},
-		Logger:     c.log,
-		DataFolder: dataFolder,
+		Logger: c.log,
 	}
 
 	n := node.NewNode(ctx, param)

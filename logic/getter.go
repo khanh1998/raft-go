@@ -7,7 +7,24 @@ func (r *RaftBrainImpl) GetId() int {
 }
 
 func (r *RaftBrainImpl) GetCurrentTerm() int {
-	return r.currentTerm
+	if r.persistState == nil {
+		return 0
+	}
+	return r.persistState.GetCurrentTerm()
+}
+
+func (r *RaftBrainImpl) GetVotedFor() int {
+	if r.persistState == nil {
+		return 0
+	}
+	return r.persistState.GetVotedFor()
+}
+
+func (r *RaftBrainImpl) GetLogLength() int {
+	if r.persistState == nil {
+		return 0
+	}
+	return r.persistState.LogLength()
 }
 
 func (r *RaftBrainImpl) GetState() common.RaftState {
@@ -18,7 +35,7 @@ func (n *RaftBrainImpl) GetInfo() common.GetStatusResponse {
 	return common.GetStatusResponse{
 		ID:          n.id,
 		State:       n.state,
-		Term:        n.currentTerm,
+		Term:        n.GetCurrentTerm(),
 		LeaderId:    n.leaderID,
 		ClusterTime: n.clusterClock.clusterTimeAtEpoch,
 	}

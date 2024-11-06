@@ -31,7 +31,7 @@ func (a *AsyncResponseManager) Register(logIndex int) error {
 	}
 
 	a.m[index] = AsyncResponse{
-		msg:       make(chan AsyncResponseItem, 1),
+		msg:       make(chan AsyncResponseItem, 3),
 		createdAt: time.Now(),
 	}
 
@@ -44,19 +44,18 @@ func (a *AsyncResponseManager) Register(logIndex int) error {
 	return nil
 }
 
-// todo: adding buffer to the channel
 func (a *AsyncResponseManager) PutResponse(logIndex int, msg string, resErr error, timeout time.Duration) error {
-	a.lock.RLock()
+	a.lock.Lock()
 	index := AsyncResponseIndex{logIndex}
 
 	slot, ok := a.m[index]
 	if !ok {
-		a.lock.RUnlock()
+		a.lock.Unlock()
 
 		return fmt.Errorf("register log index: %d first", logIndex)
 	}
 
-	a.lock.RUnlock()
+	a.lock.Unlock()
 
 	select {
 	case slot.msg <- AsyncResponseItem{Response: msg, Err: resErr}:

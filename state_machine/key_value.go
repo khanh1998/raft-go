@@ -1,12 +1,11 @@
 package state_machine
 
 import (
+	"context"
 	"errors"
 	"fmt"
 	"khanh/raft-go/common"
 	"khanh/raft-go/observability"
-	"sort"
-	"strconv"
 	"strings"
 	"sync"
 )
@@ -25,40 +24,6 @@ var (
 	ErrInvalidParameters      = errors.New("invalid parameters")
 )
 
-type ClientEntry struct {
-	LastSequenceNum int
-	LastResponse    string
-	ExpiryTime      uint64
-	LockedKeys      map[string]struct{}
-}
-
-// clientId|lastSequenceNum|expiryTime|lastResponse
-func (c ClientEntry) ToString(clientId int) string {
-	return fmt.Sprintf("%d|%d|%d|%v", clientId, c.LastSequenceNum, c.ExpiryTime, c.LastResponse)
-}
-
-func (c *ClientEntry) FromString(str string) (clientId int, err error) {
-	tokens := strings.Split(str, "|")
-	clientId, err = strconv.Atoi(tokens[0])
-	if err != nil {
-		return clientId, err
-	}
-
-	c.LastSequenceNum, err = strconv.Atoi(tokens[1])
-	if err != nil {
-		return clientId, err
-	}
-
-	c.ExpiryTime, err = strconv.ParseUint(tokens[2], 10, 64)
-	if err != nil {
-		return clientId, err
-	}
-
-	c.LastResponse = tokens[3]
-
-	return clientId, nil
-}
-
 type ConsensusModule interface {
 	NotifyNewSnapshot(noti common.SnapshotNotification) error
 	StartSnapshot(snapshotFileName string) (common.BeginSnapshotResponse, error)
@@ -73,111 +38,60 @@ type Persistance interface {
 	RenameFile(oldFileName string, newFileName string) error
 	ReadKeyValuePairsToMap(keys []string) (map[string]string, error)
 	ReadKeyValuePairsToArray() ([]string, error)
+	ReadStrings() ([]string, error)
 	GetFileNames() ([]string, error)
 	OpenFile(fileName string) error
 }
 
-// TODO: add session timeout mechanism
-// support concurrent request
-type snapshot struct {
-	lastConfig map[int]common.ClusterMember // cluster members
-	data       map[string]string
-	lastTerm   int
-	lastIndex  int
-	keyLock    map[string]int // allowing a client session to lock a key
-	sessions   map[int]ClientEntry
-}
-
-func newSnapshot() snapshot {
-	return snapshot{
-		lastConfig: make(map[int]common.ClusterMember),
-		data:       make(map[string]string),
-		lastTerm:   0,
-		lastIndex:  0,
-		keyLock:    make(map[string]int),
-		sessions:   make(map[int]ClientEntry),
-	}
-}
-
-func (s snapshot) copy() snapshot {
-	members := map[int]common.ClusterMember{}
-	sessions := map[int]ClientEntry{}
-	keyValue := map[string]string{}
-	keyLock := map[string]int{}
-
-	for k, v := range s.lastConfig {
-		members[k] = v
-	}
-
-	for k, v := range s.data {
-		keyValue[k] = v
-	}
-
-	for k, v := range s.keyLock {
-		keyLock[k] = v
-	}
-
-	for k, v := range s.sessions {
-		sessions[k] = v
-	}
-
-	return snapshot{
-		lastTerm:   s.lastTerm,
-		lastIndex:  s.lastIndex,
-		lastConfig: members,
-		data:       keyValue,
-		keyLock:    keyLock,
-		sessions:   sessions,
-	}
-}
-
 type KeyValueStateMachine struct {
-	current               snapshot // live snapshot to serve the users
-	previous              snapshot // the latest snapshot that got persisted in disk
-	persistance           Persistance
+	current               *common.Snapshot // live snapshot to serve the users
 	cm                    ConsensusModule
 	lock                  sync.RWMutex
 	doSnapshot            bool
 	clientSessionDuration uint64 // duration in nanosecond
 	logger                observability.Logger
 	snapshotLock          sync.Mutex // prevent more than one snapshot at the same time
+	persistanceState      RaftPersistanceState
+}
+
+type RaftPersistanceState interface {
+	SaveSnapshot(ctx context.Context, snapshot *common.Snapshot) (err error)
+	ReadLatestSnapshot(ctx context.Context) (snap *common.Snapshot, err error)
 }
 
 type NewKeyValueStateMachineParams struct {
-	DB                    Persistance
+	PersistState          RaftPersistanceState
 	DoSnapshot            bool
 	ClientSessionDuration uint64 // duration in nanosecond
 	Logger                observability.Logger
+	Snapshot              *common.Snapshot
 }
 
-func NewKeyValueStateMachine(params NewKeyValueStateMachineParams) (*KeyValueStateMachine, error) {
+func NewKeyValueStateMachine(params NewKeyValueStateMachineParams) *KeyValueStateMachine {
 	k := &KeyValueStateMachine{
-		current:               newSnapshot(),
-		persistance:           params.DB,
 		cm:                    nil,
 		doSnapshot:            params.DoSnapshot,
 		clientSessionDuration: params.ClientSessionDuration,
 		logger:                params.Logger,
+		persistanceState:      params.PersistState,
 	}
 
-	snapshotFile, err := k.findLatestSnapshot()
-	if err != nil {
-		return nil, err
+	if params.Snapshot == nil {
+		k.current = common.NewSnapshot()
+	} else {
+		k.current = params.Snapshot
 	}
 
-	if snapshotFile != "" {
-		err = k.persistance.OpenFile(snapshotFile)
-		if err != nil {
-			return nil, err
-		}
+	return k
+}
 
-		err = k.restoreFromFile()
-		if err != nil {
-			return nil, err
-		}
-	}
+func (k *KeyValueStateMachine) GetLastConfig() map[int]common.ClusterMember {
+	return k.current.LastConfig
+}
 
-	return k, nil
+// for static cluster only
+func (k *KeyValueStateMachine) SetLastConfig(config map[int]common.ClusterMember) {
+	k.current.LastConfig = config
 }
 
 func (k *KeyValueStateMachine) log() observability.Logger {
@@ -188,217 +102,39 @@ func (k *KeyValueStateMachine) log() observability.Logger {
 	return sub
 }
 
-func (k *KeyValueStateMachine) findLatestSnapshot() (fileName string, err error) {
-	var snapshotFiles []string
-
-	files, err := k.persistance.GetFileNames()
-	if err != nil {
-		return "", err
-	}
-
-	for _, file := range files {
-		if common.IsSnapshotFile(file) {
-			snapshotFiles = append(snapshotFiles, file)
-		}
-	}
-
-	if len(snapshotFiles) > 0 {
-		sort.Strings(snapshotFiles)
-		last := len(snapshotFiles) - 1
-		fileName = snapshotFiles[last]
-	}
-
-	return fileName, nil
-}
-
 func (k *KeyValueStateMachine) SetConsensusModule(cm ConsensusModule) {
 	k.cm = cm
 }
 
-func (k *KeyValueStateMachine) saveSnapshotToFile(finalFileName string) error {
-	data := k.serializeSnapshot()
-	tmpFileName := "tmp." + finalFileName
-
-	if err := k.persistance.CreateNewFile(tmpFileName); err != nil {
-		return err
-	}
-
-	err := k.persistance.AppendStrings(data...)
-	if err != nil {
-		return err
-	}
-
-	// we write to a temporary file first, after finish we rename it to become the final snapshot,
-	// to make sure the state machine will not read unfinished snapshot file
-
-	err = k.persistance.RenameFile(tmpFileName, finalFileName)
-	if err != nil {
-		return err
-	}
-
-	return nil
-}
-
-func (k *KeyValueStateMachine) restoreFromFile() error {
-	return nil
-}
-
-func (k *KeyValueStateMachine) deserializeSnapshot(data []string) error {
-	lastLogIndex, err := strconv.Atoi(strings.Split(data[0], "=")[1])
-	if err != nil {
-		return fmt.Errorf("cannot read last log index: %w", err)
-	}
-
-	lastLogTerm, err := strconv.Atoi(strings.Split(data[1], "=")[1])
-	if err != nil {
-		return fmt.Errorf("cannot read last log term: %w", err)
-	}
-
-	memberCount, err := strconv.Atoi(strings.Split(data[2], "=")[1])
-	if err != nil {
-		return fmt.Errorf("cannot read member count: %w", err)
-	}
-
-	sessionCount, err := strconv.Atoi(strings.Split(data[3], "=")[1])
-	if err != nil {
-		return fmt.Errorf("cannot read session count: %w", err)
-	}
-
-	keyValueCount, err := strconv.Atoi(strings.Split(data[4], "=")[1])
-	if err != nil {
-		return fmt.Errorf("cannot read key-value pair count: %w", err)
-	}
-
-	keyLockCount, err := strconv.Atoi(strings.Split(data[5], "=")[1])
-	if err != nil {
-		return fmt.Errorf("cannot read key-lock count: %w", err)
-	}
-
-	snapshot := newSnapshot()
-	snapshot.lastIndex = lastLogIndex
-	snapshot.lastTerm = lastLogTerm
-
-	i := 5
-	for j := 0; j < memberCount; j++ {
-		i++
-		cm := common.ClusterMember{}
-		err := cm.FromString(data[i])
-		if err != nil {
-			return err
-		}
-		snapshot.lastConfig[cm.ID] = cm
-	}
-
-	for j := 0; j < sessionCount; j++ {
-		i++
-		ce := ClientEntry{}
-		clientId, err := ce.FromString(data[i])
-		if err != nil {
-			return err
-		}
-		snapshot.sessions[clientId] = ce
-	}
-
-	for j := 0; j < keyValueCount; j++ {
-		i++
-		tokens := strings.Split(data[i], "=")
-		key, value := tokens[0], tokens[1]
-		snapshot.data[key] = value
-	}
-
-	for j := 0; j < keyLockCount; j++ {
-		i++
-		tokens := strings.Split(data[i], "=")
-		key := tokens[0]
-		clientId, err := strconv.Atoi(tokens[1])
-		if err != nil {
-			return err
-		}
-		snapshot.keyLock[key] = clientId
-	}
-
-	k.current = snapshot
-
-	return nil
-}
-
-// snapshot layout:
-
-// 1st line:
-// cluster time
-// lastLogTerm, lastLogIndex
-
-// 2nd line:
-// key-value pair count, user session count, member count
-
-// 3rd line and so on:
-// key-value pairs
-// user sessions
-// cluster member configurations
-func (k *KeyValueStateMachine) serializeSnapshot() []string {
-	snapshot := k.previous
-	data := []string{}
-
-	data = append(data, fmt.Sprintf("last_log_index=%d", snapshot.lastIndex))
-	data = append(data, fmt.Sprintf("last_log_term=%d", snapshot.lastTerm))
-
-	data = append(data, fmt.Sprintf("member_count=%d", len(snapshot.lastConfig)))
-	data = append(data, fmt.Sprintf("session_count=%d", len(snapshot.sessions)))
-	data = append(data, fmt.Sprintf("key_value_count=%d", len(snapshot.data)))
-	data = append(data, fmt.Sprintf("key_lock_count=%d", len(snapshot.keyLock)))
-
-	for _, member := range snapshot.lastConfig {
-		data = append(data, member.ToString())
-	}
-
-	for clientId, session := range snapshot.sessions {
-		data = append(data, session.ToString(clientId))
-	}
-
-	for key, value := range snapshot.data {
-		data = append(data, fmt.Sprintf("%s=%s", key, value))
-	}
-
-	for key, clientId := range snapshot.keyLock {
-		data = append(data, fmt.Sprintf("%s=%d", key, clientId))
-	}
-
-	return data
+func (k *KeyValueStateMachine) SetPersistanceStatus(ps RaftPersistanceState) {
+	k.persistanceState = ps
 }
 
 func (k *KeyValueStateMachine) setSession(clientID int, sequenceNum int, response string) {
 	if clientID > 0 && sequenceNum >= 0 { // when client register, clientID > 0 and sequenceNum == 0
-		tmp := k.current.sessions[clientID]
+		tmp := k.current.Sessions[clientID]
 		tmp.LastResponse = response
 		tmp.LastSequenceNum = sequenceNum
 
-		k.current.sessions[clientID] = tmp
+		k.current.Sessions[clientID] = tmp
 	}
 }
 
-func (k *KeyValueStateMachine) Reset() error {
+func (k *KeyValueStateMachine) Reset(ctx context.Context) (err error) {
 	k.lock.Lock()
 	defer k.lock.Unlock()
 
-	k.current = newSnapshot()
-	k.previous = snapshot{}
-	// return k.saveSnapshotToFile()
+	k.current, err = k.persistanceState.ReadLatestSnapshot(ctx)
+	if err != nil {
+		return err
+	}
+
 	return nil
-}
-
-func (k *KeyValueStateMachine) ResetAndReloadFromFile() error {
-	k.current = newSnapshot()
-
-	return k.restoreFromFile()
-}
-
-func (k *KeyValueStateMachine) GetBase() (lastIndex int, lastTerm int) {
-	return k.previous.lastIndex, k.previous.lastTerm
 }
 
 func (k *KeyValueStateMachine) InvalidateExpiredSession(clusterTime uint64) {
 	expiredClientIds := map[int]struct{}{}
-	for clientId, session := range k.current.sessions {
+	for clientId, session := range k.current.Sessions {
 		if session.ExpiryTime < clusterTime {
 			k.log().Debug(
 				"session was expired",
@@ -411,38 +147,29 @@ func (k *KeyValueStateMachine) InvalidateExpiredSession(clusterTime uint64) {
 	}
 
 	for clientId := range expiredClientIds {
-		session := k.current.sessions[clientId]
+		session := k.current.Sessions[clientId]
 		for key := range session.LockedKeys {
-			delete(k.current.keyLock, key)
+			delete(k.current.KeyLock, key)
 		}
-		delete(k.current.sessions, clientId)
+		delete(k.current.Sessions, clientId)
 	}
 
 }
 
-func (k *KeyValueStateMachine) StartSnapshot() (err error) {
-	k.lock.Lock()
-	k.previous = k.current.copy()
-	k.lock.Unlock()
-
+func (k *KeyValueStateMachine) StartSnapshot(ctx context.Context) (err error) {
 	k.snapshotLock.Lock()
 	defer k.snapshotLock.Unlock()
 
-	fileName := common.NewSnapshotFileName()
-	err = k.saveSnapshotToFile(fileName)
+	snapshot := k.current.Copy()
+	err = k.persistanceState.SaveSnapshot(ctx, snapshot)
 	if err != nil {
 		return err
 	}
-	k.cm.FinishSnapshot(common.SnapshotMetadata{
-		LastLogTerm:  k.previous.lastTerm,
-		LastLogIndex: k.previous.lastIndex,
-		FileName:     fileName,
-	})
 
 	return nil
 }
 
-func (k *KeyValueStateMachine) Process(logIndex int, log common.Log) (result string, err error) {
+func (k *KeyValueStateMachine) Process(ctx context.Context, logIndex int, log common.Log) (result string, err error) {
 	k.lock.Lock()
 	defer k.lock.Unlock()
 
@@ -452,7 +179,7 @@ func (k *KeyValueStateMachine) Process(logIndex int, log common.Log) (result str
 	// 	return nil, ErrCommandWasSnapshot
 	// }
 
-	client, ok := k.current.sessions[log.ClientID]
+	client, ok := k.current.Sessions[log.ClientID]
 	if log.ClientID > 0 && !ok {
 		return "", common.ErrorSessionExpired
 	}
@@ -460,8 +187,8 @@ func (k *KeyValueStateMachine) Process(logIndex int, log common.Log) (result str
 	defer func() {
 		k.setSession(log.ClientID, log.SequenceNum, result)
 
-		k.current.lastIndex = logIndex
-		k.current.lastTerm = log.Term
+		k.current.LastLogIndex = logIndex
+		k.current.LastLogTerm = log.Term
 
 		k.log().Debug(
 			"Process",
@@ -469,8 +196,8 @@ func (k *KeyValueStateMachine) Process(logIndex int, log common.Log) (result str
 			"sequenceNum", log.SequenceNum,
 			"command", log.Command,
 			"logIndex", logIndex,
-			"data", k.current.data,
-			"cache", k.current.sessions,
+			"data", k.current.KeyValue,
+			"cache", k.current.Sessions,
 		)
 	}()
 
@@ -532,7 +259,7 @@ func (k *KeyValueStateMachine) Process(logIndex int, log common.Log) (result str
 		clientID := logIndex
 		result = ""
 		expiryTime := log.ClusterTime + k.clientSessionDuration
-		k.current.sessions[clientID] = ClientEntry{
+		k.current.Sessions[clientID] = common.ClientEntry{
 			LastSequenceNum: 0, LastResponse: "", ExpiryTime: expiryTime,
 			LockedKeys: map[string]struct{}{},
 		}
@@ -541,14 +268,14 @@ func (k *KeyValueStateMachine) Process(logIndex int, log common.Log) (result str
 			"register-session",
 			"clientId", clientID,
 			"expiryTime", expiryTime,
-			"session", k.current.sessions[clientID],
+			"session", k.current.Sessions[clientID],
 		)
 
 		return "", nil
 	case "keep-alive":
 		expiryTime := log.ClusterTime + k.clientSessionDuration
-		tmp := k.current.sessions[log.ClientID]
-		k.current.sessions[log.ClientID] = ClientEntry{
+		tmp := k.current.Sessions[log.ClientID]
+		k.current.Sessions[log.ClientID] = common.ClientEntry{
 			LastSequenceNum: tmp.LastSequenceNum, LastResponse: tmp.LastResponse, ExpiryTime: expiryTime,
 			LockedKeys: tmp.LockedKeys,
 		}
@@ -557,7 +284,7 @@ func (k *KeyValueStateMachine) Process(logIndex int, log common.Log) (result str
 			"keep-session",
 			"clientId", log.ClientID,
 			"expiryTime", expiryTime,
-			"session", k.current.sessions[log.ClientID],
+			"session", k.current.Sessions[log.ClientID],
 		)
 
 		return "", nil
@@ -567,7 +294,7 @@ func (k *KeyValueStateMachine) Process(logIndex int, log common.Log) (result str
 			return "", err
 		}
 
-		k.current.lastConfig[id] = common.ClusterMember{
+		k.current.LastConfig[id] = common.ClusterMember{
 			ID:      id,
 			RpcUrl:  rpcUrl,
 			HttpUrl: httpUrl,
@@ -580,7 +307,7 @@ func (k *KeyValueStateMachine) Process(logIndex int, log common.Log) (result str
 			return "", err
 		}
 
-		delete(k.current.lastConfig, id)
+		delete(k.current.LastConfig, id)
 
 		return "", nil
 	}
@@ -588,8 +315,15 @@ func (k *KeyValueStateMachine) Process(logIndex int, log common.Log) (result str
 	return "", ErrUnsupportedCommand
 }
 
+func (k *KeyValueStateMachine) GetMembers() (members []common.ClusterMember) {
+	for _, mem := range k.current.LastConfig {
+		members = append(members, mem)
+	}
+	return members
+}
+
 func (k *KeyValueStateMachine) get(key string) (value string, err error) {
-	value, ok := k.current.data[key]
+	value, ok := k.current.KeyValue[key]
 	if !ok {
 		return "", ErrKeyDoesNotExist
 	}
@@ -598,47 +332,47 @@ func (k *KeyValueStateMachine) get(key string) (value string, err error) {
 }
 
 func (k *KeyValueStateMachine) del(key string, clientId int) (err error) {
-	lockClientId, ok := k.current.keyLock[key]
+	lockClientId, ok := k.current.KeyLock[key]
 	if ok && lockClientId != clientId {
 		return fmt.Errorf("%w, client id: %d", ErrKeyIsLocked, lockClientId)
 	}
 
-	_, ok = k.current.data[key]
+	_, ok = k.current.KeyValue[key]
 	if !ok {
 		return ErrKeyDoesNotExist
 	}
 
-	delete(k.current.data, key)
-	delete(k.current.keyLock, key)
+	delete(k.current.KeyValue, key)
+	delete(k.current.KeyLock, key)
 
-	session, ok := k.current.sessions[clientId]
+	session, ok := k.current.Sessions[clientId]
 	if ok {
 		delete(session.LockedKeys, key)
-		k.current.sessions[clientId] = session
+		k.current.Sessions[clientId] = session
 	}
 
 	return nil
 }
 
 func (k *KeyValueStateMachine) set(key string, value string, clientId int, lock bool) (string, error) {
-	lockClientId, ok := k.current.keyLock[key]
+	lockClientId, ok := k.current.KeyLock[key]
 	if ok && lockClientId != clientId {
 		return "", fmt.Errorf("%w, client id: %d", ErrKeyIsLocked, lockClientId)
 	}
 
-	k.current.data[key] = value
+	k.current.KeyValue[key] = value
 
 	if lock && clientId == 0 {
 		return "", fmt.Errorf("can't lock with client id 0 %w", ErrInvalidParameters)
 	}
 
 	if lock && clientId > 0 {
-		k.current.keyLock[key] = clientId
+		k.current.KeyLock[key] = clientId
 
-		session, ok := k.current.sessions[clientId]
+		session, ok := k.current.Sessions[clientId]
 		if ok {
 			session.LockedKeys[key] = struct{}{}
-			k.current.sessions[clientId] = session
+			k.current.Sessions[clientId] = session
 		}
 	}
 
@@ -648,7 +382,7 @@ func (k *KeyValueStateMachine) set(key string, value string, clientId int, lock 
 func (k *KeyValueStateMachine) GetAll() (data map[any]any, err error) {
 	data = map[any]any{}
 
-	for key, value := range k.current.data {
+	for key, value := range k.current.KeyValue {
 		data[key] = value
 	}
 

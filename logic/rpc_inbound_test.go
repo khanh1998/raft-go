@@ -6,6 +6,7 @@ import (
 	"khanh/raft-go/common"
 	"khanh/raft-go/observability"
 	"khanh/raft-go/state_machine"
+	"khanh/raft-go/storage"
 	"testing"
 
 	"github.com/rs/zerolog/log"
@@ -26,7 +27,14 @@ func Test_nodeImpl_RequestVote(t *testing.T) {
 		{
 			name: "1. Reply false if term < currentTerm (§5.1)",
 			n: RaftBrainImpl{
-				currentTerm: 3, logger: logger,
+				persistState: common.NewRaftPersistanceState(common.NewRaftPersistanceStateParams{
+					CurrentTerm: 3,
+					Storage: storage.NewStorageForTest(
+						storage.NewStorageParams{WalSize: 1024, DataFolder: "data/", Logger: logger},
+						storage.NewFileWrapperMock(),
+					),
+				}),
+				logger:             logger,
 				electionTimeOutMin: 300,
 				electionTimeOutMax: 500,
 			},
@@ -36,7 +44,15 @@ func Test_nodeImpl_RequestVote(t *testing.T) {
 		{
 			name: "2. If votedFor is null or candidateId, and candidate’s log is at least as up-to-date as receiver’s log, grant vote (§5.2, §5.4)",
 			n: RaftBrainImpl{
-				currentTerm: 3, votedFor: 4, db: common.NewPersistenceMock(), logger: logger,
+				persistState: common.NewRaftPersistanceState(common.NewRaftPersistanceStateParams{
+					CurrentTerm: 3,
+					VotedFor:    4,
+					Storage: storage.NewStorageForTest(
+						storage.NewStorageParams{WalSize: 1024, DataFolder: "data/", Logger: logger},
+						storage.NewFileWrapperMock(),
+					),
+				}),
+				logger:             logger,
 				electionTimeOutMin: 300,
 				electionTimeOutMax: 500,
 			},
@@ -46,8 +62,16 @@ func Test_nodeImpl_RequestVote(t *testing.T) {
 		{
 			name: "2. If votedFor is null or candidateId, and candidate’s log is at least as up-to-date as receiver’s log, grant vote (§5.2, §5.4)",
 			n: RaftBrainImpl{
-				currentTerm: 3, votedFor: 0, logs: []common.Log{{Term: 1}, {Term: 2}, {Term: 3}},
-				db: common.NewPersistenceMock(), logger: logger,
+				persistState: common.NewRaftPersistanceState(common.NewRaftPersistanceStateParams{
+					CurrentTerm: 3,
+					VotedFor:    0,
+					Logs:        []common.Log{{Term: 1}, {Term: 2}, {Term: 3}},
+					Storage: storage.NewStorageForTest(
+						storage.NewStorageParams{WalSize: 1024, DataFolder: "data/", Logger: logger},
+						storage.NewFileWrapperMock(),
+					),
+				}),
+				logger:             logger,
 				electionTimeOutMin: 300,
 				electionTimeOutMax: 500,
 			},
@@ -57,10 +81,15 @@ func Test_nodeImpl_RequestVote(t *testing.T) {
 		{
 			name: "2. If votedFor is null or candidateId, and candidate’s log is at least as up-to-date as receiver’s log, grant vote (§5.2, §5.4)",
 			n: RaftBrainImpl{
-				currentTerm:         3,
-				votedFor:            0,
-				logs:                []common.Log{{Term: 1}, {Term: 2}, {Term: 3}},
-				db:                  common.NewPersistenceMock(),
+				persistState: common.NewRaftPersistanceState(common.NewRaftPersistanceStateParams{
+					CurrentTerm: 3,
+					VotedFor:    0,
+					Logs:        []common.Log{{Term: 1}, {Term: 2}, {Term: 3}},
+					Storage: storage.NewStorageForTest(
+						storage.NewStorageParams{WalSize: 1024, DataFolder: "data/", Logger: logger},
+						storage.NewFileWrapperMock(),
+					),
+				}),
 				logger:              logger,
 				heartBeatTimeOutMin: 100,
 				heartBeatTimeOutMax: 150,
@@ -73,10 +102,15 @@ func Test_nodeImpl_RequestVote(t *testing.T) {
 	}
 
 	for index, testCase := range testCases {
+		if index == 2 {
+			logger.Info("breakpoint")
+		}
+		logger.Info(testCase.name)
 		var out common.RequestVoteOutput
 		testCase.n.RequestVote(context.TODO(), &testCase.in, &out)
 		log.Info().Int("index", index).Msg("test case RequestVoteOutput")
 		assert.Equal(t, testCase.out, out, fmt.Sprintf("test case: #%d", index))
+		logger.Info(testCase.name)
 	}
 }
 func Test_nodeImpl_AppendEntries(t *testing.T) {
@@ -87,6 +121,7 @@ func Test_nodeImpl_AppendEntries(t *testing.T) {
 
 	type TestCase struct {
 		name    string
+		ps      *common.RaftPersistanceStateImpl
 		n       RaftBrainImpl
 		in      common.AppendEntriesInput
 		out     common.AppendEntriesOutput
@@ -95,25 +130,25 @@ func Test_nodeImpl_AppendEntries(t *testing.T) {
 
 	logger := observability.NewZerolog(common.ObservabilityConfig{}, 1)
 
-	sm, err := state_machine.NewKeyValueStateMachine(state_machine.NewKeyValueStateMachineParams{
-		DB:     common.NewPersistenceMock(),
-		Logger: logger,
-	})
-	assert.NoError(t, err)
-
 	testCases := []TestCase{
 		{
 			name: "1. Reply false if term < currentTerm (§5.1)",
+			ps: common.NewRaftPersistanceState(common.NewRaftPersistanceStateParams{
+				CurrentTerm: 5,
+				Storage: storage.NewStorageForTest(
+					storage.NewStorageParams{WalSize: 1024, DataFolder: "data/", Logger: logger},
+					storage.NewFileWrapperMock(),
+				),
+			}),
 			n: RaftBrainImpl{
-				currentTerm:         5,
 				logger:              logger,
-				db:                  common.NewPersistenceMock(),
 				heartBeatTimeOutMin: 100,
 				heartBeatTimeOutMax: 150,
 				electionTimeOutMin:  300,
 				electionTimeOutMax:  500,
-				stateMachine:        sm,
+				stateMachine:        nil,
 				clusterClock:        NewClusterClock(),
+				persistState:        nil,
 			},
 			in: common.AppendEntriesInput{
 				Term: 4,
@@ -126,16 +161,22 @@ func Test_nodeImpl_AppendEntries(t *testing.T) {
 		},
 		{
 			name: "2. Reply false if log doesn’t contain an entry at prevLogIndex whose term matches prevLogTerm (§5.3)",
+			ps: common.NewRaftPersistanceState(common.NewRaftPersistanceStateParams{
+				CurrentTerm: 2,
+				Logs:        []common.Log{{Term: 1}, {Term: 1}},
+				Storage: storage.NewStorageForTest(
+					storage.NewStorageParams{WalSize: 1024, DataFolder: "data/", Logger: logger},
+					storage.NewFileWrapperMock(),
+				),
+			}),
 			n: RaftBrainImpl{
-				currentTerm:         2,
-				logs:                []common.Log{{Term: 1}, {Term: 1}},
-				db:                  common.NewPersistenceMock(),
+				persistState:        nil,
 				logger:              logger,
 				heartBeatTimeOutMin: 100,
 				heartBeatTimeOutMax: 150,
 				electionTimeOutMin:  300,
 				electionTimeOutMax:  500,
-				stateMachine:        sm,
+				stateMachine:        nil,
 				clusterClock:        NewClusterClock(),
 			},
 			in: common.AppendEntriesInput{
@@ -151,16 +192,22 @@ func Test_nodeImpl_AppendEntries(t *testing.T) {
 		},
 		{
 			name: "2. Reply false if log doesn’t contain an entry at prevLogIndex whose term matches prevLogTerm (§5.3)",
+			ps: common.NewRaftPersistanceState(common.NewRaftPersistanceStateParams{
+				CurrentTerm: 2,
+				Logs:        []common.Log{},
+				Storage: storage.NewStorageForTest(
+					storage.NewStorageParams{WalSize: 1024, DataFolder: "data/", Logger: logger},
+					storage.NewFileWrapperMock(),
+				),
+			}),
 			n: RaftBrainImpl{
-				currentTerm:         2,
-				logs:                []common.Log{},
+				persistState:        nil,
 				logger:              logger,
-				db:                  common.NewPersistenceMock(),
 				heartBeatTimeOutMin: 100,
 				heartBeatTimeOutMax: 150,
 				electionTimeOutMin:  300,
 				electionTimeOutMax:  500,
-				stateMachine:        sm,
+				stateMachine:        nil,
 				clusterClock:        NewClusterClock(),
 			},
 			in: common.AppendEntriesInput{
@@ -176,16 +223,22 @@ func Test_nodeImpl_AppendEntries(t *testing.T) {
 		},
 		{
 			name: "2. Reply false if log doesn’t contain an entry at prevLogIndex whose term matches prevLogTerm (§5.3)",
+			ps: common.NewRaftPersistanceState(common.NewRaftPersistanceStateParams{
+				CurrentTerm: 2,
+				Logs:        []common.Log{{Term: 1}},
+				Storage: storage.NewStorageForTest(
+					storage.NewStorageParams{WalSize: 1024, DataFolder: "data/", Logger: logger},
+					storage.NewFileWrapperMock(),
+				),
+			}),
 			n: RaftBrainImpl{
-				currentTerm:         2,
-				logs:                []common.Log{{Term: 1}},
+				persistState:        nil,
 				logger:              logger,
-				db:                  common.NewPersistenceMock(),
 				heartBeatTimeOutMin: 100,
 				heartBeatTimeOutMax: 150,
 				electionTimeOutMin:  300,
 				electionTimeOutMax:  500,
-				stateMachine:        sm,
+				stateMachine:        nil,
 				clusterClock:        NewClusterClock(),
 			},
 			in: common.AppendEntriesInput{
@@ -201,21 +254,27 @@ func Test_nodeImpl_AppendEntries(t *testing.T) {
 		},
 		{
 			name: "3. If an existing entry conflicts with a new one (same index but different terms), delete the existing entry and all that follow it (§5.3)",
-			n: RaftBrainImpl{
-				votedFor:    5,
-				currentTerm: 3,
-				logs: []common.Log{
+			ps: common.NewRaftPersistanceState(common.NewRaftPersistanceStateParams{
+				VotedFor:    5,
+				CurrentTerm: 3,
+				Logs: []common.Log{
 					{Term: 1, Command: "set x 5"},
 					{Term: 2, Command: "set x 5"},
 					{Term: 2, Command: "set x 5"},
 				},
-				db:                  common.NewPersistenceMock(),
+				Storage: storage.NewStorageForTest(
+					storage.NewStorageParams{WalSize: 1024, DataFolder: "data/", Logger: logger},
+					storage.NewFileWrapperMock(),
+				),
+			}),
+			n: RaftBrainImpl{
+				persistState:        nil,
 				logger:              logger,
 				heartBeatTimeOutMin: 100,
 				heartBeatTimeOutMax: 150,
 				electionTimeOutMin:  300,
 				electionTimeOutMax:  500,
-				stateMachine:        sm,
+				stateMachine:        nil,
 				clusterClock:        NewClusterClock(),
 			},
 			in: common.AppendEntriesInput{
@@ -232,17 +291,23 @@ func Test_nodeImpl_AppendEntries(t *testing.T) {
 		},
 		{
 			name: "4. Append any new entries not already in the log",
+			ps: common.NewRaftPersistanceState(common.NewRaftPersistanceStateParams{
+				VotedFor:    5,
+				CurrentTerm: 3,
+				Logs:        []common.Log{},
+				Storage: storage.NewStorageForTest(
+					storage.NewStorageParams{WalSize: 1024, DataFolder: "data/", Logger: logger},
+					storage.NewFileWrapperMock(),
+				),
+			}),
 			n: RaftBrainImpl{
-				votedFor:            5,
-				currentTerm:         3,
-				logs:                []common.Log{},
-				db:                  common.NewPersistenceMock(),
+				persistState:        nil,
 				logger:              logger,
 				heartBeatTimeOutMin: 100,
 				heartBeatTimeOutMax: 150,
 				electionTimeOutMin:  300,
 				electionTimeOutMax:  500,
-				stateMachine:        sm,
+				stateMachine:        nil,
 				clusterClock:        NewClusterClock(),
 			},
 			in: common.AppendEntriesInput{
@@ -262,20 +327,26 @@ func Test_nodeImpl_AppendEntries(t *testing.T) {
 		},
 		{
 			name: "4. Append any new entries not already in the log",
-			n: RaftBrainImpl{
-				votedFor:    5,
-				currentTerm: 3,
-				logs: []common.Log{
+			ps: common.NewRaftPersistanceState(common.NewRaftPersistanceStateParams{
+				VotedFor:    5,
+				CurrentTerm: 3,
+				Logs: []common.Log{
 					{Term: 1, Command: "set x 5"},
 					{Term: 2, Command: "set y 5"},
 				},
-				db:                  common.NewPersistenceMock(),
+				Storage: storage.NewStorageForTest(
+					storage.NewStorageParams{WalSize: 1024, DataFolder: "data/", Logger: logger},
+					storage.NewFileWrapperMock(),
+				),
+			}),
+			n: RaftBrainImpl{
+				persistState:        nil,
 				logger:              logger,
 				heartBeatTimeOutMin: 100,
 				heartBeatTimeOutMax: 150,
 				electionTimeOutMin:  300,
 				electionTimeOutMax:  500,
-				stateMachine:        sm,
+				stateMachine:        nil,
 				clusterClock:        NewClusterClock(),
 			},
 			in: common.AppendEntriesInput{
@@ -295,20 +366,26 @@ func Test_nodeImpl_AppendEntries(t *testing.T) {
 		},
 		{
 			name: "5. If leaderCommit > commitIndex, set commitIndex = min(leaderCommit, index of last new entry)",
-			n: RaftBrainImpl{
-				votedFor:    5,
-				currentTerm: 3,
-				logs: []common.Log{
+			ps: common.NewRaftPersistanceState(common.NewRaftPersistanceStateParams{
+				VotedFor:    5,
+				CurrentTerm: 3,
+				Logs: []common.Log{
 					{Term: 1, Command: "set x 5"},
 					{Term: 2, Command: "set y 5"},
 				},
-				db:                  common.NewPersistenceMock(),
+				Storage: storage.NewStorageForTest(
+					storage.NewStorageParams{WalSize: 1024, DataFolder: "data/", Logger: logger},
+					storage.NewFileWrapperMock(),
+				),
+			}),
+			n: RaftBrainImpl{
+				persistState:        nil,
 				logger:              logger,
 				heartBeatTimeOutMin: 100,
 				heartBeatTimeOutMax: 150,
 				electionTimeOutMin:  300,
 				electionTimeOutMax:  500,
-				stateMachine:        sm,
+				stateMachine:        nil,
 				clusterClock:        NewClusterClock(),
 			},
 			in: common.AppendEntriesInput{
@@ -325,17 +402,23 @@ func Test_nodeImpl_AppendEntries(t *testing.T) {
 		},
 		{
 			name: "5. If leaderCommit > commitIndex, set commitIndex = min(leaderCommit, index of last new entry)",
+			ps: common.NewRaftPersistanceState(common.NewRaftPersistanceStateParams{
+				VotedFor:    1,
+				CurrentTerm: 1,
+				Logs:        []common.Log{},
+				Storage: storage.NewStorageForTest(
+					storage.NewStorageParams{WalSize: 1024, DataFolder: "data/", Logger: logger},
+					storage.NewFileWrapperMock(),
+				),
+			}),
 			n: RaftBrainImpl{
-				votedFor:            1,
-				currentTerm:         1,
-				logs:                []common.Log{},
-				db:                  common.NewPersistenceMock(),
+				persistState:        nil,
 				logger:              logger,
 				heartBeatTimeOutMin: 100,
 				heartBeatTimeOutMax: 150,
 				electionTimeOutMin:  300,
 				electionTimeOutMax:  500,
-				stateMachine:        sm,
+				stateMachine:        nil,
 				clusterClock:        NewClusterClock(),
 			},
 			in: common.AppendEntriesInput{
@@ -354,37 +437,18 @@ func Test_nodeImpl_AppendEntries(t *testing.T) {
 
 	for index, testCase := range testCases {
 		testCase := &testCase
-		testCase.n.stateMachine.Reset()
 		t.Run(fmt.Sprintf("[%d] %s", index, testCase.name), func(t *testing.T) {
+			if index == 2 {
+				log.Info().Msg("breakpoint")
+			}
+			testCase.n.persistState = testCase.ps
+			testCase.n.stateMachine = state_machine.NewKeyValueStateMachine(state_machine.NewKeyValueStateMachineParams{
+				PersistState: testCase.ps,
+			})
 			log.Info().Int("index", index).Msg("test case AppendEntriesOutput")
-
-			data := testCase.n.serializeToArray()
-			err = testCase.n.db.AppendKeyValuePairsArray(data...)
-			assert.NoError(t, err)
-
 			var out common.AppendEntriesOutput
 			testCase.n.AppendEntries(context.TODO(), &testCase.in, &out)
 			assert.Equal(t, testCase.out, out, fmt.Sprintf("%d test case: %s", index, testCase.name))
-
-			if testCase.persist.do {
-				n2 := RaftBrainImpl{
-					db:                  testCase.n.db,
-					logger:              logger,
-					heartBeatTimeOutMin: 100,
-					heartBeatTimeOutMax: 150,
-					electionTimeOutMin:  300,
-					electionTimeOutMax:  500,
-					stateMachine:        testCase.n.stateMachine,
-				}
-
-				err = n2.restoreRaftStateFromFile(context.TODO())
-				assert.NoError(t, err)
-
-				assert.Equal(t, testCase.n.currentTerm, n2.currentTerm)
-				assert.Equal(t, testCase.n.votedFor, n2.votedFor)
-				assert.Equal(t, testCase.n.logs, n2.logs)
-				assert.Equal(t, testCase.persist.logCount, len(n2.logs))
-			}
 		})
 	}
 }

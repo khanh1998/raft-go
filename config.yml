@@ -21,6 +21,8 @@ min_heartbeat_timeout_ms: 2000
 max_heartbeat_timeout_ms: 5000
 data_folder: data/
 state_machine_snapshot: true
+wal_size_limit: 256
+log_length_limit: 5
 client_session_duration: 2m
 rpc_dial_timeout: 5s
 rpc_request_timeout: 1s

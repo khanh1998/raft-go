@@ -8,8 +8,6 @@ import (
 	"khanh/raft-go/state_machine"
 	"testing"
 	"time"
-
-	"github.com/stretchr/testify/assert"
 )
 
 func Test_nodeImpl_BroadCastRequestVote(t *testing.T) {
@@ -41,8 +39,7 @@ func TestRaftBrainImpl_BroadCastRequestVote(t *testing.T) {
 		MatchIndex          map[int]int
 	}
 
-	sm, err := state_machine.NewKeyValueStateMachine(state_machine.NewKeyValueStateMachineParams{DB: common.NewPersistenceMock()})
-	assert.NoError(t, err)
+	sm := state_machine.NewKeyValueStateMachine(state_machine.NewKeyValueStateMachineParams{})
 
 	tests := []struct {
 		name   string
@@ -52,7 +49,6 @@ func TestRaftBrainImpl_BroadCastRequestVote(t *testing.T) {
 			name: "",
 			fields: fields{
 				logger:              observability.NewZerolog(common.ObservabilityConfig{}, 1),
-				DB:                  common.NewPersistenceMock(),
 				Peers:               []common.ClusterMember{{ID: 2, RpcUrl: ""}},
 				State:               common.StateCandidate,
 				ID:                  1,
@@ -75,8 +71,6 @@ func TestRaftBrainImpl_BroadCastRequestVote(t *testing.T) {
 		t.Run(tt.name, func(t *testing.T) {
 			n := &RaftBrainImpl{
 				logger:              tt.fields.logger,
-				db:                  tt.fields.DB,
-				members:             tt.fields.Peers,
 				state:               tt.fields.State,
 				id:                  tt.fields.ID,
 				stateMachine:        tt.fields.StateMachine,
@@ -87,13 +81,15 @@ func TestRaftBrainImpl_BroadCastRequestVote(t *testing.T) {
 				electionTimeOutMin:  tt.fields.ElectionTimeOutMin,
 				electionTimeOutMax:  tt.fields.ElectionTimeOutMax,
 				rpcProxy:            tt.fields.RpcProxy,
-				currentTerm:         tt.fields.CurrentTerm,
-				votedFor:            tt.fields.VotedFor,
-				logs:                tt.fields.Logs,
-				commitIndex:         tt.fields.CommitIndex,
-				lastApplied:         tt.fields.LastApplied,
-				nextIndex:           tt.fields.NextIndex,
-				matchIndex:          tt.fields.MatchIndex,
+				persistState: common.NewRaftPersistanceState(common.NewRaftPersistanceStateParams{
+					CurrentTerm: tt.fields.CurrentTerm,
+					VotedFor:    tt.fields.VotedFor,
+					Logs:        tt.fields.Logs,
+				}),
+				commitIndex: tt.fields.CommitIndex,
+				lastApplied: tt.fields.LastApplied,
+				nextIndex:   tt.fields.NextIndex,
+				matchIndex:  tt.fields.MatchIndex,
 			}
 			n.BroadCastRequestVote(context.TODO())
 		})

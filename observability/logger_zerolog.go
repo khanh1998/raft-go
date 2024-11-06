@@ -36,6 +36,7 @@ func (l *zerologLogger) Warn(msg string, attrs ...any) {
 
 func (l *zerologLogger) Fatal(msg string, attrs ...any) {
 	l.log(zerolog.FatalLevel, msg, attrs...)
+	os.Exit(1)
 }
 
 func NewZerolog(cfg common.ObservabilityConfig, id int) Logger {
@@ -82,6 +83,7 @@ func (l *zerologLogger) WarnContext(ctx context.Context, msg string, attrs ...an
 
 func (l *zerologLogger) FatalContext(ctx context.Context, msg string, attrs ...any) {
 	l.logWithSpan(ctx, zerolog.FatalLevel, msg, attrs...)
+	os.Exit(1)
 }
 
 func (l *zerologLogger) logWithSpan(ctx context.Context, level zerolog.Level, msg string, attrs ...any) {

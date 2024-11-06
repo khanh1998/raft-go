@@ -51,7 +51,7 @@ func (r *RaftBrainImpl) KeepAlive(ctx context.Context, input *common.KeepAliveCl
 	}
 
 	newLog := common.Log{
-		Term:        r.currentTerm,
+		Term:        r.persistState.GetCurrentTerm(),
 		Command:     "keep-alive",
 		ClientID:    input.ClientID,
 		SequenceNum: input.SequenceNum,
@@ -138,7 +138,7 @@ func (r *RaftBrainImpl) ClientRequest(ctx context.Context, input *common.ClientR
 	}
 
 	newLog := common.Log{
-		Term:        r.currentTerm,
+		Term:        r.persistState.GetCurrentTerm(),
 		Command:     input.Command,
 		ClientID:    input.ClientID,
 		SequenceNum: input.SequenceNum,
@@ -226,7 +226,7 @@ func (r *RaftBrainImpl) RegisterClient(ctx context.Context, input *common.Regist
 	}
 
 	newLog := common.Log{
-		Term:        r.currentTerm,
+		Term:        r.persistState.GetCurrentTerm(),
 		ClientID:    0,
 		SequenceNum: 0,
 		Command:     "register",
@@ -306,13 +306,14 @@ func (r *RaftBrainImpl) ClientQuery(ctx context.Context, input *common.ClientQue
 	}
 
 	var ok bool
+	err = errors.New("timeout")
 	for i := 0; i < 100; i++ {
 		log, err := r.GetLog(r.commitIndex)
-		if err != nil {
+		if err != nil && !errors.Is(err, common.ErrLogIsInSnapshot) {
 			break
 		}
 
-		if log.Term == r.currentTerm {
+		if log.Term == r.persistState.GetCurrentTerm() {
 			ok = true
 			break
 		}
@@ -354,7 +355,7 @@ func (r *RaftBrainImpl) ClientQuery(ctx context.Context, input *common.ClientQue
 		return nil
 	}
 
-	res, err := r.stateMachine.Process(0, common.Log{Command: input.Query, ClusterTime: r.clusterClock.clusterTimeAtEpoch})
+	res, err := r.stateMachine.Process(ctx, 0, common.Log{Command: input.Query, ClusterTime: r.clusterClock.clusterTimeAtEpoch})
 	if err != nil {
 		*output = common.ClientQueryOutput{
 			Status:     common.StatusNotOK,

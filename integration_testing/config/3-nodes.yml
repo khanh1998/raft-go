@@ -20,7 +20,9 @@ max_election_timeout_ms: 300
 min_heartbeat_timeout_ms: 1
 max_heartbeat_timeout_ms: 20
 data_folder: data/
-state_machine_snapshot: false
+state_machine_snapshot: true
+wal_size_limit: 10240
+log_length_limit: 100
 client_session_duration: 2m
 rpc_dial_timeout: 200ms
 rpc_request_timeout: 150ms

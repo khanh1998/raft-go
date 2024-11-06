@@ -8,6 +8,7 @@ import (
 	"khanh/raft-go/observability"
 	"khanh/raft-go/rpc_proxy"
 	"khanh/raft-go/state_machine"
+	"khanh/raft-go/storage"
 	"net/rpc"
 	"testing"
 	"time"
@@ -18,6 +19,14 @@ import (
 func TestRpcConnection(t *testing.T) {
 	logger := observability.NewZerolog(common.ObservabilityConfig{}, 1)
 	ctx := context.Background()
+	persistState := common.NewRaftPersistanceState(common.NewRaftPersistanceStateParams{
+		CurrentTerm: 2,
+		Logs:        []common.Log{},
+		Storage: storage.NewStorageForTest(
+			storage.NewStorageParams{WalSize: 1024, DataFolder: "data/", Logger: logger},
+			storage.NewFileWrapperMock(),
+		),
+	})
 
 	n := NewNode(ctx, NewNodeParams{
 		Brain: logic.NewRaftBrainParams{
@@ -36,8 +45,9 @@ func TestRpcConnection(t *testing.T) {
 			ElectionTimeOutMin:  300,
 			ElectionTimeOutMax:  500,
 			Logger:              logger,
-			DB:                  common.NewPersistenceMock(),
 			RpcRequestTimeout:   150 * time.Millisecond,
+			PersistenceState:    persistState,
+			LogLengthLimit:      1000,
 		},
 		RPCProxy: rpc_proxy.NewRPCImplParams{
 			HostID:               1,
@@ -52,10 +62,10 @@ func TestRpcConnection(t *testing.T) {
 			Logger: logger,
 		},
 		StateMachine: state_machine.NewKeyValueStateMachineParams{
-			DB: common.NewPersistenceMock(),
+			PersistState: persistState,
+			DoSnapshot:   false,
 		},
-		Logger:     logger,
-		DataFolder: "data/",
+		Logger: logger,
 	})
 
 	n.Start(ctx, false, false)

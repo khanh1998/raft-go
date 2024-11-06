@@ -12,6 +12,7 @@ import (
 	"khanh/raft-go/observability"
 	"khanh/raft-go/rpc_proxy"
 	"khanh/raft-go/state_machine"
+	"khanh/raft-go/storage"
 	"log"
 	"os"
 	"os/signal"
@@ -126,16 +127,26 @@ func main() {
 
 	logger.InfoContext(ctx, "config content", "config", config)
 
-	walFileName := fmt.Sprintf("wal.%d.dat", id)
 	dataFolder := fmt.Sprintf("%s%d/", config.DataFolder, id)
-	walDB, err := common.NewPersistence(dataFolder, walFileName)
+
+	storage, err := storage.NewStorage(storage.NewStorageParams{
+		WalSize:    config.WalSizeLimit,
+		DataFolder: dataFolder,
+		Logger:     logger,
+	}, storage.FileWrapperImpl{})
 	if err != nil {
-		logger.Fatal("can not create persistence: ", err.Error())
+		logger.Fatal("new storage", err)
 	}
 
-	smDB, err := common.NewPersistence(dataFolder, walFileName)
+	snapshot, raftPersistState, tmpClusterMembers, err := common.Deserialize(ctx, storage, config.Cluster.Mode)
 	if err != nil {
-		logger.Fatal("can not create persistence: ", err.Error())
+		logger.Fatal("Deserialize system", err)
+	}
+	raftPersistState.SetStorage(storage)
+
+	// dynamic cluster member configurations are read from persisted logs and snapshot
+	if config.Cluster.Mode == common.Dynamic && len(clusterMembers) == 0 {
+		clusterMembers = tmpClusterMembers
 	}
 
 	params := node.NewNodeParams{
@@ -149,9 +160,10 @@ func main() {
 			ElectionTimeOutMax:  config.MaxElectionTimeoutMs,
 			Logger:              logger,
 			Members:             clusterMembers,
-			DB:                  walDB,
 			CachingUp:           catchingUp,
 			RpcRequestTimeout:   config.RpcRequestTimeout,
+			PersistenceState:    raftPersistState,
+			LogLengthLimit:      config.LogLengthLimit,
 		},
 		RPCProxy: rpc_proxy.NewRPCImplParams{
 			HostID:               id,
@@ -166,13 +178,13 @@ func main() {
 			Logger: logger,
 		},
 		StateMachine: state_machine.NewKeyValueStateMachineParams{
-			DB:                    smDB,
 			DoSnapshot:            config.StateMachineSnapshot,
 			ClientSessionDuration: uint64(config.ClientSessionDuration.Nanoseconds()),
 			Logger:                logger,
+			PersistState:          raftPersistState,
+			Snapshot:              snapshot,
 		},
-		Logger:     logger,
-		DataFolder: dataFolder,
+		Logger: logger,
 	}
 
 	// Set up OpenTelemetry.

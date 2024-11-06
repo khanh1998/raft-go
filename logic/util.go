@@ -4,14 +4,8 @@ import (
 	"context"
 	"khanh/raft-go/common"
 	"math"
-	"strconv"
 	"time"
 )
-
-// every time we got a new log,
-// we append it to WAL,
-// to delete a log we also need to append a tombstone for that log to WAL
-const TOMBSTONE = "deleted"
 
 func (n *RaftBrainImpl) isMemberOfCluster(id *int) bool {
 	if id == nil {
@@ -27,36 +21,27 @@ func (n *RaftBrainImpl) isMemberOfCluster(id *int) bool {
 }
 
 func (n *RaftBrainImpl) deleteLogFrom(ctx context.Context, index int) (err error) {
-	if len(n.logs) == 0 {
-		return ErrLogIsEmpty
-	}
-
-	if index > len(n.logs) || index <= 0 {
-		return ErrIndexOutOfRange
-	}
-
-	realIndex := int(index - 1)
-
-	// append changes to WAL
-	deletedLogCount := len(n.logs) - realIndex
-	if err := n.db.AppendKeyValuePairsArray("delete_log", strconv.Itoa(deletedLogCount)); err != nil {
-		n.log().ErrorContext(ctx, "DeleteLogFrom save to db error: ", err)
-
-		return err
-	}
-
-	// change in memory state
-	deletedLogs := n.logs[realIndex:]
-	n.logs = n.logs[:realIndex]
-
-	// these two numbers will be calculated again later.
-	n.lastApplied = 0
-	n.commitIndex = 0
-	// clear all data in state machine, reload latest snapshot from file,
-	// so logs can be applied from beginning again.
-	err = n.stateMachine.Reset() // TODO: in log compaction, no need to to this.
+	deletedLogs, err := n.persistState.DeleteLogFrom(ctx, index)
 	if err != nil {
 		return err
+	}
+
+	// clear all data in state machine, reload latest snapshot from file,
+	// so logs can be applied from beginning again.
+	err = n.stateMachine.Reset(ctx) // TODO: in log compaction, no need to to this.
+	if err != nil {
+		return err
+	}
+
+	// figure out which index to begin re-applying the logs
+	snapshot := n.persistState.GetLatestSnapshotMetadata()
+	if snapshot != nil {
+		// these two numbers will be calculated again later.
+		n.lastApplied = snapshot.LastLogIndex
+		n.commitIndex = snapshot.LastLogIndex
+	} else {
+		n.lastApplied = 0
+		n.commitIndex = 0
 	}
 
 	for i := len(deletedLogs) - 1; i >= 0; i-- {
@@ -67,59 +52,35 @@ func (n *RaftBrainImpl) deleteLogFrom(ctx context.Context, index int) (err error
 }
 
 func (n *RaftBrainImpl) appendLogs(ctx context.Context, logItems []common.Log) (err error) {
-	keyValuePairs := []string{}
-	for i := 0; i < len(logItems); i++ {
-		keyValuePairs = append(keyValuePairs, "append_log", logItems[i].ToString())
-	}
-
-	if err := n.db.AppendKeyValuePairsArray(keyValuePairs...); err != nil {
-		n.log().ErrorContext(ctx, "appendLogs save to db error: ", err)
-
+	_, err = n.persistState.AppendLog(ctx, logItems)
+	if err != nil {
 		return err
-	}
-
-	n.logs = append(n.logs, logItems...)
-
-	// we need to update cluster membership infomation as soon as we receive the log,
-	// don't need to wait until it get commited.
-	for _, logItem := range logItems {
-		n.changeMember(logItem.Command)
 	}
 
 	return nil
 }
 
 func (n *RaftBrainImpl) appendLog(ctx context.Context, logItem common.Log) (int, error) {
-	if err := n.db.AppendKeyValuePairsArray("append_log", logItem.ToString()); err != nil {
-		n.log().ErrorContext(ctx, "AppendLog save to db error: ", err)
-
-		return 0, err
-	}
-
-	n.logs = append(n.logs, logItem)
-	index := len(n.logs)
-
-	n.log().InfoContext(ctx, "AppendLog", "log", logItem)
-
 	// we need to update cluster membership information as soon as we receive the log,
 	// don't need to wait until it get committed.
 	n.changeMember(logItem.Command)
 
+	index, err := n.persistState.AppendLog(ctx, []common.Log{logItem})
+	if err != nil {
+		return 0, err
+	}
+
+	n.log().InfoContext(ctx, "AppendLog", "log", logItem)
+
 	return index, nil
 }
 
+func (n *RaftBrainImpl) lastLogInfo() (index, term int) {
+	return n.persistState.LastLogInfo()
+}
+
 func (n *RaftBrainImpl) GetLog(index int) (common.Log, error) {
-	if len(n.logs) == 0 {
-		return common.Log{}, ErrLogIsEmpty
-	}
-
-	if index > len(n.logs) || index <= 0 {
-		return common.Log{}, ErrIndexOutOfRange
-	}
-
-	realIndex := index - 1
-
-	return n.logs[realIndex], nil
+	return n.persistState.GetLog(index)
 }
 
 func (n *RaftBrainImpl) setLeaderID(ctx context.Context, leaderId int) {
@@ -127,25 +88,11 @@ func (n *RaftBrainImpl) setLeaderID(ctx context.Context, leaderId int) {
 }
 
 func (n *RaftBrainImpl) setCurrentTerm(ctx context.Context, term int) error {
-	if err := n.db.AppendKeyValuePairsArray("current_term", strconv.Itoa(term)); err != nil {
-		n.log().ErrorContext(ctx, "SetCurrentTerm save to db error: ", err)
-
-		return err
-	}
-
-	n.currentTerm = term
-
-	return nil
+	return n.persistState.SetCurrentTerm(ctx, term)
 }
 
 func (n *RaftBrainImpl) setVotedFor(ctx context.Context, nodeID int) error {
-	if err := n.db.AppendKeyValuePairsArray("voted_for", strconv.Itoa(nodeID)); err != nil {
-		n.log().ErrorContext(ctx, "SetVotedFor save to db error: ", err)
-		return err
-	}
-
-	n.votedFor = nodeID
-	return nil
+	return n.persistState.SetVotedFor(ctx, nodeID)
 }
 
 func (n *RaftBrainImpl) SetRpcProxy(rpc RPCProxy) {
@@ -185,7 +132,7 @@ func (n *RaftBrainImpl) applyLog(ctx context.Context) {
 
 		n.clusterClock.NewEpoch(log.ClusterTime)
 
-		res, err := n.stateMachine.Process(n.lastApplied, log)
+		res, err := n.stateMachine.Process(ctx, n.lastApplied, log)
 
 		if n.state == common.StateLeader {
 			err = n.arm.PutResponse(n.lastApplied, res, err, 30*time.Second)
@@ -200,27 +147,18 @@ func (n *RaftBrainImpl) applyLog(ctx context.Context) {
 			n.log().ErrorContext(ctx, "applyLog_Process", err)
 		}
 
-		go func() {
-			if err = n.stateMachine.StartSnapshot(); err != nil {
-				n.log().ErrorContext(ctx, "applyLog_startSnapshot", err)
-			}
-		}()
+		if n.persistState.InMemoryLogLength() > n.logLengthLimit {
+			go func() {
+				if err = n.stateMachine.StartSnapshot(ctx); err != nil {
+					n.log().ErrorContext(ctx, "applyLog_startSnapshot", err)
+				}
+			}()
+		}
 	}
 }
 
 func (r *RaftBrainImpl) Quorum() int {
 	return int(math.Floor(float64(len(r.members))/2.0)) + 1
-}
-
-func (n *RaftBrainImpl) lastLogInfo() (index, term int) {
-	if len(n.logs) > 0 {
-		index = len(n.logs) - 1
-		term = n.logs[index].Term
-
-		return index + 1, term
-	}
-
-	return 0, -1
 }
 
 func (r *RaftBrainImpl) GetNewMembersChannel() <-chan common.ClusterMemberChange {
