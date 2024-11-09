@@ -24,28 +24,8 @@ var (
 	ErrInvalidParameters      = errors.New("invalid parameters")
 )
 
-type ConsensusModule interface {
-	NotifyNewSnapshot(noti common.SnapshotNotification) error
-	StartSnapshot(snapshotFileName string) (common.BeginSnapshotResponse, error)
-	FinishSnapshot(info common.SnapshotMetadata) error
-}
-
-type Persistance interface {
-	AppendKeyValuePairsArray(keyValues ...string) error
-	AppendStrings(strings ...string) error
-	AppendKeyValuePairsMap(data map[string]string) error
-	CreateNewFile(fileName string) error
-	RenameFile(oldFileName string, newFileName string) error
-	ReadKeyValuePairsToMap(keys []string) (map[string]string, error)
-	ReadKeyValuePairsToArray() ([]string, error)
-	ReadStrings() ([]string, error)
-	GetFileNames() ([]string, error)
-	OpenFile(fileName string) error
-}
-
 type KeyValueStateMachine struct {
 	current               *common.Snapshot // live snapshot to serve the users
-	cm                    ConsensusModule
 	lock                  sync.RWMutex
 	doSnapshot            bool
 	clientSessionDuration uint64 // duration in nanosecond
@@ -69,7 +49,6 @@ type NewKeyValueStateMachineParams struct {
 
 func NewKeyValueStateMachine(params NewKeyValueStateMachineParams) *KeyValueStateMachine {
 	k := &KeyValueStateMachine{
-		cm:                    nil,
 		doSnapshot:            params.DoSnapshot,
 		clientSessionDuration: params.ClientSessionDuration,
 		logger:                params.Logger,
@@ -100,10 +79,6 @@ func (k *KeyValueStateMachine) log() observability.Logger {
 	)
 
 	return sub
-}
-
-func (k *KeyValueStateMachine) SetConsensusModule(cm ConsensusModule) {
-	k.cm = cm
 }
 
 func (k *KeyValueStateMachine) SetPersistanceStatus(ps RaftPersistanceState) {
@@ -288,7 +263,7 @@ func (k *KeyValueStateMachine) Process(ctx context.Context, logIndex int, log co
 		)
 
 		return "", nil
-	case "addServer":
+	case "addserver":
 		id, httpUrl, rpcUrl, err := common.DecomposeAddServerCommand(command)
 		if err != nil {
 			return "", err
@@ -301,7 +276,7 @@ func (k *KeyValueStateMachine) Process(ctx context.Context, logIndex int, log co
 		}
 
 		return "", nil
-	case "removeServer":
+	case "removeserver":
 		id, _, _, err := common.DecomposeRemoveServerCommand(command)
 		if err != nil {
 			return "", err

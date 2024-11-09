@@ -14,6 +14,44 @@ import (
 // so that i can mock and test
 type FileWrapperImpl struct{}
 
+// read maximum `maxLength` bytes from the `path` at `offset`,
+// length of the returned `data` can be equal or smaller than the `maxLength`
+func (f FileWrapperImpl) ReadAt(path string, offset int64, maxLength int) (data []byte, eof bool, err error) {
+	data = make([]byte, maxLength)
+
+	file, err := os.OpenFile(path, os.O_RDONLY, 0644)
+	if err != nil {
+		return nil, true, err
+	}
+	defer file.Close()
+
+	size, err := file.ReadAt(data, offset)
+	if err != nil {
+		if errors.Is(err, io.EOF) {
+			return data[:size], true, nil
+		}
+		return nil, false, err
+	}
+
+	return data[:size], false, nil
+}
+
+func (f FileWrapperImpl) WriteAt(path string, offset int64, data []byte) (size int, err error) {
+	file, err := os.OpenFile(path, os.O_RDWR|os.O_CREATE, 0644)
+	if err != nil {
+		return 0, err
+	}
+	defer file.Close()
+
+	// Write data to the file at the specified position
+	size, err = file.WriteAt(data, offset)
+	if err != nil {
+		return 0, err
+	}
+
+	return size, nil
+}
+
 func (f FileWrapperImpl) GetFileNames(folder string) (names []string, err error) {
 	entries, err := os.ReadDir(folder)
 	if err != nil {

@@ -267,6 +267,7 @@ func (r *RaftBrainImpl) catchUpWithNewMember(ctx context.Context, peerID int) er
 	nextIdx := initNextIdx
 	currentTerm := r.persistState.GetCurrentTerm()
 	matchIndex := 0
+	nextOffset := NextOffset{} // empty
 
 	for matchIndex < initNextIdx {
 
@@ -280,7 +281,8 @@ func (r *RaftBrainImpl) catchUpWithNewMember(ctx context.Context, peerID int) er
 			input.PrevLogIndex = nextIdx - 1
 
 			prevLog, err := r.GetLog(nextIdx - 1)
-			if err == nil {
+			if err == nil || errors.Is(err, common.ErrLogIsInSnapshot) {
+				// if previous log is in snapshot, we just sent lastTerm and lastIndex
 				input.PrevLogTerm = prevLog.Term
 			}
 		}
@@ -288,32 +290,90 @@ func (r *RaftBrainImpl) catchUpWithNewMember(ctx context.Context, peerID int) er
 		logItem, err := r.GetLog(nextIdx)
 		if err == nil {
 			input.Entries = []common.Log{logItem}
+		} else if errors.Is(err, common.ErrLogIsInSnapshot) {
+			// the log that need to send to follower is compacted into snapshot,
+			// so we need to install snapshot to follower
+			if nextOffset == (NextOffset{}) {
+				nextOffset = NextOffset{0, common.NewSnapshotFileName()}
+			}
+		} else {
+			r.log().ErrorContext(ctx, "BroadcastAppendEntries_GetLog", err)
 		}
 
 		timeout := 5 * time.Second
 
-		output, err := r.rpcProxy.SendAppendEntries(ctx, peerID, &timeout, input)
-		r.log().DebugContext(ctx, "r.RpcProxy.SendAppendEntries", "output", output)
-		if err != nil {
-			r.log().ErrorContext(ctx, "r.rpcProxy.SendAppendEntries", err)
-		} else {
-			if output.Success && output.Term > currentTerm {
-				r.log().WarnContext(ctx, "inconsistent response", "response", output)
-			} else if output.Success {
-				matchIndex = common.Min(nextIdx, initNextIdx)
+		if nextOffset != (NextOffset{}) {
+			sm := r.persistState.GetLatestSnapshotMetadata()
 
-				nextIdx = common.Min(nextIdx+1, initNextIdx+1)
+			// sanity check
+			if nextIdx > sm.LastLogIndex {
+				r.log().ErrorContext(ctx, "GetLatestSnapshotMetadata", errors.New("there is new snapshot"))
+				nextOffset = NextOffset{0, common.NewSnapshotFileName()} // reset the snapshot install process
+				break
+			}
+
+			data, eof, err := r.persistState.StreamSnapshot(ctx, sm, nextOffset.Offset, 100)
+			if err != nil {
+			}
+
+			input := common.InstallSnapshotInput{
+				Term:       r.GetCurrentTerm(),
+				LeaderId:   r.leaderID,
+				LastIndex:  sm.LastLogIndex,
+				LastTerm:   sm.LastLogTerm,
+				LastConfig: r.members,
+				FileName:   nextOffset.FileName,
+				Offset:     nextOffset.Offset,
+				Data:       data,
+				Done:       eof,
+			}
+
+			output, err := r.rpcProxy.SendInstallSnapshot(ctx, peerID, &timeout, input)
+			if err != nil {
+				r.log().ErrorContext(ctx, "BroadcastAppendEntries_SendInstallSnapshot", err)
 			} else {
-				if output.Term <= r.persistState.GetCurrentTerm() {
-					nextIdx = common.Max(0, nextIdx-1)
+				// successCount += 1
+			}
+
+			_ = output
+
+			if !input.Done {
+				nextOffset = NextOffset{
+					Offset:   input.Offset + 100,
+					FileName: input.FileName,
+				}
+			}
+
+			if input.Done {
+				nextOffset = NextOffset{}
+				matchIndex = input.LastIndex
+				nextIdx = input.LastIndex + 1
+			}
+		} else {
+			output, err := r.rpcProxy.SendAppendEntries(ctx, peerID, &timeout, input)
+			r.log().DebugContext(ctx, "r.RpcProxy.SendAppendEntries", "output", output)
+			if err != nil {
+				r.log().ErrorContext(ctx, "r.rpcProxy.SendAppendEntries", err)
+			} else {
+				if output.Success && output.Term > currentTerm {
+					r.log().WarnContext(ctx, "inconsistent response", "response", output)
+				} else if output.Success {
+					matchIndex = common.Min(nextIdx, initNextIdx)
+
+					nextIdx = common.Min(nextIdx+1, initNextIdx+1)
 				} else {
-					// the appendEntries request is failed,
-					// because current leader is outdated
-					r.log().ErrorContext(ctx, "the follower cannot be more up to date than the current leader", nil)
-					return err
+					if output.Term <= r.persistState.GetCurrentTerm() {
+						nextIdx = common.Max(0, nextIdx-1)
+					} else {
+						// the appendEntries request is failed,
+						// because current leader is outdated
+						r.log().ErrorContext(ctx, "the follower cannot be more up to date than the current leader", nil)
+						return err
+					}
 				}
 			}
 		}
+
 	}
 
 	r.log().InfoContext(ctx, "finish catch up", "matchIndex", matchIndex, "initNextIdx", initNextIdx)
@@ -336,6 +396,9 @@ func (r *RaftBrainImpl) revertChangeMember(command string) error {
 }
 
 func (r *RaftBrainImpl) changeMember(command string) error {
+	defer func() {
+		r.log().Info("changeMember", "command", command)
+	}()
 	addition, id, httpUrl, rpcUrl, err := common.DecomposeChangeSeverCommand(command)
 	if err != nil {
 		return err
@@ -349,6 +412,9 @@ func (r *RaftBrainImpl) changeMember(command string) error {
 }
 
 func (r *RaftBrainImpl) removeMember(id int, httpUrl, rpcUrl string) error {
+	defer func() {
+		r.log().Info("removeMember", "id", id, "httpUrl", httpUrl, "rpcUrl", rpcUrl, "members", r.members)
+	}()
 	tmp := []common.ClusterMember{}
 	for _, mem := range r.members {
 		if mem.ID != id {
@@ -377,6 +443,15 @@ func (r *RaftBrainImpl) removeMember(id int, httpUrl, rpcUrl string) error {
 }
 
 func (r *RaftBrainImpl) addMember(id int, httpUrl, rpcUrl string) error {
+	defer func() {
+		r.log().Info("addMember", "id", id, "httpUrl", httpUrl, "rpcUrl", rpcUrl, "members", r.members)
+	}()
+	for _, mem := range r.members {
+		if mem.ID == id {
+			return fmt.Errorf("duplicated cluster member %d %s %s", id, httpUrl, rpcUrl)
+		}
+	}
+
 	r.members = append(r.members, common.ClusterMember{
 		HttpUrl: httpUrl,
 		RpcUrl:  rpcUrl,

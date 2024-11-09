@@ -1,6 +1,7 @@
 # this config file is for local development environment
+# to test log compaction (snapshot)
 cluster: 
-  mode: dynamic # the cluster can be either 'static' or 'dynamic'
+  mode: static # the cluster can be either 'static' or 'dynamic'
   servers: # if the mode is 'dynamic', `servers` will be ignored
     - id: 1
       host: "localhost"
@@ -15,18 +16,18 @@ cluster:
       http_port: 8082
       rpc_port: 1236
 # timeout in miliseconds
-min_election_timeout_ms: 12000
-max_election_timeout_ms: 15000
-min_heartbeat_timeout_ms: 2000
-max_heartbeat_timeout_ms: 5000
+min_election_timeout_ms: 150
+max_election_timeout_ms: 300
+min_heartbeat_timeout_ms: 1
+max_heartbeat_timeout_ms: 20
 data_folder: data/
 state_machine_snapshot: true
-wal_size_limit: 512
-log_length_limit: 5
+wal_size_limit: 10240
+log_length_limit: 10
 client_session_duration: 2m
-rpc_dial_timeout: 5s
-rpc_request_timeout: 1s
-rpc_reconnect_duration: 30s
+rpc_dial_timeout: 200ms
+rpc_request_timeout: 150ms
+rpc_reconnect_duration: 300ms
 observability:
   disabled: true
   trace_endpoint: 'localhost:4318'

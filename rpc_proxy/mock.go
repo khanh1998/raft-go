@@ -38,3 +38,7 @@ func (r RPCProxyMock) SendToVotingMember(ctx context.Context, peerId int, timeou
 }
 
 func (r RPCProxyMock) AddServer(ctx context.Context, member common.ClusterMember) {}
+
+func (r RPCProxyMock) SendInstallSnapshot(ctx context.Context, peerId int, timeout *time.Duration, input common.InstallSnapshotInput) (output common.InstallSnapshotOutput, err error) {
+	return
+}

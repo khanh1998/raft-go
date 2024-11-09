@@ -50,7 +50,6 @@ func NewNode(ctx context.Context, params NewNodeParams) *Node {
 	httpProxy.SetBrain(brain)
 	brain.SetRpcProxy(rpcProxy)
 
-	stateMachine.SetConsensusModule(brain)
 	brain.SetStateMachine(stateMachine)
 
 	n := &Node{ID: params.ID, brain: brain, rpc: rpcProxy, http: httpProxy, logger: params.Logger}

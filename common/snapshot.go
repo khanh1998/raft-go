@@ -91,7 +91,7 @@ func (s Snapshot) Copy() *Snapshot {
 		KeyLock:    keyLock,
 		Sessions:   sessions,
 		SnapshotMetadata: SnapshotMetadata{
-			LastLogTerm:  s.LastLogIndex,
+			LastLogTerm:  s.LastLogTerm,
 			LastLogIndex: s.LastLogIndex,
 			FileName:     s.FileName,
 		},
@@ -250,14 +250,20 @@ type InstallSnapshotInput struct {
 	LastTerm   int
 	LastConfig []ClusterMember
 
-	Offset int
+	FileName string
+	Offset   int64
+	Data     []byte
 
-	Data []byte
 	Done bool
+
+	Trace *RequestTraceInfo // this will be set at RPC Proxy
 }
 
 type InstallSnapshotOutput struct {
-	Term int
+	Term    int
+	Success bool   // follower response true to continue installing snapshot, false to stop
+	Message string // for debugging purpose
+	NodeID  int    // id of the responder
 }
 
 func NewSnapshotFileName() string {

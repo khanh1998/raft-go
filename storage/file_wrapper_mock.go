@@ -22,6 +22,14 @@ func getSize(data []string) (size int64) {
 	return size
 }
 
+func (f FileWrapperMock) ReadAt(path string, offset int64, maxLength int) (data []byte, eof bool, err error) {
+	return
+}
+
+func (f FileWrapperMock) WriteAt(path string, offset int64, data []byte) (size int, err error) {
+	return
+}
+
 func (f FileWrapperMock) GetFileNames(folder string) (names []string, err error) {
 	for path, _ := range f.Data {
 		if strings.HasPrefix(path, folder) {

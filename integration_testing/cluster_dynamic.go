@@ -55,7 +55,7 @@ func (c *Cluster) createNewNode(ctx context.Context, id int) error {
 	dataFolder := fmt.Sprintf("%s%d/", c.config.DataFolder, id)
 
 	storage, err := storage.NewStorage(storage.NewStorageParams{
-		WalSize:    100,
+		WalSize:    c.config.WalSizeLimit,
 		DataFolder: dataFolder,
 		Logger:     c.log,
 	}, storage.FileWrapperImpl{})

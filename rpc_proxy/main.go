@@ -24,6 +24,7 @@ var (
 type RaftBrain interface {
 	RequestVote(ctx context.Context, input *common.RequestVoteInput, output *common.RequestVoteOutput) (err error)
 	AppendEntries(ctx context.Context, input *common.AppendEntriesInput, output *common.AppendEntriesOutput) (err error)
+	InstallSnapshot(ctx context.Context, input *common.InstallSnapshotInput, output *common.InstallSnapshotOutput)
 	GetInfo() common.GetStatusResponse
 	ToVotingMember(ctx context.Context) error
 	GetNewMembersChannel() <-chan common.ClusterMemberChange
@@ -70,6 +71,20 @@ func (r *RPCProxyImpl) getPeer(peerId int) (common.PeerRPCProxy, error) {
 	}
 
 	return peer, nil
+}
+
+// only accept new peer info if it haven't get registered,
+// or the peer has new URL
+func (r *RPCProxyImpl) setPeerIfNew(peerId int, peerInfo common.PeerRPCProxy) {
+	r.lock.Lock()
+	defer r.lock.Unlock()
+
+	old, ok := r.peers[peerId]
+	if !ok {
+		r.peers[peerId] = peerInfo
+	} else if old.URL != peerInfo.URL {
+		r.peers[peerId] = peerInfo
+	}
 }
 
 func (r *RPCProxyImpl) setPeer(peerId int, peerInfo common.PeerRPCProxy) {
@@ -371,7 +386,7 @@ func (r *RPCProxyImpl) Start(ctx context.Context) {
 			if r.hostID != member.ID {
 				if member.Add {
 					r.logger.Info("connect new member", "member", member)
-					r.setPeer(member.ID, common.PeerRPCProxy{Conn: nil, URL: member.RpcUrl})
+					r.setPeerIfNew(member.ID, common.PeerRPCProxy{Conn: nil, URL: member.RpcUrl})
 					r.connectToPeer(ctx, member.ID, 5, r.rpcDialTimeout)
 				} else {
 					r.logger.Info("disconnect new member", "member", member)
@@ -415,7 +430,7 @@ func (r *RPCProxyImpl) pingWithNoRetry(ctx context.Context, peerID int, timeout 
 
 	reply = common.PingResponse{}
 	serviceMethod := "RPCProxyImpl.Ping"
-	args := "ping test after dial"
+	args := common.PingRequest{ID: r.hostID}
 
 	if peer.Conn != nil {
 		call := peer.Conn.Go(serviceMethod, args, &reply, nil)
@@ -435,6 +450,7 @@ func (r *RPCProxyImpl) pingWithNoRetry(ctx context.Context, peerID int, timeout 
 	return reply, ErrRpcPeerConnectionIsNull
 }
 
+// TODO: bring timeout into context
 func (r *RPCProxyImpl) callWithTimeout(ctx context.Context, peerID int, serviceMethod string, args any, reply any, timeout time.Duration) (err error) {
 	var peer common.PeerRPCProxy
 

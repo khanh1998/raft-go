@@ -2,6 +2,7 @@ package logic
 
 import (
 	"context"
+	"errors"
 	"khanh/raft-go/common"
 	"khanh/raft-go/observability"
 	"sync"
@@ -168,7 +169,8 @@ func (n *RaftBrainImpl) BroadcastAppendEntries(ctx context.Context) (majorityOK 
 				input.PrevLogIndex = nextIdx - 1
 
 				prevLog, err := n.GetLog(nextIdx - 1)
-				if err == nil {
+				if err == nil || errors.Is(err, common.ErrLogIsInSnapshot) {
+					// if previous log is in snapshot, we just sent lastTerm and lastIndex
 					input.PrevLogTerm = prevLog.Term
 				}
 			}
@@ -176,32 +178,73 @@ func (n *RaftBrainImpl) BroadcastAppendEntries(ctx context.Context) (majorityOK 
 			logItem, err := n.GetLog(nextIdx)
 			if err == nil {
 				input.Entries = []common.Log{logItem}
+			} else if errors.Is(err, common.ErrLogIsInSnapshot) {
+				// the log that need to send to follower is compacted into snapshot,
+				// so we need to install snapshot to follower
+				if _, ok := n.nextOffset[peerID]; !ok {
+					n.nextOffset[peerID] = NextOffset{0, common.NewSnapshotFileName()}
+				}
+			} else {
+				n.log().ErrorContext(ctx, "BroadcastAppendEntries_GetLog", err)
 			}
 
 			timeout := n.RpcRequestTimeout
 
-			output, err := n.rpcProxy.SendAppendEntries(ctx, peerID, &timeout, input)
-			if err != nil {
-				n.log().ErrorContext(ctx, "BroadcastAppendEntries", err)
-			} else {
-				responseLock.Lock()
-				defer responseLock.Unlock()
-				m[peerID] = output
-				// event if follower responds success=false, we still consider it as success
-				// because the leader are making progress
-				successCount += 1
+			// leader has two jobs:
+			if _, ok := n.nextOffset[peerID]; ok {
+				// 1. installing snapshot to slow follower
+				input, err := n.NextInstallSnapshotInput(ctx, peerID, nextIdx)
+				if err != nil {
+					n.log().ErrorContext(ctx, "BroadcastAppendEntries_NextInstallSnapshotInput", err)
+				}
 
-				if output.Success {
-					n.matchIndex[peerID] = common.Min(n.nextIndex[peerID], n.GetLogLength())
-					n.nextIndex[peerID] = common.Min(n.nextIndex[peerID]+1, n.GetLogLength()+1) // data race
+				output, err := n.rpcProxy.SendInstallSnapshot(ctx, peerID, &timeout, input)
+				if err != nil {
+					n.log().ErrorContext(ctx, "BroadcastAppendEntries_SendInstallSnapshot", err)
 				} else {
-					if output.Term <= currentTerm {
-						n.nextIndex[peerID] = common.Max(0, n.nextIndex[peerID]-1) // data race
+					successCount += 1
+				}
+
+				_ = output
+
+				if !input.Done {
+					n.nextOffset[peerID] = NextOffset{
+						Offset:   input.Offset + 100,
+						FileName: input.FileName,
+					}
+				}
+
+				if input.Done {
+					delete(n.nextOffset, peerID)
+					n.matchIndex[peerID] = input.LastIndex
+					n.nextIndex[peerID] = input.LastIndex + 1
+				}
+			} else {
+				// 2. replicate logs (send heartbeat) to follower
+				output, err := n.rpcProxy.SendAppendEntries(ctx, peerID, &timeout, input)
+				if err != nil {
+					n.log().ErrorContext(ctx, "BroadcastAppendEntries_SendAppendEntries", err)
+				} else {
+					responseLock.Lock()
+					defer responseLock.Unlock()
+					m[peerID] = output
+					// event if follower responds success=false, we still consider it as success
+					// because the leader are making progress
+					successCount += 1
+
+					if output.Success {
+						n.matchIndex[peerID] = common.Min(n.nextIndex[peerID], n.GetLogLength())
+						n.nextIndex[peerID] = common.Min(n.nextIndex[peerID]+1, n.GetLogLength()+1) // data race
 					} else {
-						// the appendEntries request is failed,
-						// because current leader is outdated
-						maxTerm = output.Term
-						maxTermID = output.NodeID
+						if output.Term <= currentTerm {
+							n.nextIndex[peerID] = common.Max(0, n.nextIndex[peerID]-1) // data race
+						} else {
+							// the appendEntries request is failed,
+							// because current leader is outdated
+							maxTerm = output.Term
+							maxTermID = output.NodeID
+						}
+
 					}
 				}
 			}

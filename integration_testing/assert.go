@@ -110,7 +110,7 @@ func AssertAddingNodeToCluster(t *testing.T, c *Cluster, id int) {
 	err := c.AddServer(id)
 	assert.NoError(t, err)
 
-	timeout := 150 * time.Millisecond
+	timeout := 300 * time.Millisecond
 	res, err := c.RpcAgent.SendPing(id, &timeout)
 	assert.NoError(t, err)
 	assert.Equal(t, id, res.ID)

@@ -2,6 +2,7 @@ package logic
 
 import (
 	"context"
+	"errors"
 	"khanh/raft-go/common"
 	"time"
 
@@ -19,6 +20,7 @@ var (
 	MsgTheLeaderIsStillAlive                = "the leader is still alive"
 	MsgCannotAppendLog                      = "cannot append log"
 	MsgCannotDeleteLog                      = "cannot delete log"
+	MsgTheResponderSnapshotIsOutdated       = "the responder's snapshot is outdated"
 )
 
 // AppendEntries Invoked by leader to replicate log entries (§5.3); also used as heartbeat (§5.2).
@@ -82,7 +84,7 @@ func (n *RaftBrainImpl) AppendEntries(ctx context.Context, input *common.AppendE
 			*output = common.AppendEntriesOutput{Term: currentTerm, Success: false, Message: MsgTheResponderHasFewerLogThanRequester, NodeID: n.id}
 
 			return nil
-		case nil:
+		case nil, common.ErrLogIsInSnapshot:
 			if logItem.Term != input.PrevLogTerm {
 				*output = common.AppendEntriesOutput{Term: currentTerm, Success: false, Message: MsgPreviousLogTermsAreNotMatched, NodeID: n.id}
 
@@ -103,6 +105,14 @@ func (n *RaftBrainImpl) AppendEntries(ctx context.Context, input *common.AppendE
 				*output = common.AppendEntriesOutput{Term: currentTerm, Success: false, Message: MsgCurrentLogTermsAreNotMatched, NodeID: n.id}
 
 				return nil
+			}
+		}
+
+		if err != nil && errors.Is(err, common.ErrLogIsInSnapshot) {
+			if logItem.Term != input.Term {
+				// delete latest snapshot
+				*output = common.AppendEntriesOutput{Term: currentTerm, Success: false, Message: MsgTheResponderSnapshotIsOutdated, NodeID: n.id}
+
 			}
 		}
 	}

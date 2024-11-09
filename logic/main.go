@@ -28,8 +28,12 @@ type MembershipManager interface {
 type RaftPersistanceState interface {
 	AppendLog(ctx context.Context, logItems []common.Log) (index int, err error)
 	DeleteLogFrom(ctx context.Context, index int) (deletedLogs []common.Log, err error)
+	DeleteAllLog(ctx context.Context) (err error)
 	SetCurrentTerm(ctx context.Context, currentTerm int) (err error)
 	SetVotedFor(ctx context.Context, votedFor int) (err error)
+	StreamSnapshot(ctx context.Context, sm common.SnapshotMetadata, offset int64, maxLength int) (data []byte, eof bool, err error)
+	InstallSnapshot(ctx context.Context, fileName string, offset int64, data []byte) (err error)
+	CommitSnapshot(ctx context.Context, sm common.SnapshotMetadata) (err error)
 
 	GetCurrentTerm() int            // latest term server has seen (initialized to 0 on first boot, increases monotonically)
 	GetVotedFor() int               // candidateId that received vote in current term (or null if none)
@@ -37,13 +41,18 @@ type RaftPersistanceState interface {
 	LogLength() int
 	InMemoryLogLength() int // length of logs that exclude snapshot logs
 	GetLog(index int) (common.Log, error)
-	GetLatestSnapshotMetadata() (snap *common.SnapshotMetadata)
+	GetLatestSnapshotMetadata() (snap common.SnapshotMetadata)
 }
 
 type MemberChangeSubscriber interface {
 	// we send the latest cluster member config to subscriber,
 	// they will figure out what are changed on they own
 	InformMemberChange(ctx context.Context, members map[int]common.ClusterMember)
+}
+
+type NextOffset struct {
+	Offset   int64
+	FileName string
 }
 
 // this struct only contains volatile data
@@ -86,8 +95,9 @@ type RaftBrainImpl struct {
 
 	// Volatile state on leaders:
 	// Reinitialized after election
-	nextIndex  map[int]int // for each server, index of the next log entry to send to that server (initialized to leader last log index + 1)
-	matchIndex map[int]int // for each server, index of highest log entry known to be replicated on server (initialized to 0, increases monotonically)
+	nextIndex  map[int]int        // for each server, index of the next log entry to send to that server (initialized to leader last log index + 1)
+	matchIndex map[int]int        // for each server, index of highest log entry known to be replicated on server (initialized to 0, increases monotonically)
+	nextOffset map[int]NextOffset // for peer that need to install snapshot
 }
 
 func (k *RaftBrainImpl) NotifyMemberChange(ctx context.Context) {
@@ -133,6 +143,7 @@ type SimpleStateMachine interface {
 type RPCProxy interface {
 	SendAppendEntries(ctx context.Context, peerId int, timeout *time.Duration, input common.AppendEntriesInput) (output common.AppendEntriesOutput, err error)
 	SendRequestVote(ctx context.Context, peerId int, timeout *time.Duration, input common.RequestVoteInput) (output common.RequestVoteOutput, err error)
+	SendInstallSnapshot(ctx context.Context, peerId int, timeout *time.Duration, input common.InstallSnapshotInput) (output common.InstallSnapshotOutput, err error)
 	SendPing(ctx context.Context, peerId int, timeout *time.Duration) (res common.PingResponse, err error)
 
 	ConnectToNewPeer(ctx context.Context, peerID int, peerURL string, retry int, retryDelay time.Duration) error
@@ -193,6 +204,7 @@ func NewRaftBrain(params NewRaftBrainParams) (*RaftBrainImpl, error) {
 		members:           []common.ClusterMember{},
 		nextIndex:         make(map[int]int),
 		matchIndex:        make(map[int]int),
+		nextOffset:        make(map[int]NextOffset),
 		clusterClock:      NewClusterClock(),
 		RpcRequestTimeout: params.RpcRequestTimeout,
 
@@ -207,6 +219,9 @@ func NewRaftBrain(params NewRaftBrainParams) (*RaftBrainImpl, error) {
 		if params.CachingUp {
 			// if the new node is in catching up mode,
 			// we ignore all member configurations, because it hasn't been a part of cluster yet.
+
+			// todo: fix this,
+			// still get member configurations from local file
 			if len(params.Members) > 0 {
 				return nil, errors.New("in catching up mode, we don't pass member list as parameter")
 			}
@@ -229,7 +244,10 @@ func NewRaftBrain(params NewRaftBrainParams) (*RaftBrainImpl, error) {
 				})
 			} else {
 				for _, mem := range params.Members {
-					n.notifyNewMember(mem)
+					err := n.addMember(mem.ID, mem.HttpUrl, mem.RpcUrl)
+					if err != nil {
+						return nil, err
+					}
 				}
 			}
 		}
@@ -241,7 +259,10 @@ func NewRaftBrain(params NewRaftBrainParams) (*RaftBrainImpl, error) {
 		}
 
 		for _, mem := range params.Members {
-			n.addMember(mem.ID, mem.HttpUrl, mem.RpcUrl)
+			err := n.addMember(mem.ID, mem.HttpUrl, mem.RpcUrl)
+			if err != nil {
+				return nil, err
+			}
 		}
 	}
 
@@ -282,6 +303,7 @@ func (n *RaftBrainImpl) log() observability.Logger {
 		"lastApplied", n.lastApplied,
 		"nextIndex", n.nextIndex,
 		"matchIndex", n.matchIndex,
+		"nextOffset", n.nextOffset,
 	)
 
 	return sub

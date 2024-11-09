@@ -422,7 +422,7 @@ func TestRaftPersistanceStateImpl_GetLog(t *testing.T) {
 			args: args{
 				index: 1,
 			},
-			want:    Log{},
+			want:    Log{Term: 3},
 			wantErr: ErrLogIsInSnapshot,
 		},
 		{

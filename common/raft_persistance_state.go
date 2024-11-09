@@ -11,6 +11,9 @@ type StorageInterface interface {
 	AppendWal(metadata []string, keyValuesPairs ...string) (err error)
 	SaveObject(fileName string, object SerializableObject) error
 	ReadObject(fileName string, result DeserializableObject) error
+	StreamObject(ctx context.Context, fileName string, offset int64, maxLength int) (data []byte, eof bool, err error)
+	InstallObject(ctx context.Context, fileName string, offset int64, data []byte) (err error)
+	CommitObject(ctx context.Context, fileName string) (err error)
 }
 
 type RaftPersistanceStateImpl struct {
@@ -71,6 +74,37 @@ func (r *RaftPersistanceStateImpl) InMemoryLogLength() int {
 	return len(r.logs)
 }
 
+func (r *RaftPersistanceStateImpl) StreamSnapshot(ctx context.Context, sm SnapshotMetadata, offset int64, maxLength int) (data []byte, eof bool, err error) {
+	fileName := sm.FileName
+	return r.storage.StreamObject(ctx, fileName, offset, maxLength)
+}
+
+func (r *RaftPersistanceStateImpl) InstallSnapshot(ctx context.Context, fileName string, offset int64, data []byte) (err error) {
+	r.lock.Lock()
+	defer r.lock.Unlock()
+
+	return r.storage.InstallObject(ctx, fileName, offset, data)
+}
+
+func (r *RaftPersistanceStateImpl) CommitSnapshot(ctx context.Context, sm SnapshotMetadata) (err error) {
+	r.lock.Lock()
+	defer r.lock.Unlock()
+
+	err = r.storage.CommitObject(ctx, sm.FileName)
+	if err != nil {
+		return err
+	}
+
+	// should also delete all previous snapshots
+	r.latestSnapshot = SnapshotMetadata{LastLogTerm: 0, LastLogIndex: 0}
+
+	r.trimPrefixLog(sm)
+
+	r.latestSnapshot = sm
+
+	return nil
+}
+
 func (r *RaftPersistanceStateImpl) SaveSnapshot(ctx context.Context, snapshot *Snapshot) (err error) {
 	r.lock.Lock()
 	defer r.lock.Unlock()
@@ -103,6 +137,8 @@ func (r *RaftPersistanceStateImpl) ReadLatestSnapshot(ctx context.Context) (snap
 	if r.latestSnapshot.FileName == "" {
 		return NewSnapshot(), nil
 	}
+
+	snap = NewSnapshot()
 
 	err = r.storage.ReadObject(r.latestSnapshot.FileName, snap)
 	if err != nil {
@@ -171,6 +207,17 @@ func (r *RaftPersistanceStateImpl) AppendLog(ctx context.Context, logItems []Log
 	index = base + len(r.logs)
 
 	return index, nil
+}
+
+// delete all logs that are in memory
+func (r *RaftPersistanceStateImpl) DeleteAllLog(ctx context.Context) (err error) {
+	deletedLogCount := len(r.logs)
+	if err := r.storage.AppendWal(r.metadata(), "delete_log", strconv.Itoa(deletedLogCount)); err != nil {
+		return err
+	}
+
+	r.logs = []Log{}
+	return nil
 }
 
 func (r *RaftPersistanceStateImpl) DeleteLogFrom(ctx context.Context, index int) (deletedLogs []Log, err error) {
@@ -255,8 +302,8 @@ func (r *RaftPersistanceStateImpl) SetVotedFor(ctx context.Context, votedFor int
 	return nil
 }
 
-func (r *RaftPersistanceStateImpl) GetLatestSnapshotMetadata() (snap *SnapshotMetadata) {
-	return &r.latestSnapshot
+func (r *RaftPersistanceStateImpl) GetLatestSnapshotMetadata() (snap SnapshotMetadata) {
+	return r.latestSnapshot
 }
 
 func (r *RaftPersistanceStateImpl) trimPrefixLog(newSnapshot SnapshotMetadata) {
@@ -264,7 +311,9 @@ func (r *RaftPersistanceStateImpl) trimPrefixLog(newSnapshot SnapshotMetadata) {
 
 	target := newSnapshot.LastLogIndex - base
 
-	r.logs = r.logs[target:]
+	if target <= len(r.logs) {
+		r.logs = r.logs[target:]
+	}
 }
 
 func (n *RaftPersistanceStateImpl) LastLogInfo() (index, term int) {
@@ -275,11 +324,8 @@ func (n *RaftPersistanceStateImpl) LastLogInfo() (index, term int) {
 }
 
 func (n *RaftPersistanceStateImpl) lastLogInfo() (index, term int) {
-	base := 0
-	prev := n.GetLatestSnapshotMetadata()
-	if prev != nil {
-		base = prev.LastLogIndex
-	}
+	sm := n.latestSnapshot
+	base := sm.LastLogIndex
 
 	if len(n.logs) > 0 {
 		index = len(n.logs) - 1
@@ -288,8 +334,8 @@ func (n *RaftPersistanceStateImpl) lastLogInfo() (index, term int) {
 		return base + index + 1, term
 	}
 
-	if len(n.logs) == 0 && prev != nil {
-		return prev.LastLogIndex, prev.LastLogTerm
+	if len(n.logs) == 0 && base > 0 {
+		return sm.LastLogIndex, sm.LastLogTerm
 	}
 
 	return 0, -1

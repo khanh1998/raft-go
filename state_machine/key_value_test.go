@@ -774,6 +774,75 @@ func TestKeyValueStateMachine_Process2(t *testing.T) {
 	}
 }
 
+// part 3
+// test add and remove servers
+func TestKeyValueStateMachine_Process3(t *testing.T) {
+	type fields struct {
+		lastConfig map[int]common.ClusterMember
+	}
+	type args struct {
+		logIndex int
+		log      common.Log
+	}
+	tests := []struct {
+		name       string
+		fields     fields
+		args       args
+		wantResult string
+		wantFields *fields
+		wantErr    bool
+	}{
+
+		{
+			name: "",
+			fields: fields{
+				lastConfig: map[int]common.ClusterMember{},
+			},
+			args: args{
+				log: common.Log{
+					Command: common.ComposeAddServerCommand(1, "localhost:8080", "localhost:1234"),
+				},
+			},
+			wantFields: &fields{
+				lastConfig: map[int]common.ClusterMember{
+					1: {
+						ID:      1,
+						RpcUrl:  "localhost:1234",
+						HttpUrl: "localhost:8080",
+					},
+				},
+			},
+			wantResult: "",
+			wantErr:    false,
+		},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			k := KeyValueStateMachine{
+				current: &common.Snapshot{
+					LastConfig: tt.fields.lastConfig,
+				},
+				logger:                observability.NewZerolog(common.ObservabilityConfig{Disabled: true}, 0),
+				clientSessionDuration: 10,
+			}
+			gotResult, err := k.Process(context.TODO(), tt.args.logIndex, tt.args.log)
+			if (err != nil) != tt.wantErr {
+				t.Errorf("KeyValueStateMachine.Process() error = %v, wantErr %v", err, tt.wantErr)
+				return
+			}
+			if gotResult != tt.wantResult {
+				t.Errorf("KeyValueStateMachine.Process() = %v, want %v", gotResult, tt.wantResult)
+			}
+
+			if tt.wantFields != nil {
+				if !reflect.DeepEqual(k.current.LastConfig, tt.wantFields.lastConfig) {
+					t.Errorf("KeyValueStateMachine.Process() lastConfig = %v, want %v", k.current.LastConfig, tt.wantFields.lastConfig)
+				}
+			}
+		})
+	}
+}
+
 func TestKeyValueStateMachine_setCache(t *testing.T) {
 	type fields struct {
 		data  map[string]string

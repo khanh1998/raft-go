@@ -73,7 +73,7 @@ func (c *Cluster) init(filePath string) {
 			dataFolder := fmt.Sprintf("%s%d/", c.config.DataFolder, mem.ID)
 
 			storage, err := storage.NewStorage(storage.NewStorageParams{
-				WalSize:    100,
+				WalSize:    config.WalSizeLimit,
 				DataFolder: dataFolder,
 				Logger:     c.log,
 			}, storage.FileWrapperImpl{})

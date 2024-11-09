@@ -118,6 +118,11 @@ type PeerRPCProxy struct {
 	URL  string
 }
 
+type PingRequest struct {
+	ID    int
+	Trace *RequestTraceInfo
+}
+
 type PingResponse struct {
 	ID       int
 	LeaderId int

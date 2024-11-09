@@ -174,9 +174,11 @@ func (r RpcAgentImpl) sendPingForInternalUse() {
 func (r RpcAgentImpl) SendPing(peerId int, timeout *time.Duration) (responseMsg common.PingResponse, err error) {
 	serviceMethod := "RPCProxyImpl.Ping"
 
-	senderName := fmt.Sprintf("hello from Node %d", 0)
+	input := common.PingRequest{
+		ID: 0,
+	}
 
-	if err := r.callWithTimeout(peerId, serviceMethod, senderName, &responseMsg, *timeout); err != nil {
+	if err := r.callWithTimeout(peerId, serviceMethod, input, &responseMsg, *timeout); err != nil {
 		return responseMsg, err
 	}
 

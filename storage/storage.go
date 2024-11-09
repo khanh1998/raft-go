@@ -1,18 +1,12 @@
 package storage
 
 import (
+	"context"
 	"fmt"
 	"khanh/raft-go/common"
 	"khanh/raft-go/observability"
 	"sort"
 )
-
-type Persistence interface {
-	AppendKeyValuePairsMap(data map[string]string) error
-	AppendKeyValuePairsArray(keyValues ...string) error
-	ReadKeyValuePairsToMap(keys []string) (map[string]string, error)
-	ReadKeyValuePairsToArray() ([]string, error)
-}
 
 type WalMetadata struct {
 	FileName     string
@@ -43,6 +37,8 @@ type FileHelper interface {
 	DeleteFile(path string) error
 	GetFileNames(folder string) (names []string, err error)
 	Rename(oldPath string, newPath string) (err error)
+	ReadAt(path string, offset int64, maxLength int) (data []byte, eof bool, err error)
+	WriteAt(path string, offset int64, data []byte) (size int, err error)
 }
 
 func NewStorageForTest(params NewStorageParams, fileUtils FileHelper) (s *StorageImpl) {
@@ -251,19 +247,44 @@ func (s *StorageImpl) ReadObject(fileName string, result common.DeserializableOb
 
 func (s *StorageImpl) SaveObject(fileName string, object common.SerializableObject) error {
 	path := s.dataFolder + fileName
-	tmpPath := s.dataFolder + "tmp." + fileName
 	data := object.Serialize()
 
-	if _, err := s.fileUtils.AppendStrings(tmpPath, data); err != nil {
+	if _, err := s.fileUtils.AppendStrings(path, data); err != nil {
 		return err
 	}
+
+	err := s.fileUtils.Rename(path, path)
+	if err != nil {
+		return err
+	}
+
+	return nil
+}
+
+func (s *StorageImpl) StreamObject(ctx context.Context, fileName string, offset int64, maxLength int) (data []byte, eof bool, err error) {
+	path := s.dataFolder + fileName
+	return s.fileUtils.ReadAt(path, offset, maxLength)
+}
+
+func (s *StorageImpl) InstallObject(ctx context.Context, fileName string, offset int64, data []byte) (err error) {
+	tmpPath := s.dataFolder + "tmp." + fileName
+
+	_, err = s.fileUtils.WriteAt(tmpPath, offset, data)
+	if err != nil {
+		return err
+	}
+
+	return nil
+}
+
+func (s *StorageImpl) CommitObject(ctx context.Context, fileName string) error {
+	path := s.dataFolder + fileName
+	tmpPath := s.dataFolder + "tmp." + fileName
 
 	err := s.fileUtils.Rename(tmpPath, path)
 	if err != nil {
 		return err
 	}
-
-	s.snapshotFileNames = append(s.snapshotFileNames, fileName)
 
 	return nil
 }

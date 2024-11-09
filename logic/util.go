@@ -35,14 +35,9 @@ func (n *RaftBrainImpl) deleteLogFrom(ctx context.Context, index int) (err error
 
 	// figure out which index to begin re-applying the logs
 	snapshot := n.persistState.GetLatestSnapshotMetadata()
-	if snapshot != nil {
-		// these two numbers will be calculated again later.
-		n.lastApplied = snapshot.LastLogIndex
-		n.commitIndex = snapshot.LastLogIndex
-	} else {
-		n.lastApplied = 0
-		n.commitIndex = 0
-	}
+	// these two numbers will be calculated again later.
+	n.lastApplied = snapshot.LastLogIndex
+	n.commitIndex = snapshot.LastLogIndex
 
 	for i := len(deletedLogs) - 1; i >= 0; i-- {
 		n.revertChangeMember(deletedLogs[i].Command)
@@ -52,10 +47,19 @@ func (n *RaftBrainImpl) deleteLogFrom(ctx context.Context, index int) (err error
 }
 
 func (n *RaftBrainImpl) appendLogs(ctx context.Context, logItems []common.Log) (err error) {
+	for _, logItem := range logItems {
+		err := n.changeMember(logItem.Command)
+		if err != nil {
+			n.log().ErrorContext(ctx, "appendLog_changeMember", err, "command", logItem.Command)
+		}
+	}
+
 	_, err = n.persistState.AppendLog(ctx, logItems)
 	if err != nil {
 		return err
 	}
+
+	n.log().InfoContext(ctx, "AppendLogs", "logs", logItems)
 
 	return nil
 }
@@ -63,14 +67,17 @@ func (n *RaftBrainImpl) appendLogs(ctx context.Context, logItems []common.Log) (
 func (n *RaftBrainImpl) appendLog(ctx context.Context, logItem common.Log) (int, error) {
 	// we need to update cluster membership information as soon as we receive the log,
 	// don't need to wait until it get committed.
-	n.changeMember(logItem.Command)
+	err := n.changeMember(logItem.Command)
+	if err != nil {
+		n.log().ErrorContext(ctx, "appendLog_changeMember", err, "command", logItem.Command)
+	}
 
 	index, err := n.persistState.AppendLog(ctx, []common.Log{logItem})
 	if err != nil {
 		return 0, err
 	}
 
-	n.log().InfoContext(ctx, "AppendLog", "log", logItem)
+	n.log().InfoContext(ctx, "AppendLog", "log", logItem, "index", index)
 
 	return index, nil
 }
@@ -79,6 +86,8 @@ func (n *RaftBrainImpl) lastLogInfo() (index, term int) {
 	return n.persistState.LastLogInfo()
 }
 
+// if the index equals to lastIndex of the latest snapshot,
+// return lastIndex, and lastTerm as the log, and an special error to indicate that the log is in snapshot
 func (n *RaftBrainImpl) GetLog(index int) (common.Log, error) {
 	return n.persistState.GetLog(index)
 }

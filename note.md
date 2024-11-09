@@ -18,9 +18,6 @@ questions:
 todos:
 - support log compaction
 - using try-lock instead
-- using subscriber pattern
-- distributed lock (support client leader election, like consul)
-- support viper to read config from cluster (need to make a interface as same as etcd, too complicated)
 - shorten critical region in outbound
 
 - using observer design patter:
@@ -40,3 +37,4 @@ todos:
 - do benchmark
 - need a new method that let a new node can join the cluster easier
 - test key delete again
+- check current term of crashed node after it restarts

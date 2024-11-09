@@ -3,7 +3,6 @@ package rpc_proxy
 import (
 	"context"
 	"errors"
-	"fmt"
 	"khanh/raft-go/common"
 	"time"
 
@@ -19,6 +18,39 @@ func extractSpanInfo(span trace.Span) (valid bool, traceID string, spanID string
 	traceFlags = byte(span.SpanContext().TraceFlags())
 	traceState = span.SpanContext().TraceState().String()
 	return
+}
+
+func (r *RPCProxyImpl) SendInstallSnapshot(ctx context.Context, peerId int, timeout *time.Duration, input common.InstallSnapshotInput) (output common.InstallSnapshotOutput, err error) {
+	ctx, span := tracer.Start(ctx, "SendInstallSnapshot")
+	defer span.End()
+
+	validSpan, traceID, spanID, traceFlags, traceState := extractSpanInfo(span)
+	if validSpan {
+		input.Trace = &common.RequestTraceInfo{
+			SpanID:     spanID,
+			TraceID:    traceID,
+			TraceFlags: traceFlags,
+			TraceState: traceState,
+		}
+	}
+
+	if !r.accessible {
+		return output, ErrInaccessible
+	}
+
+	serviceMethod := "RPCProxyImpl.InstallSnapshot"
+
+	if timeout != nil {
+		if err := r.callWithTimeout(ctx, peerId, serviceMethod, input, &output, *timeout); err != nil {
+			return output, err
+		}
+	} else {
+		if err := r.callWithoutTimeout(ctx, peerId, serviceMethod, input, &output); err != nil {
+			return output, err
+		}
+	}
+
+	return output, nil
 }
 
 func (r *RPCProxyImpl) SendAppendEntries(ctx context.Context, peerId int, timeout *time.Duration, input common.AppendEntriesInput) (output common.AppendEntriesOutput, err error) {
@@ -90,26 +122,32 @@ func (r *RPCProxyImpl) SendPing(ctx context.Context, peerId int, timeout *time.D
 	ctx, span := tracer.Start(ctx, "SendAppendEntries")
 	defer span.End()
 
-	// todo: include trace into request
-	// traceID := span.SpanContext().TraceID().String()
-	// spanID := span.SpanContext().SpanID().String()
+	input := common.PingRequest{
+		ID:    r.hostID,
+		Trace: nil,
+	}
 
-	// input.TraceID = traceID
-	// input.SpanID = spanID
+	validSpan, traceID, spanID, traceFlags, traceState := extractSpanInfo(span)
+	if validSpan {
+		input.Trace = &common.RequestTraceInfo{
+			SpanID:     spanID,
+			TraceID:    traceID,
+			TraceFlags: traceFlags,
+			TraceState: traceState,
+		}
+	}
 
 	if !r.accessible {
 		return responseMsg, ErrInaccessible
 	}
 	serviceMethod := "RPCProxyImpl.Ping"
 
-	senderName := fmt.Sprintf("hello from Node %d", r.hostID)
-
 	if timeout != nil {
-		if err := r.callWithTimeout(ctx, peerId, serviceMethod, senderName, &responseMsg, *timeout); err != nil {
+		if err := r.callWithTimeout(ctx, peerId, serviceMethod, input, &responseMsg, *timeout); err != nil {
 			return responseMsg, err
 		}
 	} else {
-		if err := r.callWithoutTimeout(ctx, peerId, serviceMethod, senderName, &responseMsg); err != nil {
+		if err := r.callWithoutTimeout(ctx, peerId, serviceMethod, input, &responseMsg); err != nil {
 			return responseMsg, err
 		}
 	}
