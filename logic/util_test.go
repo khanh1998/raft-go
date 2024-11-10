@@ -208,10 +208,10 @@ func TestRaftBrainImpl_deleteLogFrom(t *testing.T) {
 		stateMachine              SimpleStateMachine
 		electionTimeOut           *time.Timer
 		heartBeatTimeOut          *time.Timer
-		heartBeatTimeOutMin       int64
-		heartBeatTimeOutMax       int64
-		electionTimeOutMin        int64
-		electionTimeOutMax        int64
+		heartBeatTimeOutMin       time.Duration
+		heartBeatTimeOutMax       time.Duration
+		electionTimeOutMin        time.Duration
+		electionTimeOutMax        time.Duration
 		rpcProxy                  RPCProxy
 		arm                       AsyncResponseManager
 		stop                      chan struct{}

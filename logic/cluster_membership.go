@@ -211,7 +211,7 @@ func (r *RaftBrainImpl) AddServer(ctx context.Context, input common.AddServerInp
 			return nil
 		} else {
 			duration := time.Since(begin)
-			if duration < time.Duration(r.electionTimeOutMin*1000) {
+			if duration < r.electionTimeOutMin {
 				break
 			}
 		}

@@ -14,13 +14,19 @@ cluster:
       host: "raft-node-3.raft-cluster.local"
       http_port: 8080
       rpc_port: 1234
-# timeout in miliseconds
-min_election_timeout_ms: 12000
-max_election_timeout_ms: 15000
-min_heartbeat_timeout_ms: 2000
-max_heartbeat_timeout_ms: 5000
+# timeout in milliseconds
+min_election_timeout: 12s
+max_election_timeout: 15s
+min_heartbeat_timeout: 2s
+max_heartbeat_timeout: 5s
 data_folder: data/
-state_machine_snapshot: false
+state_machine_snapshot: true
+wal_size_limit: 10240
+log_length_limit: 100
+client_session_duration: 2m
+rpc_dial_timeout: 200ms
+rpc_request_timeout: 150ms
+rpc_reconnect_duration: 300ms
 observability:
   disabled: false
   trace_endpoint: 'tempo:4318'

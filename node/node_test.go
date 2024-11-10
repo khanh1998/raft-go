@@ -63,7 +63,7 @@ func TestRpcConnection(t *testing.T) {
 		},
 		StateMachine: state_machine.NewKeyValueStateMachineParams{
 			PersistState: persistState,
-			DoSnapshot:   false,
+			Logger:       logger,
 		},
 		Logger: logger,
 	})

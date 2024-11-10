@@ -25,13 +25,18 @@ data:
         host: "raft-node-2.raft-cluster.raft-go.svc.cluster.local"
         http_port: 8080
         rpc_port: 1234
-    # timeout in miliseconds
-    min_election_timeout_ms: 12000
-    max_election_timeout_ms: 15000
-    min_heartbeat_timeout_ms: 2000
-    max_heartbeat_timeout_ms: 5000
+    # timeout in milliseconds
+    min_election_timeout: 12s
+    max_election_timeout: 15s
+    min_heartbeat_timeout: 2s
+    max_heartbeat_timeout: 5s
     data_folder: data/
-    state_machine_snapshot: false
+    wal_size_limit: 512
+    log_length_limit: 5
+    client_session_duration: 5m
+    rpc_dial_timeout: 5s
+    rpc_request_timeout: 1s
+    rpc_reconnect_duration: 30s
 ---
 apiVersion: v1
 kind: Service

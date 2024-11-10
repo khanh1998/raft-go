@@ -318,7 +318,7 @@ func (r *RaftBrainImpl) ClientQuery(ctx context.Context, input *common.ClientQue
 			break
 		}
 
-		time.Sleep(time.Duration(r.heartBeatTimeOutMin))
+		time.Sleep(r.heartBeatTimeOutMin)
 	}
 
 	if !ok {
@@ -342,7 +342,7 @@ func (r *RaftBrainImpl) ClientQuery(ctx context.Context, input *common.ClientQue
 			break
 		}
 
-		time.Sleep(time.Duration(r.heartBeatTimeOutMin))
+		time.Sleep(r.heartBeatTimeOutMin)
 	}
 
 	if !ok {

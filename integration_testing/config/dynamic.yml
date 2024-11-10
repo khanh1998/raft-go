@@ -1,10 +1,10 @@
 cluster:
   mode: dynamic # the cluster can be either 'static' or 'dynamic'
-# timeout in miliseconds
-min_election_timeout_ms: 150
-max_election_timeout_ms: 300
-min_heartbeat_timeout_ms: 1
-max_heartbeat_timeout_ms: 20
+# timeout in milliseconds
+min_election_timeout: 150ms
+max_election_timeout: 300ms
+min_heartbeat_timeout: 1ms
+max_heartbeat_timeout: 20ms
 data_folder: data/
 state_machine_snapshot: true
 wal_size_limit: 10240

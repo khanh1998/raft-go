@@ -47,8 +47,8 @@ func (c *Cluster) init(filePath string) {
 
 	c.config = config
 
-	c.MaxElectionTimeout = time.Duration(config.MaxElectionTimeoutMs * 1000 * 1000)
-	c.MaxHeartbeatTimeout = time.Duration(config.MaxHeartbeatTimeoutMs * 1000 * 1000)
+	c.MaxElectionTimeout = config.MaxElectionTimeout
+	c.MaxHeartbeatTimeout = config.MaxHeartbeatTimeout
 
 	common.CreateFolderIfNotExists(config.DataFolder)
 
@@ -96,10 +96,10 @@ func (c *Cluster) init(filePath string) {
 					ID:                  mem.ID,
 					Mode:                common.Static,
 					CachingUp:           false,
-					HeartBeatTimeOutMin: config.MinHeartbeatTimeoutMs,
-					HeartBeatTimeOutMax: config.MaxHeartbeatTimeoutMs,
-					ElectionTimeOutMin:  config.MinElectionTimeoutMs,
-					ElectionTimeOutMax:  config.MaxElectionTimeoutMs,
+					HeartBeatTimeOutMin: config.MinHeartbeatTimeout,
+					HeartBeatTimeOutMax: config.MaxHeartbeatTimeout,
+					ElectionTimeOutMin:  config.MinElectionTimeout,
+					ElectionTimeOutMax:  config.MaxElectionTimeout,
 					Logger:              log,
 					Members:             peers,
 					RpcRequestTimeout:   config.RpcRequestTimeout,
@@ -119,7 +119,6 @@ func (c *Cluster) init(filePath string) {
 					Logger: log,
 				},
 				StateMachine: state_machine.NewKeyValueStateMachineParams{
-					DoSnapshot:            config.StateMachineSnapshot,
 					ClientSessionDuration: uint64(config.ClientSessionDuration),
 					Logger:                log,
 					PersistState:          raftPersistState,

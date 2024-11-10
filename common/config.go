@@ -34,12 +34,11 @@ type ObservabilityConfig struct {
 
 type Config struct {
 	Cluster               ClusterConfig       `mapstructure:"cluster"`
-	MinElectionTimeoutMs  int64               `mapstructure:"min_election_timeout_ms" validate:"required,gt=0"`
-	MaxElectionTimeoutMs  int64               `mapstructure:"max_election_timeout_ms" validate:"required,gt=0"`
-	MinHeartbeatTimeoutMs int64               `mapstructure:"min_heartbeat_timeout_ms" validate:"required,gt=0"`
-	MaxHeartbeatTimeoutMs int64               `mapstructure:"max_heartbeat_timeout_ms" validate:"required,gt=0"`
+	MinElectionTimeout    time.Duration       `mapstructure:"min_election_timeout" validate:"required,gt=0"`
+	MaxElectionTimeout    time.Duration       `mapstructure:"max_election_timeout" validate:"required,gt=0"`
+	MinHeartbeatTimeout   time.Duration       `mapstructure:"min_heartbeat_timeout" validate:"required,gt=0"`
+	MaxHeartbeatTimeout   time.Duration       `mapstructure:"max_heartbeat_timeout" validate:"required,gt=0"`
 	DataFolder            string              `mapstructure:"data_folder" default:"data/" validate:"required"`
-	StateMachineSnapshot  bool                `mapstructure:"state_machine_snapshot"`
 	WalSizeLimit          int64               `mapstructure:"wal_size_limit"`
 	LogLengthLimit        int                 `mapstructure:"log_length_limit"`
 	Observability         ObservabilityConfig `mapstructure:"observability"`

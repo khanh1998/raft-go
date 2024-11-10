@@ -27,7 +27,6 @@ var (
 type KeyValueStateMachine struct {
 	current               *common.Snapshot // live snapshot to serve the users
 	lock                  sync.RWMutex
-	doSnapshot            bool
 	clientSessionDuration uint64 // duration in nanosecond
 	logger                observability.Logger
 	snapshotLock          sync.Mutex // prevent more than one snapshot at the same time
@@ -41,7 +40,6 @@ type RaftPersistanceState interface {
 
 type NewKeyValueStateMachineParams struct {
 	PersistState          RaftPersistanceState
-	DoSnapshot            bool
 	ClientSessionDuration uint64 // duration in nanosecond
 	Logger                observability.Logger
 	Snapshot              *common.Snapshot
@@ -49,7 +47,6 @@ type NewKeyValueStateMachineParams struct {
 
 func NewKeyValueStateMachine(params NewKeyValueStateMachineParams) *KeyValueStateMachine {
 	k := &KeyValueStateMachine{
-		doSnapshot:            params.DoSnapshot,
 		clientSessionDuration: params.ClientSessionDuration,
 		logger:                params.Logger,
 		persistanceState:      params.PersistState,

@@ -44,6 +44,26 @@ func ReadConfigFromFile(filePath *string) (*Config, error) {
 		return nil, err
 	}
 
+	config.MaxElectionTimeout, err = time.ParseDuration(viper.GetString("max_election_timeout"))
+	if err != nil {
+		return nil, err
+	}
+
+	config.MinElectionTimeout, err = time.ParseDuration(viper.GetString("min_election_timeout"))
+	if err != nil {
+		return nil, err
+	}
+
+	config.MaxHeartbeatTimeout, err = time.ParseDuration(viper.GetString("max_heartbeat_timeout"))
+	if err != nil {
+		return nil, err
+	}
+
+	config.MinHeartbeatTimeout, err = time.ParseDuration(viper.GetString("min_heartbeat_timeout"))
+	if err != nil {
+		return nil, err
+	}
+
 	validate := validator.New()
 	validate.RegisterValidation("clustermode", clusterModeValidator)
 

@@ -170,7 +170,7 @@ func (n *RaftBrainImpl) RequestVote(ctx context.Context, input *common.RequestVo
 	// because the leader won't send update logs to removed follower after it receive the received command.
 	// this check is to prevent removed follower request vote from others.
 	if n.state == common.StateFollower {
-		if time.Since(n.lastHeartbeatReceivedTime) < time.Duration(n.electionTimeOutMin*1000000) {
+		if time.Since(n.lastHeartbeatReceivedTime) < n.electionTimeOutMin {
 			output = &common.RequestVoteOutput{
 				Term:        currentTerm,
 				Message:     MsgTheLeaderIsStillAlive,

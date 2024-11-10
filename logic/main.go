@@ -68,10 +68,10 @@ type RaftBrainImpl struct {
 	stateMachine              SimpleStateMachine
 	electionTimeOut           *time.Timer
 	heartBeatTimeOut          *time.Timer
-	heartBeatTimeOutMin       int64 // millisecond
-	heartBeatTimeOutMax       int64 // millisecond
-	electionTimeOutMin        int64 // millisecond
-	electionTimeOutMax        int64 // millisecond
+	heartBeatTimeOutMin       time.Duration
+	heartBeatTimeOutMax       time.Duration
+	electionTimeOutMin        time.Duration
+	electionTimeOutMax        time.Duration
 	rpcProxy                  RPCProxy
 	arm                       AsyncResponseManager
 	stop                      chan struct{}
@@ -168,10 +168,10 @@ type NewRaftBrainParams struct {
 	// list of member servers for STATIC cluster mode.
 	// if cluster mode is DYNAMIC, list contains only one member - is the first node of cluster.
 	Members             []common.ClusterMember
-	HeartBeatTimeOutMin int64
-	HeartBeatTimeOutMax int64
-	ElectionTimeOutMin  int64
-	ElectionTimeOutMax  int64
+	HeartBeatTimeOutMin time.Duration
+	HeartBeatTimeOutMax time.Duration
+	ElectionTimeOutMin  time.Duration
+	ElectionTimeOutMax  time.Duration
 	Logger              observability.Logger
 	CachingUp           bool // will be ignored if the cluster mode is STATIC
 	RpcRequestTimeout   time.Duration

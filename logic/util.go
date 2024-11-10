@@ -122,7 +122,7 @@ func (n *RaftBrainImpl) isLogUpToDate(lastLogIndex int, lastLogTerm int) bool {
 // this function will pick committed logs and push it to state machine
 func (n *RaftBrainImpl) logInjector(ctx context.Context) {
 	for {
-		<-time.After(time.Duration(n.heartBeatTimeOutMax))
+		<-time.After(n.heartBeatTimeOutMax)
 		n.applyLog(ctx)
 	}
 }

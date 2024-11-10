@@ -154,10 +154,10 @@ func main() {
 		Brain: logic.NewRaftBrainParams{
 			ID:                  id,
 			Mode:                config.Cluster.Mode,
-			HeartBeatTimeOutMin: config.MinHeartbeatTimeoutMs,
-			HeartBeatTimeOutMax: config.MaxHeartbeatTimeoutMs,
-			ElectionTimeOutMin:  config.MinElectionTimeoutMs,
-			ElectionTimeOutMax:  config.MaxElectionTimeoutMs,
+			HeartBeatTimeOutMin: config.MinHeartbeatTimeout,
+			HeartBeatTimeOutMax: config.MaxHeartbeatTimeout,
+			ElectionTimeOutMin:  config.MinElectionTimeout,
+			ElectionTimeOutMax:  config.MaxElectionTimeout,
 			Logger:              logger,
 			Members:             clusterMembers,
 			CachingUp:           catchingUp,
@@ -178,7 +178,6 @@ func main() {
 			Logger: logger,
 		},
 		StateMachine: state_machine.NewKeyValueStateMachineParams{
-			DoSnapshot:            config.StateMachineSnapshot,
 			ClientSessionDuration: uint64(config.ClientSessionDuration.Nanoseconds()),
 			Logger:                logger,
 			PersistState:          raftPersistState,

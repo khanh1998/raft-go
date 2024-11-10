@@ -31,7 +31,11 @@ func findLatestSnapshot(fileNames []string) (fileName string, err error) {
 
 func Deserialize(ctx context.Context, s WalReader, clusterMode ClusterMode) (latestSnapshot *Snapshot, raftPersistedState *RaftPersistanceStateImpl, clusterMembers []ClusterMember, err error) {
 	latestSnapshot = NewSnapshot()
-	raftPersistedState = &RaftPersistanceStateImpl{}
+	raftPersistedState = &RaftPersistanceStateImpl{
+		votedFor:    0,
+		currentTerm: 0,
+		logs:        []Log{},
+	}
 
 	fileNames, err := s.GetFileNames()
 	if err != nil {

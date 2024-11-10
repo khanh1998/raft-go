@@ -25,10 +25,10 @@ func TestRaftBrainImpl_BroadCastRequestVote(t *testing.T) {
 		ElectionTimeOut     *time.Timer
 		HeartBeatTimeOut    *time.Timer
 		Quorum              int
-		HeartBeatTimeOutMin int64
-		HeartBeatTimeOutMax int64
-		ElectionTimeOutMin  int64
-		ElectionTimeOutMax  int64
+		HeartBeatTimeOutMin time.Duration
+		HeartBeatTimeOutMax time.Duration
+		ElectionTimeOutMin  time.Duration
+		ElectionTimeOutMax  time.Duration
 		RpcProxy            RPCProxy
 		CurrentTerm         int
 		VotedFor            int

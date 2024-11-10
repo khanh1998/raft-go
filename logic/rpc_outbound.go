@@ -33,6 +33,7 @@ func (n *RaftBrainImpl) BroadCastRequestVote(ctx context.Context) {
 	// Reset election timer
 	// Send RequestVote RPCs to all other servers
 	n.setCurrentTerm(ctx, currentTerm+1)
+	currentTerm = n.GetCurrentTerm()
 	n.toCandidate(ctx)
 	n.setVotedFor(ctx, n.id)
 

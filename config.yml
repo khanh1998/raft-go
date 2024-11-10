@@ -1,6 +1,6 @@
 # this config file is for local development environment
 cluster: 
-  mode: dynamic # the cluster can be either 'static' or 'dynamic'
+  mode: static # the cluster can be either 'static' or 'dynamic'
   servers: # if the mode is 'dynamic', `servers` will be ignored
     - id: 1
       host: "localhost"
@@ -14,13 +14,12 @@ cluster:
       host: "localhost"
       http_port: 8082
       rpc_port: 1236
-# timeout in miliseconds
-min_election_timeout_ms: 12000
-max_election_timeout_ms: 15000
-min_heartbeat_timeout_ms: 2000
-max_heartbeat_timeout_ms: 5000
+# timeout in milliseconds
+min_election_timeout: 12s
+max_election_timeout: 15s
+min_heartbeat_timeout: 2s
+max_heartbeat_timeout: 5s
 data_folder: data/
-state_machine_snapshot: true
 wal_size_limit: 512
 log_length_limit: 5
 client_session_duration: 2m

@@ -53,7 +53,7 @@ func (n *RaftBrainImpl) resetElectionTimeout(ctx context.Context) {
 	n.dataLock.Lock()
 	defer n.dataLock.Unlock()
 
-	randomElectionTimeOut := time.Duration(common.RandInt(n.electionTimeOutMin, n.electionTimeOutMax)) * time.Millisecond
+	randomElectionTimeOut := time.Duration(common.RandInt(n.electionTimeOutMin.Nanoseconds(), n.electionTimeOutMax.Nanoseconds()))
 	n.log().InfoContext(ctx, "resetElectionTimeout", "seconds", randomElectionTimeOut.Seconds())
 	if n.electionTimeOut == nil {
 		n.electionTimeOut = time.NewTimer(randomElectionTimeOut)
@@ -66,7 +66,7 @@ func (n *RaftBrainImpl) resetHeartBeatTimeout(ctx context.Context) {
 	n.dataLock.Lock()
 	defer n.dataLock.Unlock()
 
-	randomHeartBeatTimeout := time.Duration(common.RandInt(n.heartBeatTimeOutMin, n.heartBeatTimeOutMax)) * time.Millisecond
+	randomHeartBeatTimeout := time.Duration(common.RandInt(n.heartBeatTimeOutMin.Nanoseconds(), n.heartBeatTimeOutMax.Nanoseconds()))
 	n.log().InfoContext(ctx, "resetHeartBeatTimeout", "seconds", randomHeartBeatTimeout.Seconds())
 	if n.heartBeatTimeOut == nil {
 		n.heartBeatTimeOut = time.NewTimer(randomHeartBeatTimeout)

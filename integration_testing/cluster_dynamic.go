@@ -76,10 +76,10 @@ func (c *Cluster) createNewNode(ctx context.Context, id int) error {
 			ID:                  id,
 			Mode:                common.Dynamic,
 			CachingUp:           catchingUp,
-			HeartBeatTimeOutMin: c.config.MinHeartbeatTimeoutMs,
-			HeartBeatTimeOutMax: c.config.MaxHeartbeatTimeoutMs,
-			ElectionTimeOutMin:  c.config.MinElectionTimeoutMs,
-			ElectionTimeOutMax:  c.config.MaxElectionTimeoutMs,
+			HeartBeatTimeOutMin: c.config.MinHeartbeatTimeout,
+			HeartBeatTimeOutMax: c.config.MaxHeartbeatTimeout,
+			ElectionTimeOutMin:  c.config.MinElectionTimeout,
+			ElectionTimeOutMax:  c.config.MaxElectionTimeout,
 			Logger:              c.log,
 			Members: func() []common.ClusterMember {
 				if id == 1 { // first node of freshly new cluster
@@ -104,7 +104,6 @@ func (c *Cluster) createNewNode(ctx context.Context, id int) error {
 			Logger: c.log,
 		},
 		StateMachine: state_machine.NewKeyValueStateMachineParams{
-			DoSnapshot:            c.config.StateMachineSnapshot,
 			ClientSessionDuration: uint64(c.config.ClientSessionDuration),
 			Logger:                c.log,
 			PersistState:          raftPersistState,
@@ -134,8 +133,8 @@ func (c *Cluster) initDynamic(filePath string) {
 	config.Observability.Disabled = true
 
 	c.config = config
-	c.MaxElectionTimeout = time.Duration(config.MaxElectionTimeoutMs * 1000 * 1000)
-	c.MaxHeartbeatTimeout = time.Duration(config.MaxHeartbeatTimeoutMs * 1000 * 1000)
+	c.MaxElectionTimeout = config.MaxElectionTimeout
+	c.MaxHeartbeatTimeout = config.MaxHeartbeatTimeout
 
 	common.CreateFolderIfNotExists(config.DataFolder)
 

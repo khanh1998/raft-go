@@ -2,6 +2,7 @@ package integration_testing
 
 import (
 	"fmt"
+	"os"
 	"testing"
 
 	"github.com/stretchr/testify/assert"
@@ -44,7 +45,7 @@ func TestAddServerAndCommitData(t *testing.T) {
 
 func TestAddServerAndRemoveServer(t *testing.T) {
 	// create a three nodes dynamic cluster
-	// os.RemoveAll("data/")
+	os.RemoveAll("data/")
 	c := NewDynamicCluster("config/dynamic.yml")
 	defer c.Clean()
 	AssertHavingOneLeader(t, c) // this will also wait until a follower win election
