@@ -197,6 +197,7 @@ func (n *RaftBrainImpl) BroadcastAppendEntries(ctx context.Context) (majorityOK 
 				input, err := n.NextInstallSnapshotInput(ctx, peerID, nextIdx)
 				if err != nil {
 					n.log().ErrorContext(ctx, "BroadcastAppendEntries_NextInstallSnapshotInput", err)
+					n.nextOffset[peerID] = NextOffset{Offset: 0, FileName: common.NewSnapshotFileName()}
 				}
 
 				output, err := n.rpcProxy.SendInstallSnapshot(ctx, peerID, &timeout, input)

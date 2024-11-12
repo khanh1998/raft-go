@@ -37,4 +37,7 @@ todos:
 - do benchmark
 - need a new method that let a new node can join the cluster easier
 - test key delete again
-- check current term of crashed node after it restarts
+- cleanup outdated snapshot and wal
+- concurrency testing
+- async log commit
+- cluster time auto commit (lastlog)

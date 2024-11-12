@@ -69,7 +69,7 @@ func TestLogCompactionForStaticCluster2(t *testing.T) {
 func TestLogCompactionForDynamicCluster(t *testing.T) {
 	os.RemoveAll("data/")
 	c := NewDynamicCluster("config/dynamic-snap.yml")
-	// defer c.Clean()
+	defer c.Clean()
 	AssertHavingOneLeader(t, c) // this will also wait until a follower win election
 
 	IncreaseBy(t, c, "count", 10)

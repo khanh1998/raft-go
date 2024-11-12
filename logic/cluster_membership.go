@@ -306,8 +306,13 @@ func (r *RaftBrainImpl) catchUpWithNewMember(ctx context.Context, peerID int) er
 			sm := r.persistState.GetLatestSnapshotMetadata()
 
 			// sanity check
-			if nextIdx > sm.LastLogIndex {
-				r.log().ErrorContext(ctx, "GetLatestSnapshotMetadata", errors.New("there is new snapshot"))
+			if nextIdx < sm.LastLogIndex {
+				r.log().ErrorContext(
+					ctx, "GetLatestSnapshotMetadata",
+					errors.New("there is new snapshot"),
+					"offset", nextOffset,
+					"newSnapshot", sm,
+				)
 				nextOffset = NextOffset{0, common.NewSnapshotFileName()} // reset the snapshot install process
 				break
 			}

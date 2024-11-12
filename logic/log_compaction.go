@@ -10,8 +10,12 @@ import (
 func (n *RaftBrainImpl) NextInstallSnapshotInput(ctx context.Context, peerId int, nextIdx int) (in common.InstallSnapshotInput, err error) {
 	sm := n.persistState.GetLatestSnapshotMetadata()
 
-	// sanity check
-	if nextIdx > sm.LastLogIndex {
+	// normally, nextIndex equals to snapshot's last index,
+	// if nextIndex is smaller than latest snapshot's last index,
+	// probably a newer snapshot has been taken.
+	// in this case, we should ignore the current snapshot,
+	// reset the current snapshot installing to install the latest snapshot.
+	if nextIdx < sm.LastLogIndex {
 		return in, errors.New("snapshot's last index doesn't match with nextIndex")
 	}
 
@@ -32,54 +36,6 @@ func (n *RaftBrainImpl) NextInstallSnapshotInput(ctx context.Context, peerId int
 		Data:       data,
 		Done:       eof,
 	}, nil
-}
-
-// leader will invoke this method to install snapshot on slow followers.
-func (n *RaftBrainImpl) SendInstallSnapshot(ctx context.Context, peerID int) (sm common.SnapshotMetadata, err error) {
-	// todo: prevent leader taking new snapshot while installing snapshot to others
-	ctx, span := tracer.Start(ctx, "SendInstalSnapshot")
-	defer span.End()
-
-	sm = n.persistState.GetLatestSnapshotMetadata()
-
-	currentTerm := n.GetCurrentTerm()
-	offset := int64(0)
-	bufferedSize := 100                      // bytes
-	fileName := common.NewSnapshotFileName() // please think about this
-	for {
-		data, eof, err := n.persistState.StreamSnapshot(ctx, sm, offset, bufferedSize)
-		if err != nil {
-			n.log().ErrorContext(ctx, "SendInstallSnapshot_StreamLatestSnapshot", err)
-
-			return sm, err
-		}
-
-		// call rpc
-		input := common.InstallSnapshotInput{
-			Term:       currentTerm,
-			LeaderId:   n.leaderID,
-			LastTerm:   sm.LastLogTerm,
-			LastIndex:  sm.LastLogIndex,
-			LastConfig: []common.ClusterMember{},
-			Offset:     offset,
-			Data:       data,
-			Done:       eof,
-			FileName:   fileName,
-		}
-
-		_, err = n.rpcProxy.SendInstallSnapshot(ctx, peerID, &n.RpcRequestTimeout, input)
-		if err != nil {
-			return sm, err
-		}
-
-		offset += int64(len(data))
-
-		if eof {
-			break
-		}
-	}
-
-	return sm, nil
 }
 
 // leader will invoke this method to install snapshot on slow followers.
