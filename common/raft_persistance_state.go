@@ -16,6 +16,7 @@ type StorageInterface interface {
 	CommitObject(ctx context.Context, fileName string) (err error)
 }
 
+// responsibility is to store Raft states like votedFor, currentTerm and logs on persistance storage
 type RaftPersistanceStateImpl struct {
 	votedFor    int
 	currentTerm int

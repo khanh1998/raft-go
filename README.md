@@ -4,9 +4,9 @@ This is a simple distributed key-value database, built on top of [Raft](https://
 - Safety
 - Client interaction
 - Cluster membership changes
-- Log compaction (pending)
+- Log compaction
 
-![Orverall Architecture](docs/diagram.drawio.png "Orverall Architecture")
+![Overall Architecture](docs/diagram.drawio.png "Overall Architecture")
 
 # 1. Start the cluster
 ## 1.1 Quick
@@ -39,12 +39,17 @@ cluster:
       http_port: 8082
       rpc_port: 1236
 # timeout in milliseconds
-min_election_timeout_ms: 12000
-max_election_timeout_ms: 15000
-min_heartbeat_timeout_ms: 2000
-max_heartbeat_timeout_ms: 5000
+min_election_timeout: 12s
+max_election_timeout: 15s
+min_heartbeat_timeout: 2s
+max_heartbeat_timeout: 5s
 data_folder: data/
-state_machine_snapshot: false
+wal_size_limit: 512
+log_length_limit: 5
+client_session_duration: 2m
+rpc_dial_timeout: 5s
+rpc_request_timeout: 1s
+rpc_reconnect_duration: 30s
 observability:
   disabled: true
   trace_endpoint: 'localhost:4318'
