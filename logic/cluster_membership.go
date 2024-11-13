@@ -39,7 +39,7 @@ func (r *RaftBrainImpl) WaitForLogCommited(dur time.Duration, index int) error {
 	for !stop {
 		select {
 		case <-timeout:
-			return errors.New("timeout: wait for log commited")
+			return errors.New("timeout: wait for log committed")
 		default:
 			if r.commitIndex >= index {
 				stop = true
@@ -294,7 +294,8 @@ func (r *RaftBrainImpl) catchUpWithNewMember(ctx context.Context, peerID int) er
 			// the log that need to send to follower is compacted into snapshot,
 			// so we need to install snapshot to follower
 			if nextOffset == (NextOffset{}) {
-				nextOffset = NextOffset{0, common.NewSnapshotFileName()}
+				sm := r.GetLatestSnapshotMetadata()
+				nextOffset = NextOffset{0, common.NewSnapshotFileName(sm.LastLogTerm, sm.LastLogIndex), sm}
 			}
 		} else {
 			r.log().ErrorContext(ctx, "BroadcastAppendEntries_GetLog", err)
@@ -303,29 +304,32 @@ func (r *RaftBrainImpl) catchUpWithNewMember(ctx context.Context, peerID int) er
 		timeout := 5 * time.Second
 
 		if nextOffset != (NextOffset{}) {
-			sm := r.persistState.GetLatestSnapshotMetadata()
-
 			// sanity check
-			if nextIdx < sm.LastLogIndex {
+			// check if there is a newer snapshot
+			latestSnapshot := r.GetLatestSnapshotMetadata()
+			if nextOffset.Snapshot != latestSnapshot {
 				r.log().ErrorContext(
 					ctx, "GetLatestSnapshotMetadata",
 					errors.New("there is new snapshot"),
 					"offset", nextOffset,
-					"newSnapshot", sm,
+					"newSnapshot", latestSnapshot,
 				)
-				nextOffset = NextOffset{0, common.NewSnapshotFileName()} // reset the snapshot install process
+				nextOffset = NextOffset{
+					Offset:   0,
+					FileName: common.NewSnapshotFileName(latestSnapshot.LastLogTerm, latestSnapshot.LastLogIndex),
+					Snapshot: latestSnapshot} // reset the snapshot install progress
 				break
 			}
 
-			data, eof, err := r.persistState.StreamSnapshot(ctx, sm, nextOffset.Offset, 100)
+			data, eof, err := r.persistState.StreamSnapshot(ctx, nextOffset.Snapshot, nextOffset.Offset, r.snapshotChunkSize)
 			if err != nil {
 			}
 
 			input := common.InstallSnapshotInput{
 				Term:       r.GetCurrentTerm(),
 				LeaderId:   r.leaderID,
-				LastIndex:  sm.LastLogIndex,
-				LastTerm:   sm.LastLogTerm,
+				LastIndex:  nextOffset.Snapshot.LastLogIndex,
+				LastTerm:   nextOffset.Snapshot.LastLogTerm,
 				LastConfig: r.members,
 				FileName:   nextOffset.FileName,
 				Offset:     nextOffset.Offset,
@@ -344,8 +348,9 @@ func (r *RaftBrainImpl) catchUpWithNewMember(ctx context.Context, peerID int) er
 
 			if !input.Done {
 				nextOffset = NextOffset{
-					Offset:   input.Offset + 100,
-					FileName: input.FileName,
+					Offset:   nextOffset.Offset + int64(r.snapshotChunkSize),
+					FileName: nextOffset.FileName,
+					Snapshot: nextOffset.Snapshot,
 				}
 			}
 

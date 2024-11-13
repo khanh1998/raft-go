@@ -110,7 +110,7 @@ func (r *RaftPersistanceStateImpl) SaveSnapshot(ctx context.Context, snapshot *S
 	r.lock.Lock()
 	defer r.lock.Unlock()
 
-	snapshot.FileName = NewSnapshotFileName()
+	snapshot.FileName = NewSnapshotFileName(snapshot.LastLogTerm, snapshot.LastLogIndex)
 
 	err = r.storage.SaveObject(snapshot.FileName, snapshot)
 	if err != nil {

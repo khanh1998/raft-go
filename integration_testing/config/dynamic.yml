@@ -13,6 +13,7 @@ client_session_duration: 2m
 rpc_dial_timeout: 300ms
 rpc_request_timeout: 150ms
 rpc_reconnect_duration: 300ms
+snapshot_chunk_size: 100
 observability:
   disabled: true
   trace_endpoint: 'localhost:4318'

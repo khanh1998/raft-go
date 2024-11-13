@@ -53,6 +53,7 @@ type MemberChangeSubscriber interface {
 type NextOffset struct {
 	Offset   int64
 	FileName string
+	Snapshot common.SnapshotMetadata
 }
 
 // this struct only contains volatile data
@@ -82,6 +83,7 @@ type RaftBrainImpl struct {
 	lastHeartbeatReceivedTime time.Time
 	RpcRequestTimeout         time.Duration
 	logLengthLimit            int
+	snapshotChunkSize         int // in byte
 	// Persistent state on all servers:
 	// Updated on stable storage before responding to RPCs
 	// currentTerm int          // latest term server has seen (initialized to 0 on first boot, increases monotonically)
@@ -177,6 +179,7 @@ type NewRaftBrainParams struct {
 	RpcRequestTimeout   time.Duration
 	PersistenceState    RaftPersistanceState // this will take care of raft's states that need to be persisted
 	LogLengthLimit      int
+	SnapshotChunkSize   int
 }
 
 func NewRaftBrain(params NewRaftBrainParams) (*RaftBrainImpl, error) {
@@ -208,8 +211,9 @@ func NewRaftBrain(params NewRaftBrainParams) (*RaftBrainImpl, error) {
 		clusterClock:      NewClusterClock(),
 		RpcRequestTimeout: params.RpcRequestTimeout,
 
-		persistState:   params.PersistenceState,
-		logLengthLimit: params.LogLengthLimit,
+		persistState:      params.PersistenceState,
+		logLengthLimit:    params.LogLengthLimit,
+		snapshotChunkSize: params.SnapshotChunkSize,
 	}
 
 	ctx, span := tracer.Start(context.Background(), "NewRaftBrain")

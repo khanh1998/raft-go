@@ -37,6 +37,7 @@ data:
     rpc_dial_timeout: 5s
     rpc_request_timeout: 1s
     rpc_reconnect_duration: 30s
+    snapshot_chunk_size: 100
 ---
 apiVersion: v1
 kind: Service

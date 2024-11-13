@@ -2,41 +2,9 @@ package logic
 
 import (
 	"context"
-	"errors"
 	"khanh/raft-go/common"
 	"time"
 )
-
-func (n *RaftBrainImpl) NextInstallSnapshotInput(ctx context.Context, peerId int, nextIdx int) (in common.InstallSnapshotInput, err error) {
-	sm := n.persistState.GetLatestSnapshotMetadata()
-
-	// normally, nextIndex equals to snapshot's last index,
-	// if nextIndex is smaller than latest snapshot's last index,
-	// probably a newer snapshot has been taken.
-	// in this case, we should ignore the current snapshot,
-	// reset the current snapshot installing to install the latest snapshot.
-	if nextIdx < sm.LastLogIndex {
-		return in, errors.New("snapshot's last index doesn't match with nextIndex")
-	}
-
-	offset := n.nextOffset[peerId]
-	data, eof, err := n.persistState.StreamSnapshot(ctx, sm, offset.Offset, 100)
-	if err != nil {
-		return in, err
-	}
-
-	return common.InstallSnapshotInput{
-		Term:       n.GetCurrentTerm(),
-		LeaderId:   n.leaderID,
-		LastIndex:  sm.LastLogIndex,
-		LastTerm:   sm.LastLogTerm,
-		LastConfig: n.members,
-		FileName:   offset.FileName,
-		Offset:     offset.Offset,
-		Data:       data,
-		Done:       eof,
-	}, nil
-}
 
 // leader will invoke this method to install snapshot on slow followers.
 func (n *RaftBrainImpl) InstallSnapshot(ctx context.Context, input *common.InstallSnapshotInput, output *common.InstallSnapshotOutput) {

@@ -90,6 +90,7 @@ func (c *Cluster) createNewNode(ctx context.Context, id int) error {
 			RpcRequestTimeout: c.config.RpcRequestTimeout,
 			PersistenceState:  raftPersistState,
 			LogLengthLimit:    c.config.LogLengthLimit,
+			SnapshotChunkSize: c.config.SnapshotChunkSize,
 		},
 		RPCProxy: rpc_proxy.NewRPCImplParams{
 			HostURL:              rpcUrl,

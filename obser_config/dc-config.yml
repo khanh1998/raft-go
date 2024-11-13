@@ -27,6 +27,7 @@ client_session_duration: 2m
 rpc_dial_timeout: 200ms
 rpc_request_timeout: 150ms
 rpc_reconnect_duration: 300ms
+snapshot_chunk_size: 100
 observability:
   disabled: false
   trace_endpoint: 'tempo:4318'

@@ -6,6 +6,10 @@ func (r *RaftBrainImpl) GetId() int {
 	return r.id
 }
 
+func (r *RaftBrainImpl) GetLatestSnapshotMetadata() common.SnapshotMetadata {
+	return r.persistState.GetLatestSnapshotMetadata()
+}
+
 func (r *RaftBrainImpl) GetCurrentTerm() int {
 	if r.persistState == nil {
 		return 0

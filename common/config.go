@@ -46,6 +46,7 @@ type Config struct {
 	RpcDialTimeout        time.Duration       `mapstructure:"rpc_dial_timeout"`
 	RpcRequestTimeout     time.Duration       `mapstructure:"rpc_request_timeout"`
 	RpcReconnectDuration  time.Duration       `mapstructure:"rpc_reconnect_duration"`
+	SnapshotChunkSize     int                 `mapstructure:"snapshot_chunk_size"`
 }
 
 // appModeValidator is a custom validator function to check if the mode is valid

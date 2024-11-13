@@ -39,6 +39,12 @@ func (l *zerologLogger) Fatal(msg string, attrs ...any) {
 	os.Exit(1)
 }
 
+func NewZerologForTest() Logger {
+	stdOutput := zerolog.ConsoleWriter{Out: os.Stdout, TimeFormat: time.RFC3339Nano}
+	logger := zerolog.New(stdOutput).With().Timestamp().Logger()
+	return &zerologLogger{logger}
+}
+
 func NewZerolog(cfg common.ObservabilityConfig, id int) Logger {
 	stdOutput := zerolog.ConsoleWriter{Out: os.Stdout, TimeFormat: time.RFC3339Nano}
 	var logger zerolog.Logger

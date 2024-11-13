@@ -83,4 +83,26 @@ func TestAddServerAndRemoveServer(t *testing.T) {
 	AssertGet(t, c, "count", "15")
 }
 
+func TestSnapshotInstalling(t *testing.T) {
+	// leader are installing snapshot to a new node,
+	// but at the same time, a new snapshot was finished in leader.
+
+	// 1. init 3 nodes cluster
+	c := NewDynamicCluster("config/dynamic.yml")
+	defer c.Clean()
+	AssertHavingOneLeader(t, c) // this will also wait until a follower win election
+	AssertCreatingNode(t, c, 2)
+	AssertAddingNodeToCluster(t, c, 2)
+	AssertCreatingNode(t, c, 3)
+	AssertAddingNodeToCluster(t, c, 3)
+	AssertLiveNode(t, c, 3)
+
+	// 2. insert enough data so there will be a snapshot
+	IncreaseBy(t, c, "counter", 15)
+
+	// 3.1 create a new node and install snapshot to it
+	AssertCreatingNode(t, c, 4)
+	AssertAddingNodeToCluster(t, c, 4)
+}
+
 // todo: test uncommit configuration get roll back

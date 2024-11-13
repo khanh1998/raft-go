@@ -164,6 +164,7 @@ func main() {
 			RpcRequestTimeout:   config.RpcRequestTimeout,
 			PersistenceState:    raftPersistState,
 			LogLengthLimit:      config.LogLengthLimit,
+			SnapshotChunkSize:   config.SnapshotChunkSize,
 		},
 		RPCProxy: rpc_proxy.NewRPCImplParams{
 			HostID:               id,

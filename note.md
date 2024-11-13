@@ -39,5 +39,6 @@ todos:
 - test key delete again
 - cleanup outdated snapshot and wal
 - concurrency testing
-- async log commit
+- async set, don't wait for log commit
 - cluster time auto commit (lastlog)
+- allow node with some data to catch up, currently only completely new node (no data) can.

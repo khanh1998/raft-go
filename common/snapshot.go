@@ -266,13 +266,12 @@ type InstallSnapshotOutput struct {
 	NodeID  int    // id of the responder
 }
 
-func NewSnapshotFileName() string {
-	now := time.Now().UnixNano()
-	return fmt.Sprintf("snapshot.%d.dat", now)
+func NewSnapshotFileName(term, index int) string {
+	return fmt.Sprintf("snapshot.%d_%d.dat", term, index)
 }
 
 func IsSnapshotFile(fileName string) bool {
-	pattern := `^snapshot\.\d+\.dat$`
+	pattern := `^snapshot\.\d+_\d+\.dat$`
 	regex := regexp.MustCompile(pattern)
 
 	return regex.MatchString(fileName)

@@ -3,6 +3,7 @@ package rpc_proxy
 import (
 	"context"
 	"khanh/raft-go/common"
+	"khanh/raft-go/observability"
 	"time"
 )
 
@@ -13,23 +14,41 @@ type RPCProxy interface {
 }
 
 type RPCProxyMock struct {
-	appendEntries map[int]common.AppendEntriesOutput
-	requestVote   map[int]common.RequestVoteOutput
+	AppendEntries   map[int]common.AppendEntriesOutput
+	RequestVote     map[int]common.RequestVoteOutput
+	Ping            map[int]common.PingResponse
+	InstallSnapshot map[int]common.InstallSnapshotOutput
+	Logger          observability.Logger
 }
 
 func (r RPCProxyMock) SendAppendEntries(ctx context.Context, peerId int, timeout *time.Duration, input common.AppendEntriesInput) (output common.AppendEntriesOutput, err error) {
-	return r.appendEntries[peerId], nil
+	res, ok := r.AppendEntries[peerId]
+	if ok {
+		return res, nil
+	}
+	time.Sleep(*timeout)
+	return output, ErrRpcTimeout
 }
 
 func (r RPCProxyMock) SendRequestVote(ctx context.Context, peerId int, timeout *time.Duration, input common.RequestVoteInput) (output common.RequestVoteOutput, err error) {
-	return r.requestVote[peerId], nil
+	res, ok := r.RequestVote[peerId]
+	if ok {
+		return res, nil
+	}
+	time.Sleep(*timeout)
+	return output, ErrRpcTimeout
 }
 
 func (r RPCProxyMock) SendPing(ctx context.Context, peerId int, timeout *time.Duration) (res common.PingResponse, err error) {
-	return
+	res, ok := r.Ping[peerId]
+	if ok {
+		return res, nil
+	}
+	time.Sleep(*timeout)
+	return res, ErrRpcTimeout
 }
 
-func (r RPCProxyMock) ConnectToNewPeer(ctx context.Context, eerID int, peerURL string, retry int, retryDelay time.Duration) error {
+func (r RPCProxyMock) ConnectToNewPeer(ctx context.Context, peerID int, peerURL string, retry int, retryDelay time.Duration) error {
 	return nil
 }
 
@@ -37,8 +56,12 @@ func (r RPCProxyMock) SendToVotingMember(ctx context.Context, peerId int, timeou
 	return nil
 }
 
-func (r RPCProxyMock) AddServer(ctx context.Context, member common.ClusterMember) {}
-
 func (r RPCProxyMock) SendInstallSnapshot(ctx context.Context, peerId int, timeout *time.Duration, input common.InstallSnapshotInput) (output common.InstallSnapshotOutput, err error) {
-	return
+	r.Logger.Info("SendInstallSnapshot", "peerId", peerId, "input", input)
+	res, ok := r.InstallSnapshot[peerId]
+	if ok {
+		return res, nil
+	}
+	time.Sleep(*timeout)
+	return res, ErrRpcTimeout
 }

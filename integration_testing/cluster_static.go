@@ -105,6 +105,7 @@ func (c *Cluster) init(filePath string) {
 					RpcRequestTimeout:   config.RpcRequestTimeout,
 					PersistenceState:    raftPersistState,
 					LogLengthLimit:      config.LogLengthLimit,
+					SnapshotChunkSize:   config.SnapshotChunkSize,
 				},
 				RPCProxy: rpc_proxy.NewRPCImplParams{
 					HostURL:              mem.RpcUrl,

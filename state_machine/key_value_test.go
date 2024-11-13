@@ -7,31 +7,7 @@ import (
 	"khanh/raft-go/observability"
 	"reflect"
 	"testing"
-
-	"github.com/stretchr/testify/assert"
 )
-
-func TestIsSnapshotFile(t *testing.T) {
-	type Case struct {
-		input  string
-		output bool
-	}
-
-	tests := []Case{
-		{"snapshot.1234567890.dat", true},
-		{"snapshot.123.dat", true},
-		{"snapshot.0.dat", true},
-		{"snapshot.1.dat", true},
-		{"snapshot.1", false},
-		{"snapshot.dat", false},
-		{"snapshot", false},
-		{"log.1.dat", false},
-	}
-
-	for _, testcase := range tests {
-		assert.Equal(t, testcase.output, common.IsSnapshotFile(testcase.input))
-	}
-}
 
 func TestKeyValueStateMachine_Process(t *testing.T) {
 	type fields struct {

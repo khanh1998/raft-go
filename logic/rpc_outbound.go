@@ -183,7 +183,12 @@ func (n *RaftBrainImpl) BroadcastAppendEntries(ctx context.Context) (majorityOK 
 				// the log that need to send to follower is compacted into snapshot,
 				// so we need to install snapshot to follower
 				if _, ok := n.nextOffset[peerID]; !ok {
-					n.nextOffset[peerID] = NextOffset{0, common.NewSnapshotFileName()}
+					sm := n.GetLatestSnapshotMetadata()
+					n.nextOffset[peerID] = NextOffset{
+						Offset:   0,
+						FileName: common.NewSnapshotFileName(sm.LastLogTerm, sm.LastLogIndex),
+						Snapshot: sm,
+					}
 				}
 			} else {
 				n.log().ErrorContext(ctx, "BroadcastAppendEntries_GetLog", err)
@@ -192,12 +197,46 @@ func (n *RaftBrainImpl) BroadcastAppendEntries(ctx context.Context) (majorityOK 
 			timeout := n.RpcRequestTimeout
 
 			// leader has two jobs:
+			var offset NextOffset
 			if _, ok := n.nextOffset[peerID]; ok {
 				// 1. installing snapshot to slow follower
-				input, err := n.NextInstallSnapshotInput(ctx, peerID, nextIdx)
-				if err != nil {
-					n.log().ErrorContext(ctx, "BroadcastAppendEntries_NextInstallSnapshotInput", err)
-					n.nextOffset[peerID] = NextOffset{Offset: 0, FileName: common.NewSnapshotFileName()}
+				var input common.InstallSnapshotInput
+
+				for i := 0; i < 2; i++ {
+					latestSnapshot := n.GetLatestSnapshotMetadata()
+					offset = n.nextOffset[peerID]
+
+					if offset.Snapshot != latestSnapshot {
+						// there is a new snapshot while we installing the current snapshot to the follower,
+						// reset the progress to install new snapshot.
+						n.log().ErrorContext(ctx, "BroadcastAppendEntries_NextInstallSnapshotInput", err)
+						n.nextOffset[peerID] = NextOffset{
+							Offset:   0,
+							FileName: common.NewSnapshotFileName(latestSnapshot.LastLogTerm, latestSnapshot.LastLogIndex),
+							Snapshot: latestSnapshot,
+						}
+
+						continue
+					}
+
+					data, eof, err := n.persistState.StreamSnapshot(ctx, offset.Snapshot, offset.Offset, n.snapshotChunkSize)
+					if err != nil {
+						n.log().ErrorContext(ctx, "BroadcastAppendEntries_StreamSnapshot", err)
+
+						return
+					}
+
+					input = common.InstallSnapshotInput{
+						Term:       n.GetCurrentTerm(),
+						LeaderId:   n.leaderID,
+						LastIndex:  offset.Snapshot.LastLogIndex,
+						LastTerm:   offset.Snapshot.LastLogTerm,
+						LastConfig: n.members,
+						FileName:   offset.FileName,
+						Offset:     offset.Offset,
+						Data:       data,
+						Done:       eof,
+					}
 				}
 
 				output, err := n.rpcProxy.SendInstallSnapshot(ctx, peerID, &timeout, input)
@@ -211,8 +250,9 @@ func (n *RaftBrainImpl) BroadcastAppendEntries(ctx context.Context) (majorityOK 
 
 				if !input.Done {
 					n.nextOffset[peerID] = NextOffset{
-						Offset:   input.Offset + 100,
-						FileName: input.FileName,
+						Offset:   offset.Offset + int64(n.snapshotChunkSize),
+						FileName: offset.FileName,
+						Snapshot: offset.Snapshot,
 					}
 				}
 
