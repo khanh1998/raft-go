@@ -9,6 +9,7 @@ import (
 )
 
 func TestAddServerAndCommitData(t *testing.T) {
+	os.RemoveAll("data/")
 	c := NewDynamicCluster("config/dynamic.yml")
 	defer c.Clean()
 	AssertHavingOneLeader(t, c) // this will also wait until a follower win election

@@ -1,21 +1,22 @@
-package common
+package persistance_state
 
 import (
 	"context"
+	"khanh/raft-go/common"
 	"sort"
 )
 
 type WalReader interface {
 	ReadAllWal() (data [][]string, err error)
-	ReadObject(fileName string, result DeserializableObject) error
-	GetFileNames() ([]string, error)
+	ReadObject(fileName string, result common.DeserializableObject) error
+	GetObjectNames() ([]string, error)
 }
 
 func findLatestSnapshot(fileNames []string) (fileName string, err error) {
 	var snapshotFiles []string
 
 	for _, file := range fileNames {
-		if IsSnapshotFile(file) {
+		if common.IsSnapshotFile(file) {
 			snapshotFiles = append(snapshotFiles, file)
 		}
 	}
@@ -29,15 +30,15 @@ func findLatestSnapshot(fileNames []string) (fileName string, err error) {
 	return fileName, nil
 }
 
-func Deserialize(ctx context.Context, s WalReader, clusterMode ClusterMode) (latestSnapshot *Snapshot, raftPersistedState *RaftPersistanceStateImpl, clusterMembers []ClusterMember, err error) {
-	latestSnapshot = NewSnapshot()
+func Deserialize(ctx context.Context, s WalReader, clusterMode common.ClusterMode) (latestSnapshot *common.Snapshot, raftPersistedState *RaftPersistanceStateImpl, clusterMembers []common.ClusterMember, err error) {
+	latestSnapshot = common.NewSnapshot()
 	raftPersistedState = &RaftPersistanceStateImpl{
 		votedFor:    0,
 		currentTerm: 0,
-		logs:        []Log{},
+		logs:        []common.Log{},
 	}
 
-	fileNames, err := s.GetFileNames()
+	fileNames, err := s.GetObjectNames()
 	if err != nil {
 		return nil, nil, nil, err
 	}
@@ -55,7 +56,7 @@ func Deserialize(ctx context.Context, s WalReader, clusterMode ClusterMode) (lat
 	}
 
 	walData, err := s.ReadAllWal()
-	if err != nil && err != ErrEmptyData {
+	if err != nil && err != common.ErrEmptyData {
 		return nil, nil, nil, err
 	}
 
@@ -77,8 +78,8 @@ func Deserialize(ctx context.Context, s WalReader, clusterMode ClusterMode) (lat
 
 	// rebuild the cluster member configuration from logs and snapshot for dynamic cluster,
 	// for static cluster, member configurations are read from config file.
-	if clusterMode == Dynamic {
-		clusterMemberMap := map[int]ClusterMember{}
+	if clusterMode == common.Dynamic {
+		clusterMemberMap := map[int]common.ClusterMember{}
 		if len(latestSnapshot.LastConfig) > 0 {
 			for peerId, peer := range latestSnapshot.LastConfig {
 				clusterMemberMap[peerId] = peer
@@ -86,13 +87,13 @@ func Deserialize(ctx context.Context, s WalReader, clusterMode ClusterMode) (lat
 		}
 
 		for _, logs := range raftPersistedState.logs {
-			addition, peerId, httpUrl, rpcUrl, err := DecomposeChangeSeverCommand(logs.Command)
+			addition, peerId, httpUrl, rpcUrl, err := common.DecomposeChangeSeverCommand(logs.Command)
 			if err != nil {
 				continue
 			}
 
 			if addition {
-				clusterMemberMap[peerId] = ClusterMember{
+				clusterMemberMap[peerId] = common.ClusterMember{
 					ID:      peerId,
 					RpcUrl:  rpcUrl,
 					HttpUrl: httpUrl,

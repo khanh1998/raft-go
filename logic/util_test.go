@@ -4,6 +4,7 @@ import (
 	"context"
 	"khanh/raft-go/common"
 	"khanh/raft-go/observability"
+	"khanh/raft-go/persistance_state"
 	"khanh/raft-go/state_machine"
 	"khanh/raft-go/storage"
 	"reflect"
@@ -19,7 +20,7 @@ func Test_nodeImpl_DeleteFrom(t *testing.T) {
 
 	logger := observability.NewSimpleLog()
 
-	ps := common.NewRaftPersistanceState(common.NewRaftPersistanceStateParams{
+	ps := persistance_state.NewRaftPersistanceState(persistance_state.NewRaftPersistanceStateParams{
 		Logs: []common.Log{},
 		Storage: storage.NewStorageForTest(storage.NewStorageParams{
 			WalSize:    1000,
@@ -50,7 +51,7 @@ func Test_nodeImpl_DeleteFrom(t *testing.T) {
 		return d
 	}
 
-	ps = common.NewRaftPersistanceState(common.NewRaftPersistanceStateParams{
+	ps = persistance_state.NewRaftPersistanceState(persistance_state.NewRaftPersistanceStateParams{
 		Logs: copyData(),
 		Storage: storage.NewStorageForTest(storage.NewStorageParams{
 			WalSize:    1000,
@@ -69,7 +70,7 @@ func Test_nodeImpl_DeleteFrom(t *testing.T) {
 	err = n.deleteLogFrom(ctx, 0)
 	assert.ErrorIs(t, err, common.ErrIndexOutOfRange)
 
-	ps = common.NewRaftPersistanceState(common.NewRaftPersistanceStateParams{
+	ps = persistance_state.NewRaftPersistanceState(persistance_state.NewRaftPersistanceStateParams{
 		Logs: copyData(),
 		Storage: storage.NewStorageForTest(storage.NewStorageParams{
 			WalSize:    1000,
@@ -87,7 +88,7 @@ func Test_nodeImpl_DeleteFrom(t *testing.T) {
 	assert.NoError(t, err)
 	// assert.Equal(t, data[:2], n.logs)
 
-	ps = common.NewRaftPersistanceState(common.NewRaftPersistanceStateParams{
+	ps = persistance_state.NewRaftPersistanceState(persistance_state.NewRaftPersistanceStateParams{
 		Logs: copyData(),
 		Storage: storage.NewStorageForTest(storage.NewStorageParams{
 			WalSize:    1000,
@@ -105,7 +106,7 @@ func Test_nodeImpl_DeleteFrom(t *testing.T) {
 	assert.NoError(t, err)
 	// assert.Equal(t, data[:1], n.logs)
 
-	ps = common.NewRaftPersistanceState(common.NewRaftPersistanceStateParams{
+	ps = persistance_state.NewRaftPersistanceState(persistance_state.NewRaftPersistanceStateParams{
 		Logs: copyData(),
 		Storage: storage.NewStorageForTest(storage.NewStorageParams{
 			WalSize:    1000,
@@ -138,7 +139,7 @@ func Test_nodeImpl_isLogUpToDate(t *testing.T) {
 			name:         "lastLogTerm > term",
 			lastLogIndex: 3,
 			lastLogTerm:  5,
-			n: RaftBrainImpl{persistState: common.NewRaftPersistanceState(common.NewRaftPersistanceStateParams{
+			n: RaftBrainImpl{persistState: persistance_state.NewRaftPersistanceState(persistance_state.NewRaftPersistanceStateParams{
 				Logs: []common.Log{},
 			})},
 			output: true,
@@ -147,7 +148,7 @@ func Test_nodeImpl_isLogUpToDate(t *testing.T) {
 			name:         "lastLogTerm > term",
 			lastLogIndex: 3,
 			lastLogTerm:  5,
-			n: RaftBrainImpl{persistState: common.NewRaftPersistanceState(common.NewRaftPersistanceStateParams{
+			n: RaftBrainImpl{persistState: persistance_state.NewRaftPersistanceState(persistance_state.NewRaftPersistanceStateParams{
 				Logs: []common.Log{{Term: 1}, {Term: 2}},
 			})},
 			output: true,
@@ -156,7 +157,7 @@ func Test_nodeImpl_isLogUpToDate(t *testing.T) {
 			name:         "lastLogTerm == term && lastLogIndex = index",
 			lastLogIndex: 3,
 			lastLogTerm:  5,
-			n: RaftBrainImpl{persistState: common.NewRaftPersistanceState(common.NewRaftPersistanceStateParams{
+			n: RaftBrainImpl{persistState: persistance_state.NewRaftPersistanceState(persistance_state.NewRaftPersistanceStateParams{
 				Logs: []common.Log{{Term: 1}, {Term: 2}, {Term: 5}},
 			})},
 			output: true,
@@ -165,7 +166,7 @@ func Test_nodeImpl_isLogUpToDate(t *testing.T) {
 			name:         "lastLogTerm == term && lastLogIndex > index",
 			lastLogIndex: 3,
 			lastLogTerm:  5,
-			n: RaftBrainImpl{persistState: common.NewRaftPersistanceState(common.NewRaftPersistanceStateParams{
+			n: RaftBrainImpl{persistState: persistance_state.NewRaftPersistanceState(persistance_state.NewRaftPersistanceStateParams{
 				Logs: []common.Log{{Term: 1}, {Term: 5}},
 			})},
 			output: true,
@@ -174,7 +175,7 @@ func Test_nodeImpl_isLogUpToDate(t *testing.T) {
 			name:         "lastLogTerm == term && lastLogIndex < index",
 			lastLogIndex: 1,
 			lastLogTerm:  5,
-			n: RaftBrainImpl{persistState: common.NewRaftPersistanceState(common.NewRaftPersistanceStateParams{
+			n: RaftBrainImpl{persistState: persistance_state.NewRaftPersistanceState(persistance_state.NewRaftPersistanceStateParams{
 				Logs: []common.Log{{Term: 1}, {Term: 5}},
 			})},
 			output: false,
@@ -183,7 +184,7 @@ func Test_nodeImpl_isLogUpToDate(t *testing.T) {
 			name:         "lastLogTerm < term",
 			lastLogIndex: 3,
 			lastLogTerm:  3,
-			n: RaftBrainImpl{persistState: common.NewRaftPersistanceState(common.NewRaftPersistanceStateParams{
+			n: RaftBrainImpl{persistState: persistance_state.NewRaftPersistanceState(persistance_state.NewRaftPersistanceStateParams{
 				Logs: []common.Log{{Term: 3}, {Term: 4}},
 			})},
 			output: false,
@@ -265,7 +266,7 @@ func TestRaftBrainImpl_deleteLogFrom(t *testing.T) {
 				dataLock:                  tt.fields.dataLock,
 				lastHeartbeatReceivedTime: tt.fields.lastHeartbeatReceivedTime,
 				RpcRequestTimeout:         tt.fields.RpcRequestTimeout,
-				persistState: common.NewRaftPersistanceState(common.NewRaftPersistanceStateParams{
+				persistState: persistance_state.NewRaftPersistanceState(persistance_state.NewRaftPersistanceStateParams{
 					CurrentTerm: tt.fields.currentTerm,
 					VotedFor:    tt.fields.votedFor,
 					Logs:        tt.fields.logs,
@@ -361,7 +362,7 @@ func TestRaftBrainImpl_GetLog(t *testing.T) {
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
 			n := &RaftBrainImpl{
-				persistState: common.NewRaftPersistanceState(common.NewRaftPersistanceStateParams{
+				persistState: persistance_state.NewRaftPersistanceState(persistance_state.NewRaftPersistanceStateParams{
 					Logs:             tt.fields.logs,
 					SnapshotMetadata: tt.fields.snapshots,
 				}),

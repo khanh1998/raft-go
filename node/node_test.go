@@ -6,6 +6,7 @@ import (
 	"khanh/raft-go/http_proxy"
 	"khanh/raft-go/logic"
 	"khanh/raft-go/observability"
+	"khanh/raft-go/persistance_state"
 	"khanh/raft-go/rpc_proxy"
 	"khanh/raft-go/state_machine"
 	"khanh/raft-go/storage"
@@ -19,7 +20,7 @@ import (
 func TestRpcConnection(t *testing.T) {
 	logger := observability.NewZerolog(common.ObservabilityConfig{}, 1)
 	ctx := context.Background()
-	persistState := common.NewRaftPersistanceState(common.NewRaftPersistanceStateParams{
+	persistState := persistance_state.NewRaftPersistanceState(persistance_state.NewRaftPersistanceStateParams{
 		CurrentTerm: 2,
 		Logs:        []common.Log{},
 		Storage: storage.NewStorageForTest(

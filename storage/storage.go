@@ -132,7 +132,7 @@ func (s StorageImpl) log() observability.Logger {
 	)
 }
 
-func (s StorageImpl) GetFileNames() (fileNames []string, err error) {
+func (s StorageImpl) GetObjectNames() (fileNames []string, err error) {
 	return s.fileUtils.GetFileNames(s.dataFolder)
 }
 
@@ -230,6 +230,11 @@ func (s *StorageImpl) deleteOutdatedSnapshots() error {
 	}
 
 	return nil
+}
+
+func (s *StorageImpl) DeleteObject(fileName string) error {
+	path := s.dataFolder + fileName
+	return s.fileUtils.DeleteFile(path)
 }
 
 // result should be pass as a pointer

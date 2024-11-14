@@ -1,28 +1,32 @@
-package common
+package persistance_state
 
 import (
 	"context"
+	"errors"
 	"fmt"
+	"khanh/raft-go/common"
 	"strconv"
 	"sync"
 )
 
 type StorageInterface interface {
 	AppendWal(metadata []string, keyValuesPairs ...string) (err error)
-	SaveObject(fileName string, object SerializableObject) error
-	ReadObject(fileName string, result DeserializableObject) error
+	SaveObject(fileName string, object common.SerializableObject) error
+	ReadObject(fileName string, result common.DeserializableObject) error
 	StreamObject(ctx context.Context, fileName string, offset int64, maxLength int) (data []byte, eof bool, err error)
 	InstallObject(ctx context.Context, fileName string, offset int64, data []byte) (err error)
 	CommitObject(ctx context.Context, fileName string) (err error)
+	GetObjectNames() (fileNames []string, err error)
+	DeleteObject(fileName string) error
 }
 
 // responsibility is to store Raft states like votedFor, currentTerm and logs on persistance storage
 type RaftPersistanceStateImpl struct {
 	votedFor    int
 	currentTerm int
-	logs        []Log
+	logs        []common.Log
 
-	latestSnapshot SnapshotMetadata // default, last log index and term are zeros
+	latestSnapshot common.SnapshotMetadata // default, last log index and term are zeros
 	storage        StorageInterface
 	lock           sync.RWMutex
 }
@@ -30,8 +34,8 @@ type RaftPersistanceStateImpl struct {
 type NewRaftPersistanceStateParams struct {
 	VotedFor         int
 	CurrentTerm      int
-	Logs             []Log
-	SnapshotMetadata SnapshotMetadata
+	Logs             []common.Log
+	SnapshotMetadata common.SnapshotMetadata
 	Storage          StorageInterface
 }
 
@@ -75,7 +79,27 @@ func (r *RaftPersistanceStateImpl) InMemoryLogLength() int {
 	return len(r.logs)
 }
 
-func (r *RaftPersistanceStateImpl) StreamSnapshot(ctx context.Context, sm SnapshotMetadata, offset int64, maxLength int) (data []byte, eof bool, err error) {
+// retain only the latest snapshot
+func (r *RaftPersistanceStateImpl) cleanupSnapshot(ctx context.Context) (err error) {
+	fileNames, err := r.storage.GetObjectNames()
+	if err != nil {
+		return err
+	}
+
+	for _, fileName := range fileNames {
+		if (common.IsSnapshotFile(fileName) || common.IsTmpSnapshotFile(fileName)) &&
+			fileName != r.latestSnapshot.FileName {
+			err1 := r.storage.DeleteObject(fileName)
+			if err != nil {
+				err = errors.Join(err1)
+			}
+		}
+	}
+
+	return err
+}
+
+func (r *RaftPersistanceStateImpl) StreamSnapshot(ctx context.Context, sm common.SnapshotMetadata, offset int64, maxLength int) (data []byte, eof bool, err error) {
 	fileName := sm.FileName
 	return r.storage.StreamObject(ctx, fileName, offset, maxLength)
 }
@@ -87,7 +111,7 @@ func (r *RaftPersistanceStateImpl) InstallSnapshot(ctx context.Context, fileName
 	return r.storage.InstallObject(ctx, fileName, offset, data)
 }
 
-func (r *RaftPersistanceStateImpl) CommitSnapshot(ctx context.Context, sm SnapshotMetadata) (err error) {
+func (r *RaftPersistanceStateImpl) CommitSnapshot(ctx context.Context, sm common.SnapshotMetadata) (err error) {
 	r.lock.Lock()
 	defer r.lock.Unlock()
 
@@ -96,21 +120,27 @@ func (r *RaftPersistanceStateImpl) CommitSnapshot(ctx context.Context, sm Snapsh
 		return err
 	}
 
-	// should also delete all previous snapshots
-	r.latestSnapshot = SnapshotMetadata{LastLogTerm: 0, LastLogIndex: 0}
+	if r.latestSnapshot == (common.SnapshotMetadata{}) {
+		r.latestSnapshot = common.SnapshotMetadata{LastLogTerm: sm.LastLogTerm, LastLogIndex: sm.LastLogIndex}
+	}
 
 	r.trimPrefixLog(sm)
 
 	r.latestSnapshot = sm
 
+	err = r.cleanupSnapshot(ctx)
+	if err != nil {
+		return err
+	}
+
 	return nil
 }
 
-func (r *RaftPersistanceStateImpl) SaveSnapshot(ctx context.Context, snapshot *Snapshot) (err error) {
+func (r *RaftPersistanceStateImpl) SaveSnapshot(ctx context.Context, snapshot *common.Snapshot) (err error) {
 	r.lock.Lock()
 	defer r.lock.Unlock()
 
-	snapshot.FileName = NewSnapshotFileName(snapshot.LastLogTerm, snapshot.LastLogIndex)
+	snapshot.FileName = common.NewSnapshotFileName(snapshot.LastLogTerm, snapshot.LastLogIndex)
 
 	err = r.storage.SaveObject(snapshot.FileName, snapshot)
 	if err != nil {
@@ -131,15 +161,15 @@ func (r *RaftPersistanceStateImpl) SaveSnapshot(ctx context.Context, snapshot *S
 	return nil
 }
 
-func (r *RaftPersistanceStateImpl) ReadLatestSnapshot(ctx context.Context) (snap *Snapshot, err error) {
+func (r *RaftPersistanceStateImpl) ReadLatestSnapshot(ctx context.Context) (snap *common.Snapshot, err error) {
 	r.lock.RLock()
 	defer r.lock.RUnlock()
 
 	if r.latestSnapshot.FileName == "" {
-		return NewSnapshot(), nil
+		return common.NewSnapshot(), nil
 	}
 
-	snap = NewSnapshot()
+	snap = common.NewSnapshot()
 
 	err = r.storage.ReadObject(r.latestSnapshot.FileName, snap)
 	if err != nil {
@@ -149,23 +179,23 @@ func (r *RaftPersistanceStateImpl) ReadLatestSnapshot(ctx context.Context) (snap
 	return snap, nil
 }
 
-func (r *RaftPersistanceStateImpl) GetLog(index int) (Log, error) {
+func (r *RaftPersistanceStateImpl) GetLog(index int) (common.Log, error) {
 	r.lock.RLock()
 	defer r.lock.RUnlock()
 
 	base := r.latestSnapshot.LastLogIndex
 
 	if base == 0 && len(r.logs) == 0 {
-		return Log{}, ErrLogIsEmpty
+		return common.Log{}, common.ErrLogIsEmpty
 	}
 
 	minIdex, maxIndex := 1, base+len(r.logs)
 	if index < minIdex || index > maxIndex {
-		return Log{}, ErrIndexOutOfRange
+		return common.Log{}, common.ErrIndexOutOfRange
 	}
 
 	if index <= base {
-		return Log{Term: r.latestSnapshot.LastLogTerm}, ErrLogIsInSnapshot
+		return common.Log{Term: r.latestSnapshot.LastLogTerm}, common.ErrLogIsInSnapshot
 	}
 
 	// valid index: base < index <= maxIndex
@@ -189,7 +219,7 @@ func (r *RaftPersistanceStateImpl) logLength() int {
 	return base + len(r.logs)
 }
 
-func (r *RaftPersistanceStateImpl) AppendLog(ctx context.Context, logItems []Log) (index int, err error) {
+func (r *RaftPersistanceStateImpl) AppendLog(ctx context.Context, logItems []common.Log) (index int, err error) {
 	r.lock.Lock()
 	defer r.lock.Unlock()
 
@@ -217,23 +247,23 @@ func (r *RaftPersistanceStateImpl) DeleteAllLog(ctx context.Context) (err error)
 		return err
 	}
 
-	r.logs = []Log{}
+	r.logs = []common.Log{}
 	return nil
 }
 
-func (r *RaftPersistanceStateImpl) DeleteLogFrom(ctx context.Context, index int) (deletedLogs []Log, err error) {
+func (r *RaftPersistanceStateImpl) DeleteLogFrom(ctx context.Context, index int) (deletedLogs []common.Log, err error) {
 	r.lock.Lock()
 	defer r.lock.Unlock()
 
 	if len(r.logs) == 0 {
-		return nil, ErrLogIsEmpty
+		return nil, common.ErrLogIsEmpty
 	}
 
 	base := r.latestSnapshot.LastLogIndex
 	minIndex, maxIndex := base+1, base+len(r.logs)
 
 	if index < minIndex || index > maxIndex {
-		return nil, ErrIndexOutOfRange
+		return nil, common.ErrIndexOutOfRange
 	}
 
 	physicalIndex := index - 1 // because Raft index start from 1
@@ -303,11 +333,11 @@ func (r *RaftPersistanceStateImpl) SetVotedFor(ctx context.Context, votedFor int
 	return nil
 }
 
-func (r *RaftPersistanceStateImpl) GetLatestSnapshotMetadata() (snap SnapshotMetadata) {
+func (r *RaftPersistanceStateImpl) GetLatestSnapshotMetadata() (snap common.SnapshotMetadata) {
 	return r.latestSnapshot
 }
 
-func (r *RaftPersistanceStateImpl) trimPrefixLog(newSnapshot SnapshotMetadata) {
+func (r *RaftPersistanceStateImpl) trimPrefixLog(newSnapshot common.SnapshotMetadata) {
 	base := r.latestSnapshot.LastLogIndex
 
 	target := newSnapshot.LastLogIndex - base
@@ -342,7 +372,7 @@ func (n *RaftPersistanceStateImpl) lastLogInfo() (index, term int) {
 	return 0, -1
 }
 
-func (r *RaftPersistanceStateImpl) Deserialize(keyValuePairs []string, snapshot SnapshotMetadata) (lastLogIndex int, err error) {
+func (r *RaftPersistanceStateImpl) Deserialize(keyValuePairs []string, snapshot common.SnapshotMetadata) (lastLogIndex int, err error) {
 	// index of the last logs that get recorded in the current WAL file
 	// lastLogIndex = 0 if no log was found in the current wal
 
@@ -372,7 +402,7 @@ func (r *RaftPersistanceStateImpl) Deserialize(keyValuePairs []string, snapshot 
 			}
 			r.votedFor = int(votedFor)
 		case "append_log":
-			logItem, err := NewLogFromString(value)
+			logItem, err := common.NewLogFromString(value)
 			if err != nil {
 				return 0, err
 			} else {

@@ -2,6 +2,7 @@ package common
 
 import (
 	"reflect"
+	"sort"
 	"testing"
 )
 
@@ -263,7 +264,8 @@ func TestSnapshot_Serialize(t *testing.T) {
 				Sessions:         tt.fields.Sessions,
 				SnapshotMetadata: tt.fields.SnapshotMetadata,
 			}
-			if gotData := s.Serialize(); !reflect.DeepEqual(gotData, tt.wantData) {
+			gotData := s.Serialize()
+			if !reflect.DeepEqual(sort.StringSlice(gotData), sort.StringSlice(tt.wantData)) {
 				t.Errorf("Snapshot.Serialize() = %v, want %v", gotData, tt.wantData)
 			}
 		})

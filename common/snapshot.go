@@ -277,6 +277,13 @@ func IsSnapshotFile(fileName string) bool {
 	return regex.MatchString(fileName)
 }
 
+func IsTmpSnapshotFile(fileName string) bool {
+	pattern := `^tmp.snapshot\.\d+_\d+\.dat$`
+	regex := regexp.MustCompile(pattern)
+
+	return regex.MatchString(fileName)
+}
+
 func NewWalFileName() string {
 	now := time.Now().UnixNano()
 	return fmt.Sprintf("snapshot.%d.dat", now)
