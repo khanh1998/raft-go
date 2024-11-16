@@ -6,21 +6,22 @@ import (
 	"khanh/raft-go/common"
 	"khanh/raft-go/observability"
 	"sort"
+	"sync"
 )
 
 type WalMetadata struct {
-	FileName     string
-	LastLogIndex int
-	Size         int64
+	FileName string
+	Size     int64 // to keep track size of latest WAL only
 }
 
 type StorageImpl struct {
-	walSizeLimit      int64
-	wals              []WalMetadata
-	snapshotFileNames []string
-	dataFolder        string
-	logger            observability.Logger
-	fileUtils         FileHelper
+	walSizeLimit int64
+	wals         []WalMetadata
+	dataFolder   string
+	logger       observability.Logger
+	fileUtils    FileHelper
+	walLock      sync.RWMutex // for WAL files
+	objLock      sync.RWMutex // for other files, consider using lock for each object
 }
 
 type NewStorageParams struct {
@@ -39,6 +40,8 @@ type FileHelper interface {
 	Rename(oldPath string, newPath string) (err error)
 	ReadAt(path string, offset int64, maxLength int) (data []byte, eof bool, err error)
 	WriteAt(path string, offset int64, data []byte) (size int, err error)
+	CreateFile(path string) error
+	ReadFirstOccurrenceKeyValuePairsToArray(path string, keys []string) ([]string, error)
 }
 
 func NewStorageForTest(params NewStorageParams, fileUtils FileHelper) (s *StorageImpl) {
@@ -47,6 +50,8 @@ func NewStorageForTest(params NewStorageParams, fileUtils FileHelper) (s *Storag
 		dataFolder:   params.DataFolder,
 		logger:       params.Logger,
 		fileUtils:    fileUtils,
+		walLock:      sync.RWMutex{},
+		objLock:      sync.RWMutex{},
 	}
 
 	fileNames, _ := fileUtils.GetFileNames(params.DataFolder)
@@ -55,19 +60,17 @@ func NewStorageForTest(params NewStorageParams, fileUtils FileHelper) (s *Storag
 		if common.IsWalFile(fileName) {
 			s.wals = append(s.wals, WalMetadata{FileName: fileName})
 		}
-
-		if common.IsSnapshotFile(fileName) {
-			s.snapshotFileNames = append(s.snapshotFileNames, fileName)
-		}
 	}
 
 	sort.Slice(s.wals, func(i, j int) bool {
 		return s.wals[i].FileName < s.wals[j].FileName
 	})
-	sort.Strings(s.snapshotFileNames)
 
 	if len(s.wals) == 0 {
-		s.wals = append(s.wals, WalMetadata{FileName: s.nextWalFileName()})
+		firstWal := s.nextWalFileName()
+		err := fileUtils.CreateFile(params.DataFolder + firstWal)
+		_ = err // this mock never returns error
+		s.wals = append(s.wals, WalMetadata{FileName: firstWal})
 	}
 
 	return s
@@ -79,6 +82,8 @@ func NewStorage(params NewStorageParams, fileUtils FileHelper) (s *StorageImpl, 
 		dataFolder:   params.DataFolder,
 		logger:       params.Logger,
 		fileUtils:    fileUtils,
+		walLock:      sync.RWMutex{},
+		objLock:      sync.RWMutex{},
 	}
 
 	err = common.CreateFolderIfNotExists(params.DataFolder)
@@ -96,24 +101,25 @@ func NewStorage(params NewStorageParams, fileUtils FileHelper) (s *StorageImpl, 
 			s.wals = append(s.wals, WalMetadata{FileName: fileName})
 		}
 
-		if common.IsSnapshotFile(fileName) {
-			s.snapshotFileNames = append(s.snapshotFileNames, fileName)
-		}
 	}
 
 	sort.Slice(s.wals, func(i, j int) bool {
 		return s.wals[i].FileName < s.wals[j].FileName
 	})
-	sort.Strings(s.snapshotFileNames)
 
 	if len(s.wals) == 0 {
+		firstWal := s.nextWalFileName()
+		err := fileUtils.CreateFile(params.DataFolder + firstWal)
+		if err != nil {
+			return nil, err
+		}
 		s.wals = append(s.wals, WalMetadata{FileName: s.nextWalFileName()})
 	}
 
 	return s, nil
 }
 
-func (s StorageImpl) nextWalFileName() (fileName string) {
+func (s *StorageImpl) nextWalFileName() (fileName string) {
 	var prev string
 	if len(s.wals) == 0 {
 		return "wal.0000.dat"
@@ -124,30 +130,62 @@ func (s StorageImpl) nextWalFileName() (fileName string) {
 	return fmt.Sprintf("wal.%04d.dat", prevCount+1)
 }
 
-func (s StorageImpl) log() observability.Logger {
+func (s *StorageImpl) log() observability.Logger {
 	return s.logger.With(
 		"source", "storage",
 		"wals", s.wals,
-		"snapshots", s.snapshotFileNames,
 	)
 }
 
-func (s StorageImpl) GetObjectNames() (fileNames []string, err error) {
+func (s *StorageImpl) GetObjectNames() (fileNames []string, err error) {
+	s.walLock.RLock()
+	s.objLock.RLock()
+	defer s.walLock.RUnlock()
+	defer s.objLock.RUnlock()
 	return s.fileUtils.GetFileNames(s.dataFolder)
 }
 
-func (s StorageImpl) ReadAllWal() (data [][]string, err error) {
-	for i := 0; i < len(s.wals); i++ {
-		path := s.dataFolder + s.wals[i].FileName
-		keyValuePairs, size, err := s.fileUtils.ReadKeyValuePairsToArray(path)
-		if err != nil {
-			return nil, err
+// iterate through list of the WAL files, and read each one from oldest to newest,
+// use this when start the node
+func (s *StorageImpl) WalIterator() (next func() ([]string, string, error)) {
+	i := 0
+	next = func() (data []string, fileName string, err error) {
+		if len(s.wals) > i {
+			s.walLock.RLock()
+			defer s.walLock.RUnlock()
+
+			var size int64
+			fileName = s.wals[i].FileName
+			path := s.dataFolder + fileName
+			data, size, err = s.fileUtils.ReadKeyValuePairsToArray(path)
+			if err != nil {
+				return nil, "", err
+			}
+			s.wals[i].Size = size
+			i++
+			return
+		} else {
+			return nil, "", nil
 		}
-		s.wals[i].Size = size
-		data = append(data, keyValuePairs)
 	}
 
-	return data, err
+	return next
+}
+
+// metadata are just normal key-value pairs that get append at the beginning of the WAL when a new WAL get created,
+// so we just read the first occurrence of the key-value pairs that represent for metadata.
+func (s *StorageImpl) GetWalMetadata(keys []string) (metadata [][]string, fileNames []string, err error) {
+	for _, wal := range s.wals {
+		md, err := s.fileUtils.ReadFirstOccurrenceKeyValuePairsToArray(wal.FileName, keys)
+		if err != nil {
+			return nil, nil, err
+		}
+
+		metadata = append(metadata, md)
+		fileNames = append(fileNames, wal.FileName)
+	}
+
+	return metadata, fileNames, nil
 }
 
 func (s *StorageImpl) newWalFile(metadata []string) (err error) {
@@ -170,6 +208,9 @@ func (s *StorageImpl) newWalFile(metadata []string) (err error) {
 // metadata contains necessary data (voted_for and current_term) so that if the previous WALs get deleted,
 // raft still can have enough data with the new WAL.
 func (s *StorageImpl) AppendWal(metadata []string, keyValuesPairs ...string) (err error) {
+	s.walLock.Lock()
+	defer s.walLock.Unlock()
+
 	fileName := s.wals[len(s.wals)-1].FileName
 	path := s.dataFolder + fileName
 	size, err := s.fileUtils.AppendKeyValuePairs(path, keyValuesPairs...)
@@ -217,28 +258,19 @@ func (s *StorageImpl) deleteWALsOlderThan(currentWAL string) error {
 	return nil
 }
 
-func (s *StorageImpl) deleteOutdatedSnapshots() error {
-	// delete all snapshots except the most recent one
-	for len(s.snapshotFileNames) > 1 {
-		err := s.fileUtils.DeleteFile(s.snapshotFileNames[0])
-		if err != nil {
-			s.log().Error("deleteOutdateSnapshot", err)
-			return err
-		}
-
-		s.snapshotFileNames = s.snapshotFileNames[1:]
-	}
-
-	return nil
-}
-
 func (s *StorageImpl) DeleteObject(fileName string) error {
+	s.objLock.Lock()
+	defer s.objLock.Unlock()
+
 	path := s.dataFolder + fileName
 	return s.fileUtils.DeleteFile(path)
 }
 
 // result should be pass as a pointer
 func (s *StorageImpl) ReadObject(fileName string, result common.DeserializableObject) error {
+	s.objLock.RLock()
+	defer s.objLock.RUnlock()
+
 	path := s.dataFolder + fileName
 	data, _, err := s.fileUtils.ReadStrings(path)
 	if err != nil {
@@ -251,6 +283,9 @@ func (s *StorageImpl) ReadObject(fileName string, result common.DeserializableOb
 }
 
 func (s *StorageImpl) SaveObject(fileName string, object common.SerializableObject) error {
+	s.objLock.Lock()
+	defer s.objLock.Unlock()
+
 	path := s.dataFolder + fileName
 	data := object.Serialize()
 
@@ -267,11 +302,17 @@ func (s *StorageImpl) SaveObject(fileName string, object common.SerializableObje
 }
 
 func (s *StorageImpl) StreamObject(ctx context.Context, fileName string, offset int64, maxLength int) (data []byte, eof bool, err error) {
+	s.objLock.RLock()
+	defer s.objLock.RUnlock()
+
 	path := s.dataFolder + fileName
 	return s.fileUtils.ReadAt(path, offset, maxLength)
 }
 
 func (s *StorageImpl) InstallObject(ctx context.Context, fileName string, offset int64, data []byte) (err error) {
+	s.objLock.Lock()
+	defer s.objLock.Unlock()
+
 	tmpPath := s.dataFolder + "tmp." + fileName
 
 	_, err = s.fileUtils.WriteAt(tmpPath, offset, data)
@@ -283,6 +324,9 @@ func (s *StorageImpl) InstallObject(ctx context.Context, fileName string, offset
 }
 
 func (s *StorageImpl) CommitObject(ctx context.Context, fileName string) error {
+	s.objLock.Lock()
+	defer s.objLock.Unlock()
+
 	path := s.dataFolder + fileName
 	tmpPath := s.dataFolder + "tmp." + fileName
 

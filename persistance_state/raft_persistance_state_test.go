@@ -1,10 +1,16 @@
 package persistance_state
 
 import (
+	"context"
 	"errors"
+	"fmt"
 	"khanh/raft-go/common"
+	"khanh/raft-go/observability"
+	"khanh/raft-go/storage"
 	"reflect"
+	"sync"
 	"testing"
+	"time"
 )
 
 func TestRaftPersistanceState_TrimPrefixLog(t *testing.T) {
@@ -128,7 +134,7 @@ func TestRaftPersistanceState_Deserialize(t *testing.T) {
 				data: []string{
 					"current_term", "1",
 					"voted_for", "3",
-					"last_log_info", "0|1",
+					prevWalLastLogInfoKey, "0|1",
 					"append_log", common.Log{Term: 1, Command: "set x 1", ClientID: 3, SequenceNum: 2}.ToString(),
 					"append_log", common.Log{Term: 2, Command: "set y 3", ClientID: 5, SequenceNum: 1}.ToString(),
 					"append_log", common.Log{Term: 2, Command: "set y 4", ClientID: 5, SequenceNum: 1}.ToString(),
@@ -160,7 +166,7 @@ func TestRaftPersistanceState_Deserialize(t *testing.T) {
 				data: []string{
 					"current_term", "4",
 					"voted_for", "2",
-					"last_log_info", "2|2",
+					prevWalLastLogInfoKey, "2|2",
 					"append_log", common.Log{Term: 3, Command: "set y 3", ClientID: 3, SequenceNum: 2}.ToString(),
 					"append_log", common.Log{Term: 4, Command: "set y 4", ClientID: 5, SequenceNum: 1}.ToString(),
 					"append_log", common.Log{Term: 4, Command: "set y 5", ClientID: 5, SequenceNum: 2}.ToString(),
@@ -187,7 +193,7 @@ func TestRaftPersistanceState_Deserialize(t *testing.T) {
 				data: []string{
 					"current_term", "1",
 					"voted_for", "3",
-					"last_log_info", "0|1",
+					prevWalLastLogInfoKey, "0|1",
 					"append_log", common.Log{Term: 1, Command: "set x 1", ClientID: 3, SequenceNum: 2}.ToString(),
 					"append_log", common.Log{Term: 2, Command: "set y 3", ClientID: 5, SequenceNum: 1}.ToString(),
 					"append_log", common.Log{Term: 2, Command: "set y 4", ClientID: 5, SequenceNum: 1}.ToString(),
@@ -210,7 +216,7 @@ func TestRaftPersistanceState_Deserialize(t *testing.T) {
 				data: []string{
 					"current_term", "1",
 					"voted_for", "3",
-					"last_log_info", "0|1",
+					prevWalLastLogInfoKey, "0|1",
 					"append_log", common.Log{Term: 1, Command: "set x 1", ClientID: 3, SequenceNum: 2}.ToString(),
 					"append_log", common.Log{Term: 2, Command: "set y 3", ClientID: 5, SequenceNum: 1}.ToString(),
 					"append_log", common.Log{Term: 2, Command: "set y 4", ClientID: 5, SequenceNum: 1}.ToString(),
@@ -244,7 +250,7 @@ func TestRaftPersistanceState_Deserialize(t *testing.T) {
 				data: []string{
 					"current_term", "5",
 					"voted_for", "1",
-					"last_log_info", "3|1",
+					prevWalLastLogInfoKey, "3|1",
 					"append_log", common.Log{Term: 1, Command: "set y 2", ClientID: 3, SequenceNum: 2}.ToString(),
 					"append_log", common.Log{Term: 2, Command: "set y 3", ClientID: 5, SequenceNum: 1}.ToString(),
 					"append_log", common.Log{Term: 2, Command: "set y 4", ClientID: 5, SequenceNum: 1}.ToString(),
@@ -279,7 +285,7 @@ func TestRaftPersistanceState_Deserialize(t *testing.T) {
 				data: []string{
 					"current_term", "5",
 					"voted_for", "1",
-					"last_log_info", "3|1",
+					prevWalLastLogInfoKey, "3|1",
 					"append_log", common.Log{Term: 1, Command: "set y 2", ClientID: 3, SequenceNum: 2}.ToString(),
 					"append_log", common.Log{Term: 2, Command: "set y 3", ClientID: 5, SequenceNum: 1}.ToString(),
 					"append_log", common.Log{Term: 2, Command: "set y 4", ClientID: 5, SequenceNum: 1}.ToString(),
@@ -311,7 +317,7 @@ func TestRaftPersistanceState_Deserialize(t *testing.T) {
 				data: []string{
 					"current_term", "6",
 					"voted_for", "1",
-					"last_log_info", "6|3",
+					prevWalLastLogInfoKey, "6|3",
 					"append_log", common.Log{Term: 4, Command: "set y 7", ClientID: 3, SequenceNum: 2}.ToString(),
 					"append_log", common.Log{Term: 4, Command: "set y 8", ClientID: 5, SequenceNum: 1}.ToString(),
 					"append_log", common.Log{Term: 5, Command: "set y 9", ClientID: 5, SequenceNum: 1}.ToString(),
@@ -488,6 +494,145 @@ func TestRaftPersistanceStateImpl_LastLogInfo(t *testing.T) {
 			}
 			if gotTerm != tt.wantTerm {
 				t.Errorf("RaftPersistanceStateImpl.LastLogInfo() gotTerm = %v, want %v", gotTerm, tt.wantTerm)
+			}
+		})
+	}
+}
+
+func TestRaftPersistanceStateImpl_cleanupSnapshot(t *testing.T) {
+	logger := observability.NewZerologForTest()
+	type fields struct {
+		latestSnapshot common.SnapshotMetadata
+		storage        storage.NewStorageParams
+		fileUtils      storage.FileWrapperMock
+		logger         observability.Logger
+	}
+	type args struct {
+		sm common.SnapshotMetadata
+	}
+	tests := []struct {
+		name     string
+		fields   fields
+		args     args
+		wantErr  bool
+		wantData map[string][]string
+	}{
+		{
+			name: "",
+			fields: fields{
+				latestSnapshot: common.SnapshotMetadata{LastLogTerm: 3, LastLogIndex: 10, FileName: "snapshot.3_10.dat"},
+				storage:        storage.NewStorageParams{WalSize: 10, DataFolder: "", Logger: logger},
+				fileUtils: storage.FileWrapperMock{
+					Data: map[string][]string{
+						"wal.0000.dat":      {},
+						"snapshot.1_5.dat":  {"fake snapshot data 1"},
+						"snapshot.2_7.dat":  {"fake snapshot data 2"},
+						"snapshot.3_10.dat": {"fake snapshot data 3"},
+					},
+					Size: map[string]int64{},
+				},
+				logger: logger,
+			},
+			args: args{
+				sm: common.SnapshotMetadata{LastLogTerm: 3, LastLogIndex: 10, FileName: "snapshot.3_10.dat"},
+			},
+			wantErr: false,
+			wantData: map[string][]string{
+				"wal.0000.dat":      {},
+				"snapshot.3_10.dat": {"fake snapshot data 3"},
+			},
+		},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			fw := &tt.fields.fileUtils
+			s := storage.NewStorageForTest(tt.fields.storage, fw)
+			r := &RaftPersistanceStateImpl{
+				latestSnapshot: tt.fields.latestSnapshot,
+				storage:        s,
+				lock:           sync.RWMutex{},
+				logger:         tt.fields.logger,
+			}
+			if err := r.cleanupSnapshot(context.Background(), tt.args.sm); (err != nil) != tt.wantErr {
+				t.Errorf("RaftPersistanceStateImpl.cleanupSnapshot() error = %v, wantErr %v", err, tt.wantErr)
+			}
+
+			if !reflect.DeepEqual(fw.Data, tt.wantData) {
+				t.Errorf("RaftPersistanceStateImpl.cleanupSnapshot() data = %v, want %v", fw.Data, tt.wantData)
+			}
+		})
+	}
+}
+
+func TestRaftPersistanceStateImpl_CommitSnapshot(t *testing.T) {
+	logger := observability.NewZerologForTest()
+	type fields struct {
+		latestSnapshot common.SnapshotMetadata
+		storage        storage.NewStorageParams
+		fileUtils      storage.FileWrapperMock
+		logger         observability.Logger
+	}
+	type args struct {
+		sm common.SnapshotMetadata
+	}
+	tests := []struct {
+		name     string
+		fields   fields
+		args     args
+		wantErr  bool
+		wantData map[string][]string
+	}{
+		{
+			name: "1",
+			fields: fields{
+				latestSnapshot: common.SnapshotMetadata{LastLogTerm: 2, LastLogIndex: 11, FileName: "snapshot.0002_0011.dat"},
+				storage:        storage.NewStorageParams{WalSize: 100, DataFolder: "", Logger: logger},
+				fileUtils: storage.FileWrapperMock{
+					Data: map[string][]string{
+						"wal.0000.dat":               {fmt.Sprintf("%s=0|0", prevWalLastLogInfoKey)},
+						"wal.0001.dat":               {fmt.Sprintf("%s=1|15", prevWalLastLogInfoKey)},
+						"wal.0002.dat":               {fmt.Sprintf("%s=2|12", prevWalLastLogInfoKey)},
+						"wal.0003.dat":               {fmt.Sprintf("%s=2|29", prevWalLastLogInfoKey)},
+						"wal.0004.dat":               {fmt.Sprintf("%s=3|30", prevWalLastLogInfoKey)},
+						"wal.0005.dat":               {fmt.Sprintf("%s=3|35", prevWalLastLogInfoKey)},
+						"tmp.snapshot.0001_0005.dat": {},
+						"snapshot.0001_0010.dat":     {},
+						"snapshot.0002_0011.dat":     {},
+						"tmp.snapshot.0003_0030.dat": {},
+					},
+					Size: map[string]int64{},
+				},
+				logger: logger,
+			},
+			args: args{
+				sm: common.SnapshotMetadata{LastLogTerm: 3, LastLogIndex: 30, FileName: "snapshot.0003_0030.dat"},
+			},
+			wantErr: false,
+			wantData: map[string][]string{
+				"wal.0004.dat":           {fmt.Sprintf("%s=3|30", prevWalLastLogInfoKey)},
+				"wal.0005.dat":           {fmt.Sprintf("%s=3|35", prevWalLastLogInfoKey)},
+				"snapshot.0003_0030.dat": {},
+			},
+		},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			fw := &tt.fields.fileUtils
+			s := storage.NewStorageForTest(tt.fields.storage, fw)
+			r := &RaftPersistanceStateImpl{
+				latestSnapshot: tt.fields.latestSnapshot,
+				storage:        s,
+				lock:           sync.RWMutex{},
+				logger:         tt.fields.logger,
+			}
+			if err := r.CommitSnapshot(context.Background(), tt.args.sm); (err != nil) != tt.wantErr {
+				t.Errorf("RaftPersistanceStateImpl.CommitSnapshot() error = %v, wantErr %v", err, tt.wantErr)
+			}
+
+			time.Sleep(time.Second) // cleanup processes are running in background
+
+			if !reflect.DeepEqual(fw.Data, tt.wantData) {
+				t.Errorf("RaftPersistanceStateImpl.CommitSnapshot() data = %v, want %v", fw.Data, tt.wantData)
 			}
 		})
 	}

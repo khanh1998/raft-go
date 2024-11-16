@@ -130,6 +130,52 @@ func TestFileWrapper_ReadStrings(t *testing.T) {
 	}
 }
 
+func TestFileWrapper_ReadFirstOccurrenceKeyValuePairsToArray(t *testing.T) {
+	type args struct {
+		path string
+		keys []string
+	}
+
+	tests := []struct {
+		setup   func() (string, error)
+		name    string
+		args    args
+		want    []string
+		wantErr bool
+	}{
+		{
+			name: "",
+			setup: func() (string, error) {
+				dir := t.TempDir()
+				path := dir + "/" + "wal.001.dat"
+				content := []byte("name=khanh\nage=26\nnation=vietnam\nname=kelvin")
+				return dir, os.WriteFile(path, content, 0666)
+			},
+			args:    args{path: "wal.001.dat", keys: []string{"name", "gender"}},
+			want:    []string{"name", "khanh"},
+			wantErr: false,
+		},
+	}
+
+	for _, tt := range tests {
+		dir, err := tt.setup()
+		assert.NoError(t, err)
+
+		t.Run(tt.name, func(t *testing.T) {
+			f := FileWrapperImpl{}
+			got, err := f.ReadFirstOccurrenceKeyValuePairsToArray(dir+"/"+tt.args.path, tt.args.keys)
+			if (err != nil) != tt.wantErr {
+				t.Errorf("FileWrapper.ReadFirstOccurrenceKeyValuePairsToArray() error = %v, wantErr %v", err, tt.wantErr)
+				return
+			}
+
+			if !reflect.DeepEqual(sort.StringSlice(got), sort.StringSlice(tt.want)) {
+				t.Errorf("FileWrapper.ReadFirstOccurrenceKeyValuePairsToArray() data = %v, want %v", got, tt.want)
+			}
+		})
+	}
+}
+
 func TestFileWrapper_AppendStrings(t *testing.T) {
 	type args struct {
 		path  string

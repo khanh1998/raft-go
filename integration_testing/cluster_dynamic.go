@@ -64,7 +64,7 @@ func (c *Cluster) createNewNode(ctx context.Context, id int) error {
 		return err
 	}
 
-	snapshot, raftPersistState, clusterMembers, err := persistance_state.Deserialize(ctx, storage, common.Dynamic)
+	snapshot, raftPersistState, clusterMembers, err := persistance_state.Deserialize(ctx, storage, common.Dynamic, c.log)
 	if err != nil {
 		return err
 	}

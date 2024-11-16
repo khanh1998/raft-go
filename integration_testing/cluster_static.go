@@ -79,14 +79,12 @@ func (c *Cluster) init(filePath string) {
 				Logger:     c.log,
 			}, storage.FileWrapperImpl{})
 			if err != nil {
-				log.Error("new storage", err)
-				log.Fatal("new storage", err.Error())
+				log.Fatal("new storage", "error", err.Error())
 			}
 
-			snapshot, raftPersistState, _, err := persistance_state.Deserialize(ctx, storage, common.Static)
+			snapshot, raftPersistState, _, err := persistance_state.Deserialize(ctx, storage, common.Static, log)
 			if err != nil {
-				log.Error("deserialize system", err)
-				log.Fatal("deserialize system", err.Error())
+				log.Fatal("deserialize system", "error", err.Error())
 			}
 
 			raftPersistState.SetStorage(storage)

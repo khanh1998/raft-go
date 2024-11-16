@@ -151,7 +151,7 @@ func TestRaftBrainImpl_BroadcastAppendEntries(t *testing.T) {
 					SnapshotMetadata: common.SnapshotMetadata{
 						LastLogTerm:  1,
 						LastLogIndex: 9,
-						FileName:     "snapshot.1_9.dat",
+						FileName:     "snapshot.00000000000000000001_00000000000000000009.dat",
 					},
 					Storage: storage.NewStorageForTest(storage.NewStorageParams{
 						WalSize:    10000,
@@ -159,8 +159,9 @@ func TestRaftBrainImpl_BroadcastAppendEntries(t *testing.T) {
 						Logger:     observability.NewZerologForTest(),
 					}, storage.FileWrapperMock{
 						Data: map[string][]string{
-							"data/snapshot.1_9.dat": {"some fake data for snapshot :D"},
+							"data/snapshot.00000000000000000001_00000000000000000009.dat": {"some fake data for snapshot :D"},
 						},
+						Size: map[string]int64{},
 					}),
 				}),
 				logger: observability.NewZerologForTest(),
@@ -171,8 +172,8 @@ func TestRaftBrainImpl_BroadcastAppendEntries(t *testing.T) {
 				nextOffset: map[int]NextOffset{
 					2: {
 						Offset:   450,
-						FileName: "snapshot.1_5.dat",
-						Snapshot: common.SnapshotMetadata{LastLogTerm: 1, LastLogIndex: 5, FileName: "snapshot.1_5.dat"},
+						FileName: "snapshot.00000000000000000001_00000000000000000005.dat",
+						Snapshot: common.SnapshotMetadata{LastLogTerm: 1, LastLogIndex: 5, FileName: "snapshot.00000000000000000001_00000000000000000005.dat"},
 					},
 				},
 			},
@@ -182,11 +183,11 @@ func TestRaftBrainImpl_BroadcastAppendEntries(t *testing.T) {
 			wantNextOffset: map[int]NextOffset{
 				2: {
 					Offset:   150,
-					FileName: "snapshot.1_9.dat",
+					FileName: "snapshot.00000000000000000001_00000000000000000009.dat",
 					Snapshot: common.SnapshotMetadata{
 						LastLogTerm:  1,
 						LastLogIndex: 9,
-						FileName:     "snapshot.1_9.dat",
+						FileName:     "snapshot.00000000000000000001_00000000000000000009.dat",
 					},
 				},
 			},

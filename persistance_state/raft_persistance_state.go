@@ -5,6 +5,7 @@ import (
 	"errors"
 	"fmt"
 	"khanh/raft-go/common"
+	"khanh/raft-go/observability"
 	"strconv"
 	"sync"
 )
@@ -18,6 +19,7 @@ type StorageInterface interface {
 	CommitObject(ctx context.Context, fileName string) (err error)
 	GetObjectNames() (fileNames []string, err error)
 	DeleteObject(fileName string) error
+	GetWalMetadata(keys []string) (metadata [][]string, fileNames []string, err error)
 }
 
 // responsibility is to store Raft states like votedFor, currentTerm and logs on persistance storage
@@ -29,6 +31,7 @@ type RaftPersistanceStateImpl struct {
 	latestSnapshot common.SnapshotMetadata // default, last log index and term are zeros
 	storage        StorageInterface
 	lock           sync.RWMutex
+	logger         observability.Logger
 }
 
 type NewRaftPersistanceStateParams struct {
@@ -37,6 +40,7 @@ type NewRaftPersistanceStateParams struct {
 	Logs             []common.Log
 	SnapshotMetadata common.SnapshotMetadata
 	Storage          StorageInterface
+	Logger           observability.Logger
 }
 
 func NewRaftPersistanceState(params NewRaftPersistanceStateParams) *RaftPersistanceStateImpl {
@@ -48,27 +52,14 @@ func NewRaftPersistanceState(params NewRaftPersistanceStateParams) *RaftPersista
 		latestSnapshot: params.SnapshotMetadata,
 		storage:        params.Storage,
 		lock:           sync.RWMutex{},
+		logger:         params.Logger,
 	}
 }
 
-// flushed current raft states to storage,
-// use this for testing purpose only
-func (r *RaftPersistanceStateImpl) Flushed() error {
-	r.lock.Lock()
-	defer r.lock.Unlock()
-
-	keyValuePairs := []string{}
-	keyValuePairs = append(keyValuePairs, r.metadata()...)
-
-	for i := 0; i < len(r.logs); i++ {
-		keyValuePairs = append(keyValuePairs, "append_log", r.logs[i].ToString())
-	}
-
-	if err := r.storage.AppendWal([]string{}, keyValuePairs...); err != nil {
-		return err
-	}
-
-	return nil
+func (r *RaftPersistanceStateImpl) log() observability.Logger {
+	return r.logger.With(
+		"source", "raft_persistance_state",
+	)
 }
 
 func (r *RaftPersistanceStateImpl) SetStorage(s StorageInterface) {
@@ -80,21 +71,29 @@ func (r *RaftPersistanceStateImpl) InMemoryLogLength() int {
 }
 
 // retain only the latest snapshot
-func (r *RaftPersistanceStateImpl) cleanupSnapshot(ctx context.Context) (err error) {
+func (r *RaftPersistanceStateImpl) cleanupSnapshot(ctx context.Context, sm common.SnapshotMetadata) (err error) {
 	fileNames, err := r.storage.GetObjectNames()
 	if err != nil {
+		r.log().ErrorContext(ctx, "cleanupSnapshot", err)
+
 		return err
 	}
 
+	deleted := []string{}
+
 	for _, fileName := range fileNames {
 		if (common.IsSnapshotFile(fileName) || common.IsTmpSnapshotFile(fileName)) &&
-			fileName != r.latestSnapshot.FileName {
+			fileName != sm.FileName {
 			err1 := r.storage.DeleteObject(fileName)
 			if err != nil {
 				err = errors.Join(err1)
+			} else {
+				deleted = append(deleted, fileName)
 			}
 		}
 	}
+
+	r.log().InfoContext(ctx, "cleanupSnapshot", "deleted_snapshots", deleted, "error", err, "metadata", sm)
 
 	return err
 }
@@ -128,10 +127,10 @@ func (r *RaftPersistanceStateImpl) CommitSnapshot(ctx context.Context, sm common
 
 	r.latestSnapshot = sm
 
-	err = r.cleanupSnapshot(ctx)
-	if err != nil {
-		return err
-	}
+	r.log().DebugContext(ctx, "CommitSnapshot", "metadata", sm)
+
+	go r.cleanupSnapshot(ctx, sm)
+	go r.cleanupWal(ctx, sm)
 
 	return nil
 }
@@ -281,13 +280,17 @@ func (r *RaftPersistanceStateImpl) DeleteLogFrom(ctx context.Context, index int)
 	return deletedLogs, nil
 }
 
+// we will periodically trim the prefix of the underlying WALs,
+// after the prefix WAL get trim, we will lost some information.
+// so every the underlying storage create a new WAL,
+// it will write some necessary data in the beginning of new WAL.
 func (r *RaftPersistanceStateImpl) metadata() []string {
 	index, term := r.lastLogInfo()
 	return []string{
 		"voted_for", strconv.Itoa(r.votedFor),
 		"current_term", strconv.Itoa(r.currentTerm),
 		"log_length", strconv.Itoa(r.logLength()),
-		"last_log_info", fmt.Sprintf("%d|%d", index, term),
+		prevWalLastLogInfoKey, fmt.Sprintf("%d|%d", index, term),
 	}
 }
 
@@ -383,7 +386,7 @@ func (r *RaftPersistanceStateImpl) Deserialize(keyValuePairs []string, snapshot 
 	for i := 0; i < len(keyValuePairs); i += 2 {
 		key, value := keyValuePairs[i], keyValuePairs[i+1]
 		switch key {
-		case "last_log_info":
+		case prevWalLastLogInfoKey:
 			_, err = fmt.Sscanf(value, "%d|%d", &prevLogIndex, &prevLogTerm)
 			if err != nil {
 				return 0, err

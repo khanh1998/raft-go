@@ -293,7 +293,7 @@ func (r *RPCProxyImpl) initServer(ctx context.Context, url string) error {
 
 	listener, err := net.Listen("tcp", url)
 	if err != nil {
-		r.log().FatalContext(ctx, "initRPCProxy: Listener error")
+		r.log().FatalContext(ctx, "initRPCProxy: Listener error", "error", err.Error())
 
 		return err
 	}

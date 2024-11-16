@@ -136,12 +136,12 @@ func main() {
 		Logger:     logger,
 	}, storage.FileWrapperImpl{})
 	if err != nil {
-		logger.Fatal("new storage", err)
+		logger.Fatal("new storage", "error", err.Error())
 	}
 
-	snapshot, raftPersistState, tmpClusterMembers, err := persistance_state.Deserialize(ctx, storage, config.Cluster.Mode)
+	snapshot, raftPersistState, tmpClusterMembers, err := persistance_state.Deserialize(ctx, storage, config.Cluster.Mode, logger)
 	if err != nil {
-		logger.Fatal("Deserialize system", err)
+		logger.Fatal("Deserialize system", "error", err.Error())
 	}
 	raftPersistState.SetStorage(storage)
 

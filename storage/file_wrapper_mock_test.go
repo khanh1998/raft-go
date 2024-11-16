@@ -443,3 +443,72 @@ func TestFileWrapperMock_Rename(t *testing.T) {
 		})
 	}
 }
+
+func TestFileWrapperMock_ReadFirstOccurrenceKeyValuePairsToArray(t *testing.T) {
+	type fields struct {
+		Data map[string][]string
+		Size map[string]int64
+	}
+	type args struct {
+		path string
+		keys []string
+	}
+	tests := []struct {
+		name    string
+		fields  fields
+		args    args
+		want    []string
+		wantErr bool
+	}{
+		{
+			name: "",
+			fields: fields{
+				Data: map[string][]string{
+					"data/wal.0001.dat": {"name=khanh", "age=26", "city=hcm", "name=felix"},
+				},
+				Size: map[string]int64{
+					"data/wal.0001.dat": 30,
+				},
+			},
+			args: args{
+				path: "data/wal.0001.dat",
+				keys: []string{"name", "nation"},
+			},
+			want:    []string{"name", "khanh"},
+			wantErr: false,
+		},
+		{
+			name: "",
+			fields: fields{
+				Data: map[string][]string{
+					"data/wal.0001.dat": {"name=khanh", "age=26", "city=hcm", "name=felix"},
+				},
+				Size: map[string]int64{
+					"data/wal.0001.dat": 30,
+				},
+			},
+			args: args{
+				path: "data/wal.0002.dat",
+				keys: []string{"name", "nation"},
+			},
+			want:    nil,
+			wantErr: true,
+		},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			f := FileWrapperMock{
+				Data: tt.fields.Data,
+				Size: tt.fields.Size,
+			}
+			got, err := f.ReadFirstOccurrenceKeyValuePairsToArray(tt.args.path, tt.args.keys)
+			if (err != nil) != tt.wantErr {
+				t.Errorf("FileWrapperMock.ReadFirstOccurrenceKeyValuePairsToArray() error = %v, wantErr %v", err, tt.wantErr)
+				return
+			}
+			if !reflect.DeepEqual(got, tt.want) {
+				t.Errorf("FileWrapperMock.ReadFirstOccurrenceKeyValuePairsToArray() = %v, want %v", got, tt.want)
+			}
+		})
+	}
+}

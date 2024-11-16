@@ -52,7 +52,7 @@ type MemberChangeSubscriber interface {
 
 type NextOffset struct {
 	Offset   int64
-	FileName string
+	FileName string // snapshot file name for receiver side, they will create new file with this name
 	Snapshot common.SnapshotMetadata
 }
 

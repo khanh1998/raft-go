@@ -186,6 +186,60 @@ func (f FileWrapperImpl) AppendKeyValuePairs(path string, keyValues ...string) (
 	return fileSize, writer.Flush()
 }
 
+// read value of specified key on they first occurrence in the file
+func (f FileWrapperImpl) ReadFirstOccurrenceKeyValuePairsToArray(path string, keys []string) ([]string, error) {
+	count := len(keys)
+	keyVal := map[string]*string{}
+	for _, key := range keys {
+		keyVal[key] = nil
+	}
+
+	file, err := os.OpenFile(path, os.O_RDONLY, 0644)
+	if err != nil {
+		if os.IsNotExist(err) {
+			return nil, common.ErrEmptyData
+		}
+		return nil, err
+	}
+
+	defer file.Close()
+
+	reader := bufio.NewReader(file)
+	for {
+		if count <= 0 {
+			break
+		}
+
+		line, err := reader.ReadString('\n')
+		if err != nil {
+			if errors.Is(err, io.EOF) {
+				break
+			}
+
+			return nil, err
+		}
+
+		tokens := strings.Split(line, "=")
+		if len(tokens) == 2 {
+			key, value := tokens[0], tokens[1]
+			if v, ok := keyVal[key]; ok && v == nil {
+				keyVal[key] = &value
+				count--
+			}
+		}
+	}
+
+	data := []string{}
+
+	for key, value := range keyVal {
+		if value != nil {
+			data = append(data, key, strings.TrimSuffix(*value, "\n"))
+		}
+	}
+
+	return data, nil
+}
+
 func (f FileWrapperImpl) ReadKeyValuePairsToArray(path string) ([]string, int64, error) {
 	data := []string{}
 
@@ -227,6 +281,14 @@ func (f FileWrapperImpl) ReadKeyValuePairsToArray(path string) ([]string, int64,
 
 func (f FileWrapperImpl) DeleteFile(path string) error {
 	return os.Remove(path)
+}
+
+func (f FileWrapperImpl) CreateFile(path string) error {
+	if !common.FileExists(path) {
+		_, err := os.Create(path)
+		return err
+	}
+	return fmt.Errorf("can't create file: %s, it's already exist", path)
 }
 
 func (f FileWrapperImpl) Rename(oldPath string, newPath string) (err error) {

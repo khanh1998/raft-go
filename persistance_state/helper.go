@@ -3,11 +3,12 @@ package persistance_state
 import (
 	"context"
 	"khanh/raft-go/common"
+	"khanh/raft-go/observability"
 	"sort"
 )
 
 type WalReader interface {
-	ReadAllWal() (data [][]string, err error)
+	WalIterator() func() (data []string, fileName string, err error)
 	ReadObject(fileName string, result common.DeserializableObject) error
 	GetObjectNames() ([]string, error)
 }
@@ -30,12 +31,13 @@ func findLatestSnapshot(fileNames []string) (fileName string, err error) {
 	return fileName, nil
 }
 
-func Deserialize(ctx context.Context, s WalReader, clusterMode common.ClusterMode) (latestSnapshot *common.Snapshot, raftPersistedState *RaftPersistanceStateImpl, clusterMembers []common.ClusterMember, err error) {
+func Deserialize(ctx context.Context, s WalReader, clusterMode common.ClusterMode, logger observability.Logger) (latestSnapshot *common.Snapshot, raftPersistedState *RaftPersistanceStateImpl, clusterMembers []common.ClusterMember, err error) {
 	latestSnapshot = common.NewSnapshot()
 	raftPersistedState = &RaftPersistanceStateImpl{
 		votedFor:    0,
 		currentTerm: 0,
 		logs:        []common.Log{},
+		logger:      logger,
 	}
 
 	fileNames, err := s.GetObjectNames()
@@ -55,26 +57,33 @@ func Deserialize(ctx context.Context, s WalReader, clusterMode common.ClusterMod
 		}
 	}
 
-	walData, err := s.ReadAllWal()
-	if err != nil && err != common.ErrEmptyData {
-		return nil, nil, nil, err
-	}
+	walLastLogIndex := []int{}
+	nextWal := s.WalIterator()
 
-	walLastLogIndex := make([]int, len(walData))
+	for {
+		data, _, err := nextWal()
+		if err != nil {
+			return nil, nil, nil, err
+		}
 
-	for i := 0; i < len(walData); i++ {
-		lastLogIndex, err := raftPersistedState.Deserialize(walData[i], latestSnapshot.Metadata())
+		if data == nil {
+			break
+		}
+
+		lastLogIndex, err := raftPersistedState.Deserialize(data, latestSnapshot.Metadata())
 		if err != nil {
 			return nil, nil, nil, err
 		}
 
 		// if the current WAL contains no log,
 		// take the last log index from the previous WAL
-		if lastLogIndex == 0 {
-			lastLogIndex = walLastLogIndex[i-1]
+		if lastLogIndex == 0 && len(walLastLogIndex) > 0 {
+			lastLogIndex = walLastLogIndex[len(walLastLogIndex)-1]
 		}
-		walLastLogIndex[i] = lastLogIndex
+		walLastLogIndex = append(walLastLogIndex, lastLogIndex)
 	}
+
+	raftPersistedState.latestSnapshot = latestSnapshot.SnapshotMetadata
 
 	// rebuild the cluster member configuration from logs and snapshot for dynamic cluster,
 	// for static cluster, member configurations are read from config file.

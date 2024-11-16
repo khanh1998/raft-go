@@ -21,6 +21,43 @@ func getSize(data []string) (size int64) {
 
 	return size
 }
+func (f FileWrapperMock) CreateFile(path string) error {
+	f.Data[path] = []string{}
+	f.Size[path] = 0
+	return nil
+}
+
+func (f FileWrapperMock) ReadFirstOccurrenceKeyValuePairsToArray(path string, keys []string) ([]string, error) {
+	strs, ok := f.Data[path]
+	if !ok {
+		return nil, errors.New("path does not exist")
+	}
+
+	keyValue := map[string]*string{}
+	for _, key := range keys {
+		keyValue[key] = nil
+	}
+
+	for _, str := range strs {
+		tokens := strings.Split(str, "=")
+		if len(tokens) == 2 {
+			key, val := tokens[0], tokens[1]
+			if v, ok := keyValue[key]; ok && v == nil {
+				keyValue[key] = &val
+			}
+		}
+	}
+
+	data := []string{}
+
+	for key, value := range keyValue {
+		if value != nil {
+			data = append(data, key, *value)
+		}
+	}
+
+	return data, nil
+}
 
 func (f FileWrapperMock) ReadAt(path string, offset int64, maxLength int) (data []byte, eof bool, err error) {
 	return

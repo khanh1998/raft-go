@@ -206,7 +206,6 @@ type SnapshotMetadata struct {
 	LastLogTerm  int
 	LastLogIndex int
 	FileName     string
-	WAL          string
 }
 
 func (s SnapshotMetadata) ToString() string {
@@ -267,11 +266,11 @@ type InstallSnapshotOutput struct {
 }
 
 func NewSnapshotFileName(term, index int) string {
-	return fmt.Sprintf("snapshot.%d_%d.dat", term, index)
+	return fmt.Sprintf("snapshot.%020d_%020d.dat", term, index)
 }
 
 func IsSnapshotFile(fileName string) bool {
-	pattern := `^snapshot\.\d+_\d+\.dat$`
+	pattern := `^snapshot\.(\d+)_(\d+)\.dat$`
 	regex := regexp.MustCompile(pattern)
 
 	return regex.MatchString(fileName)

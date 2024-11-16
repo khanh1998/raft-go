@@ -5,7 +5,10 @@ import (
 	"khanh/raft-go/common"
 	"khanh/raft-go/observability"
 	"reflect"
+	"sync"
 	"testing"
+
+	"github.com/stretchr/testify/assert"
 )
 
 func TestStorageImpl_AppendWal(t *testing.T) {
@@ -34,7 +37,7 @@ func TestStorageImpl_AppendWal(t *testing.T) {
 			fields: fields{
 				walSizeLimit: 100,
 				wals: []WalMetadata{
-					{FileName: "wal.0001.dat", LastLogIndex: 0, Size: 25},
+					{FileName: "wal.0001.dat", Size: 25},
 				},
 				snapshotFileNames: []string{},
 				dataFolder:        "data/",
@@ -56,7 +59,7 @@ func TestStorageImpl_AppendWal(t *testing.T) {
 			},
 			wantErr: false,
 			wantWals: []WalMetadata{
-				{FileName: "wal.0001.dat", LastLogIndex: 0, Size: 51},
+				{FileName: "wal.0001.dat", Size: 51},
 			},
 			wantF: FileWrapperMock{
 				Data: map[string][]string{
@@ -75,7 +78,7 @@ func TestStorageImpl_AppendWal(t *testing.T) {
 			fields: fields{
 				walSizeLimit: 25,
 				wals: []WalMetadata{
-					{FileName: "wal.0001.dat", LastLogIndex: 0, Size: 25},
+					{FileName: "wal.0001.dat", Size: 25},
 				},
 				dataFolder: "data/",
 
@@ -96,8 +99,8 @@ func TestStorageImpl_AppendWal(t *testing.T) {
 			},
 			wantErr: false,
 			wantWals: []WalMetadata{
-				{FileName: "wal.0001.dat", LastLogIndex: 0, Size: 51},
-				{FileName: "wal.0002.dat", LastLogIndex: 0, Size: 25},
+				{FileName: "wal.0001.dat", Size: 51},
+				{FileName: "wal.0002.dat", Size: 25},
 			},
 			wantF: FileWrapperMock{
 				Data: map[string][]string{
@@ -119,12 +122,13 @@ func TestStorageImpl_AppendWal(t *testing.T) {
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
 			s := &StorageImpl{
-				walSizeLimit:      tt.fields.walSizeLimit,
-				wals:              tt.fields.wals,
-				snapshotFileNames: tt.fields.snapshotFileNames,
-				dataFolder:        tt.fields.dataFolder,
-				logger:            observability.NewSimpleLog(),
-				fileUtils:         &tt.fields.f,
+				walSizeLimit: tt.fields.walSizeLimit,
+				wals:         tt.fields.wals,
+				dataFolder:   tt.fields.dataFolder,
+				logger:       observability.NewSimpleLog(),
+				fileUtils:    &tt.fields.f,
+				walLock:      sync.RWMutex{},
+				objLock:      sync.RWMutex{},
 			}
 			if err := s.AppendWal(tt.args.metadata, tt.args.keyValuesPairs...); (err != nil) != tt.wantErr {
 				t.Errorf("StorageImpl.AppendWal() error = %v, wantErr %v", err, tt.wantErr)
@@ -138,5 +142,52 @@ func TestStorageImpl_AppendWal(t *testing.T) {
 				t.Errorf("StorageImpl.AppendWal() wals = %v, want %v", s.wals, tt.wantWals)
 			}
 		})
+	}
+}
+
+func TestStorageImpl_WalIterator(t *testing.T) {
+	s := NewStorageForTest(NewStorageParams{
+		WalSize:    100,
+		DataFolder: "data/",
+		Logger:     observability.NewSimpleLog(),
+	}, &FileWrapperMock{
+		Data: map[string][]string{
+			"data/wal.0001.dat": {"num=1", "num=2"},
+			"data/wal.0002.dat": {"num=3", "num=4"},
+			"data/wal.0003.dat": {"num=5", "num=6"},
+			"data/wal.0004.dat": {"num=7", "num=8"},
+		},
+		Size: map[string]int64{},
+	})
+
+	next := s.WalIterator()
+
+	totalData := [][]string{}
+	fileNames := []string{}
+
+	for {
+		data, fileName, err := next()
+		assert.NoError(t, err)
+		if data == nil {
+			break
+		}
+
+		totalData = append(totalData, data)
+		fileNames = append(fileNames, fileName)
+	}
+
+	expectedTotalData := [][]string{
+		{"num", "1", "num", "2"},
+		{"num", "3", "num", "4"},
+		{"num", "5", "num", "6"},
+		{"num", "7", "num", "8"},
+	}
+	expectedFileNames := []string{"wal.0001.dat", "wal.0002.dat", "wal.0003.dat", "wal.0004.dat"}
+	if !reflect.DeepEqual(totalData, expectedTotalData) {
+		t.Errorf("totalData = %v, want = %v", totalData, expectedTotalData)
+	}
+	reflect.DeepEqual(fileNames, expectedFileNames)
+	if !reflect.DeepEqual(totalData, expectedTotalData) {
+		t.Errorf("fileNames = %v, want = %v", fileNames, expectedFileNames)
 	}
 }
