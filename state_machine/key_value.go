@@ -129,10 +129,13 @@ func (k *KeyValueStateMachine) InvalidateExpiredSession(clusterTime uint64) {
 }
 
 func (k *KeyValueStateMachine) StartSnapshot(ctx context.Context) (err error) {
+	k.lock.RLock()
+	snapshot := k.current.Copy()
+	k.lock.RUnlock()
+
 	k.snapshotLock.Lock()
 	defer k.snapshotLock.Unlock()
 
-	snapshot := k.current.Copy()
 	err = k.persistanceState.SaveSnapshot(ctx, snapshot)
 	if err != nil {
 		return err

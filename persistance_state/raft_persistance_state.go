@@ -8,6 +8,14 @@ import (
 	"khanh/raft-go/observability"
 	"strconv"
 	"sync"
+
+	"go.opentelemetry.io/otel"
+	"go.opentelemetry.io/otel/attribute"
+	"go.opentelemetry.io/otel/trace"
+)
+
+var (
+	tracer = otel.Tracer("persistance-state")
 )
 
 type StorageInterface interface {
@@ -20,6 +28,7 @@ type StorageInterface interface {
 	GetObjectNames() (fileNames []string, err error)
 	DeleteObject(fileName string) error
 	GetWalMetadata(keys []string) (metadata [][]string, fileNames []string, err error)
+	DeleteWALsOlderThan(currentWAL string) error
 }
 
 // responsibility is to store Raft states like votedFor, currentTerm and logs on persistance storage
@@ -72,6 +81,9 @@ func (r *RaftPersistanceStateImpl) InMemoryLogLength() int {
 
 // retain only the latest snapshot
 func (r *RaftPersistanceStateImpl) cleanupSnapshot(ctx context.Context, sm common.SnapshotMetadata) (err error) {
+	ctx, span := tracer.Start(ctx, "CleanupSnapshot")
+	defer span.End()
+
 	fileNames, err := r.storage.GetObjectNames()
 	if err != nil {
 		r.log().ErrorContext(ctx, "cleanupSnapshot", err)
@@ -87,8 +99,21 @@ func (r *RaftPersistanceStateImpl) cleanupSnapshot(ctx context.Context, sm commo
 			err1 := r.storage.DeleteObject(fileName)
 			if err != nil {
 				err = errors.Join(err1)
+				span.AddEvent(
+					"delete snapshot failed",
+					trace.WithAttributes(
+						attribute.String("error", err1.Error()),
+						attribute.String("fileName", fileName),
+					),
+				)
 			} else {
 				deleted = append(deleted, fileName)
+				span.AddEvent(
+					"delete snapshot success",
+					trace.WithAttributes(
+						attribute.String("fileName", fileName),
+					),
+				)
 			}
 		}
 	}
@@ -98,34 +123,69 @@ func (r *RaftPersistanceStateImpl) cleanupSnapshot(ctx context.Context, sm commo
 	return err
 }
 
+// to read snapshot as a sequence of small chunks
 func (r *RaftPersistanceStateImpl) StreamSnapshot(ctx context.Context, sm common.SnapshotMetadata, offset int64, maxLength int) (data []byte, eof bool, err error) {
 	fileName := sm.FileName
 	return r.storage.StreamObject(ctx, fileName, offset, maxLength)
 }
 
+// to write snapshot as a sequence of small chunks
 func (r *RaftPersistanceStateImpl) InstallSnapshot(ctx context.Context, fileName string, offset int64, data []byte) (err error) {
-	r.lock.Lock()
-	defer r.lock.Unlock()
+	ctx, span := tracer.Start(ctx, "InstallSnapshot")
+	defer span.End()
+
+	defer func() {
+		if err != nil {
+			span.AddEvent("install snapshot failed", trace.WithAttributes(
+				attribute.String("fileName", fileName),
+				attribute.Int64("offset", offset),
+				attribute.String("error", err.Error()),
+			))
+		} else {
+			span.AddEvent("install snapshot success", trace.WithAttributes(
+				attribute.String("fileName", fileName),
+				attribute.Int64("offset", offset),
+			))
+		}
+	}()
 
 	return r.storage.InstallObject(ctx, fileName, offset, data)
 }
 
+// snapshot will be write as a sequence of small chunks into a temporary file,
+// this function will rename the temporary into a standard snapshot file name.
 func (r *RaftPersistanceStateImpl) CommitSnapshot(ctx context.Context, sm common.SnapshotMetadata) (err error) {
-	r.lock.Lock()
-	defer r.lock.Unlock()
+	ctx, span := tracer.Start(ctx, "CommitSnapshot")
+	defer span.End()
+
+	defer func() {
+		if err != nil {
+			span.AddEvent("commit snapshot failed", trace.WithAttributes(
+				attribute.String("metadata", sm.ToString()),
+				attribute.String("error", err.Error()),
+			))
+		} else {
+			span.AddEvent("commit snapshot success", trace.WithAttributes(
+				attribute.String("metadata", sm.ToString()),
+			))
+		}
+	}()
 
 	err = r.storage.CommitObject(ctx, sm.FileName)
 	if err != nil {
 		return err
 	}
 
+	r.lock.Lock()
+
 	if r.latestSnapshot == (common.SnapshotMetadata{}) {
 		r.latestSnapshot = common.SnapshotMetadata{LastLogTerm: sm.LastLogTerm, LastLogIndex: sm.LastLogIndex}
 	}
 
 	r.trimPrefixLog(sm)
-
 	r.latestSnapshot = sm
+
+	r.lock.Unlock()
 
 	r.log().DebugContext(ctx, "CommitSnapshot", "metadata", sm)
 
@@ -135,9 +195,10 @@ func (r *RaftPersistanceStateImpl) CommitSnapshot(ctx context.Context, sm common
 	return nil
 }
 
+// save the whole snapshot into file at once
 func (r *RaftPersistanceStateImpl) SaveSnapshot(ctx context.Context, snapshot *common.Snapshot) (err error) {
-	r.lock.Lock()
-	defer r.lock.Unlock()
+	ctx, span := tracer.Start(ctx, "SaveSnapshot")
+	defer span.End()
 
 	snapshot.FileName = common.NewSnapshotFileName(snapshot.LastLogTerm, snapshot.LastLogIndex)
 
@@ -153,24 +214,31 @@ func (r *RaftPersistanceStateImpl) SaveSnapshot(ctx context.Context, snapshot *c
 		return err
 	}
 
+	r.lock.Lock()
 	r.trimPrefixLog(sm)
-
 	r.latestSnapshot = sm
+	r.lock.Unlock()
+
+	r.log().DebugContext(ctx, "SaveSnapshot", "metadata", sm)
+
+	go r.cleanupSnapshot(ctx, sm)
+	go r.cleanupWal(ctx, sm)
 
 	return nil
 }
 
 func (r *RaftPersistanceStateImpl) ReadLatestSnapshot(ctx context.Context) (snap *common.Snapshot, err error) {
 	r.lock.RLock()
-	defer r.lock.RUnlock()
+	latestSnapshot := r.latestSnapshot
+	r.lock.RUnlock()
 
-	if r.latestSnapshot.FileName == "" {
+	if latestSnapshot.FileName == "" {
 		return common.NewSnapshot(), nil
 	}
 
 	snap = common.NewSnapshot()
 
-	err = r.storage.ReadObject(r.latestSnapshot.FileName, snap)
+	err = r.storage.ReadObject(latestSnapshot.FileName, snap)
 	if err != nil {
 		return nil, err
 	}
@@ -219,9 +287,6 @@ func (r *RaftPersistanceStateImpl) logLength() int {
 }
 
 func (r *RaftPersistanceStateImpl) AppendLog(ctx context.Context, logItems []common.Log) (index int, err error) {
-	r.lock.Lock()
-	defer r.lock.Unlock()
-
 	keyValuePairs := []string{}
 	for i := 0; i < len(logItems); i++ {
 		keyValuePairs = append(keyValuePairs, "append_log", logItems[i].ToString())
@@ -231,9 +296,11 @@ func (r *RaftPersistanceStateImpl) AppendLog(ctx context.Context, logItems []com
 		return 0, err
 	}
 
+	r.lock.Lock()
 	r.logs = append(r.logs, logItems...)
-
 	base := r.latestSnapshot.LastLogIndex
+	r.lock.Unlock()
+
 	index = base + len(r.logs)
 
 	return index, nil
@@ -246,7 +313,10 @@ func (r *RaftPersistanceStateImpl) DeleteAllLog(ctx context.Context) (err error)
 		return err
 	}
 
+	r.lock.Lock()
 	r.logs = []common.Log{}
+	r.lock.Unlock()
+
 	return nil
 }
 
@@ -290,7 +360,7 @@ func (r *RaftPersistanceStateImpl) metadata() []string {
 		"voted_for", strconv.Itoa(r.votedFor),
 		"current_term", strconv.Itoa(r.currentTerm),
 		"log_length", strconv.Itoa(r.logLength()),
-		prevWalLastLogInfoKey, fmt.Sprintf("%d|%d", index, term),
+		prevWalLastLogInfoKey, fmt.Sprintf("%d|%d", term, index),
 	}
 }
 
@@ -309,28 +379,26 @@ func (r *RaftPersistanceStateImpl) GetVotedFor() int {
 }
 
 func (r *RaftPersistanceStateImpl) SetCurrentTerm(ctx context.Context, currentTerm int) (err error) {
-	r.lock.Lock()
-	defer r.lock.Unlock()
-
 	err = r.storage.AppendWal(r.metadata(), "current_term", strconv.Itoa(currentTerm))
 	if err != nil {
 		return err
 	}
 
+	r.lock.Lock()
 	r.currentTerm = currentTerm
+	r.lock.Unlock()
 
 	return nil
 }
 
 func (r *RaftPersistanceStateImpl) SetVotedFor(ctx context.Context, votedFor int) (err error) {
-	r.lock.Lock()
-	defer r.lock.Unlock()
-
 	err = r.storage.AppendWal(r.metadata(), "voted_for", strconv.Itoa(votedFor))
 	if err != nil {
 		return err
 	}
 
+	r.lock.Lock()
+	defer r.lock.Unlock()
 	r.votedFor = votedFor
 
 	return nil
@@ -376,6 +444,8 @@ func (n *RaftPersistanceStateImpl) lastLogInfo() (index, term int) {
 }
 
 func (r *RaftPersistanceStateImpl) Deserialize(keyValuePairs []string, snapshot common.SnapshotMetadata) (lastLogIndex int, err error) {
+	r.lock.RLock()
+	defer r.lock.RUnlock()
 	// index of the last logs that get recorded in the current WAL file
 	// lastLogIndex = 0 if no log was found in the current wal
 
@@ -387,7 +457,7 @@ func (r *RaftPersistanceStateImpl) Deserialize(keyValuePairs []string, snapshot 
 		key, value := keyValuePairs[i], keyValuePairs[i+1]
 		switch key {
 		case prevWalLastLogInfoKey:
-			_, err = fmt.Sscanf(value, "%d|%d", &prevLogIndex, &prevLogTerm)
+			_, err = fmt.Sscanf(value, "%d|%d", &prevLogTerm, &lastLogIndex)
 			if err != nil {
 				return 0, err
 			}

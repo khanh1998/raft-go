@@ -176,7 +176,9 @@ func (s *StorageImpl) WalIterator() (next func() ([]string, string, error)) {
 // so we just read the first occurrence of the key-value pairs that represent for metadata.
 func (s *StorageImpl) GetWalMetadata(keys []string) (metadata [][]string, fileNames []string, err error) {
 	for _, wal := range s.wals {
-		md, err := s.fileUtils.ReadFirstOccurrenceKeyValuePairsToArray(wal.FileName, keys)
+		path := s.dataFolder + wal.FileName
+
+		md, err := s.fileUtils.ReadFirstOccurrenceKeyValuePairsToArray(path, keys)
 		if err != nil {
 			return nil, nil, err
 		}
@@ -243,10 +245,11 @@ func (s *StorageImpl) deleteOutdateWALs() error {
 }
 
 // delete any WALs that older than the currentWAL
-func (s *StorageImpl) deleteWALsOlderThan(currentWAL string) error {
+func (s *StorageImpl) DeleteWALsOlderThan(currentWAL string) error {
 	// WAL file names are sorted
 	for s.wals[0].FileName < currentWAL {
-		err := s.fileUtils.DeleteFile(s.wals[0].FileName)
+		path := s.dataFolder + s.wals[0].FileName
+		err := s.fileUtils.DeleteFile(path)
 		if err != nil {
 			s.log().Error("DeleteWALsOlderThan", err)
 			return err

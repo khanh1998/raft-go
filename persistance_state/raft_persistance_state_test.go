@@ -465,11 +465,8 @@ func TestRaftPersistanceStateImpl_GetLog(t *testing.T) {
 
 func TestRaftPersistanceStateImpl_LastLogInfo(t *testing.T) {
 	type fields struct {
-		votedFor       int
-		currentTerm    int
 		logs           []common.Log
 		latestSnapshot common.SnapshotMetadata
-		storage        StorageInterface
 	}
 	tests := []struct {
 		name      string
@@ -477,16 +474,48 @@ func TestRaftPersistanceStateImpl_LastLogInfo(t *testing.T) {
 		wantIndex int
 		wantTerm  int
 	}{
-		// TODO: Add test cases.
+		{
+			name: "1",
+			fields: fields{
+				logs:           []common.Log{},
+				latestSnapshot: common.SnapshotMetadata{},
+			},
+			wantIndex: 0,
+			wantTerm:  -1,
+		},
+		{
+			name: "2",
+			fields: fields{
+				logs:           []common.Log{{Term: 3}},
+				latestSnapshot: common.SnapshotMetadata{},
+			},
+			wantIndex: 1,
+			wantTerm:  3,
+		},
+		{
+			name: "3",
+			fields: fields{
+				logs:           []common.Log{},
+				latestSnapshot: common.SnapshotMetadata{LastLogTerm: 3, LastLogIndex: 10},
+			},
+			wantIndex: 10,
+			wantTerm:  3,
+		},
+		{
+			name: "4",
+			fields: fields{
+				logs:           []common.Log{{Term: 3}},
+				latestSnapshot: common.SnapshotMetadata{LastLogTerm: 3, LastLogIndex: 10},
+			},
+			wantIndex: 11,
+			wantTerm:  3,
+		},
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
 			n := &RaftPersistanceStateImpl{
-				votedFor:       tt.fields.votedFor,
-				currentTerm:    tt.fields.currentTerm,
 				logs:           tt.fields.logs,
 				latestSnapshot: tt.fields.latestSnapshot,
-				storage:        tt.fields.storage,
 			}
 			gotIndex, gotTerm := n.LastLogInfo()
 			if gotIndex != tt.wantIndex {

@@ -183,6 +183,8 @@ type NewRaftBrainParams struct {
 }
 
 func NewRaftBrain(params NewRaftBrainParams) (*RaftBrainImpl, error) {
+	latestSnapshot := params.PersistenceState.GetLatestSnapshotMetadata()
+
 	n := &RaftBrainImpl{
 		id: params.ID,
 		state: func() common.RaftState {
@@ -214,6 +216,11 @@ func NewRaftBrain(params NewRaftBrainParams) (*RaftBrainImpl, error) {
 		persistState:      params.PersistenceState,
 		logLengthLimit:    params.LogLengthLimit,
 		snapshotChunkSize: params.SnapshotChunkSize,
+
+		// only committed logs are compacted into snapshot,
+		// for new cluster, it will be zero.
+		commitIndex: latestSnapshot.LastLogIndex,
+		lastApplied: latestSnapshot.LastLogIndex,
 	}
 
 	ctx, span := tracer.Start(context.Background(), "NewRaftBrain")

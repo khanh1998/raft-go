@@ -196,9 +196,6 @@ func (f FileWrapperImpl) ReadFirstOccurrenceKeyValuePairsToArray(path string, ke
 
 	file, err := os.OpenFile(path, os.O_RDONLY, 0644)
 	if err != nil {
-		if os.IsNotExist(err) {
-			return nil, common.ErrEmptyData
-		}
 		return nil, err
 	}
 

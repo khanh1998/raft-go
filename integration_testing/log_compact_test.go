@@ -12,7 +12,7 @@ import (
 func TestLogCompactionForStaticCluster1(t *testing.T) {
 	os.RemoveAll("data/")
 	c := NewCluster("config/3-nodes-snap.yml")
-	// defer c.Clean()
+	defer c.Clean()
 
 	// init 3 nodes cluster and push some data
 	AssertHavingOneLeader(t, c)
@@ -40,7 +40,7 @@ func TestLogCompactionForStaticCluster1(t *testing.T) {
 func TestLogCompactionForStaticCluster2(t *testing.T) {
 	os.RemoveAll("data/")
 	c := NewCluster("config/3-nodes-snap.yml")
-	// defer c.Clean()
+	defer c.Clean()
 
 	// init 3 nodes cluster,
 	// kill a follower immediately,
@@ -100,4 +100,31 @@ func TestLogCompactionForDynamicCluster(t *testing.T) {
 	AssertLiveNode(t, c, 5)
 
 	AssertGet(t, c, "count", "50")
+}
+
+func TestClusterRestart(t *testing.T) {
+	os.RemoveAll("data/")
+	c := NewCluster("config/3-nodes-1.yml")
+	// defer c.Clean()
+
+	AssertHavingOneLeader(t, c)
+	IncreaseBy(t, c, "count", 10)
+	time.Sleep(500 * time.Millisecond) // wait for wal and snapshot cleanup in background
+	c.StopAll()
+
+	c.StartAll()
+	AssertHavingOneLeader(t, c)
+	IncreaseBy(t, c, "count", 10)
+	time.Sleep(500 * time.Millisecond) // wait for wal and snapshot cleanup in background
+	c.StopAll()
+
+	c.StartAll()
+	AssertHavingOneLeader(t, c)
+	IncreaseBy(t, c, "count", 10)
+	time.Sleep(500 * time.Millisecond) // wait for wal and snapshot cleanup in background
+	c.StopAll()
+
+	c.StartAll()
+	AssertHavingOneLeader(t, c)
+	AssertGet(t, c, "count", "30")
 }

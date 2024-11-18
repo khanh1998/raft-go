@@ -156,7 +156,9 @@ func (n *RaftBrainImpl) applyLog(ctx context.Context) {
 			n.log().ErrorContext(ctx, "applyLog_Process", err)
 		}
 
-		if n.persistState.InMemoryLogLength() > n.logLengthLimit {
+		// rethink about the logic here to better prevent consecutive snapshot requests,
+		// can't use lastApplied > limit
+		if n.lastApplied%n.logLengthLimit == 0 {
 			go func() {
 				if err = n.stateMachine.StartSnapshot(ctx); err != nil {
 					n.log().ErrorContext(ctx, "applyLog_startSnapshot", err)

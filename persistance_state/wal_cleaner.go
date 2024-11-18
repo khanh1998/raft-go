@@ -5,6 +5,10 @@ import (
 	"errors"
 	"fmt"
 	"khanh/raft-go/common"
+	"sort"
+
+	"go.opentelemetry.io/otel/attribute"
+	"go.opentelemetry.io/otel/trace"
 )
 
 // term and index of the last log appears in the previous WAL.
@@ -19,12 +23,17 @@ const prevWalLastLogInfoKey = "prev_wal_last_log"
 // this is a bad design, when it violate the separation-of-concern principle,
 // but currently i haven't figure out any better design.
 func (r *RaftPersistanceStateImpl) cleanupWal(ctx context.Context, sm common.SnapshotMetadata) error {
+	ctx, span := tracer.Start(ctx, "CleanupWAL")
+	defer span.End()
+
 	metadata, fileNames, err := r.storage.GetWalMetadata([]string{prevWalLastLogInfoKey})
 	if err != nil {
 		r.log().ErrorContext(ctx, "WalCleanup_GetWalMetadata", err)
 
 		return err
 	}
+
+	r.log().DebugContext(ctx, "CleanupWAL", "snapshot", sm, "metadata", metadata, "fileNames", fileNames)
 
 	toBeDeletedWal := []string{}
 
@@ -53,11 +62,27 @@ func (r *RaftPersistanceStateImpl) cleanupWal(ctx context.Context, sm common.Sna
 		}
 	}
 
+	sort.Strings(toBeDeletedWal)
+
 	for _, fileName := range toBeDeletedWal {
-		err1 := r.storage.DeleteObject(fileName)
+		err1 := r.storage.DeleteWALsOlderThan(fileName)
 		errors.Join(err, err1)
 		if err1 != nil {
 			r.log().ErrorContext(ctx, "WalCleanup_DeleteObject", err)
+			span.AddEvent(
+				"delete WAL failed",
+				trace.WithAttributes(
+					attribute.String("error", err1.Error()),
+					attribute.String("file", fileName),
+				),
+			)
+		} else {
+			span.AddEvent(
+				"delete WAL success",
+				trace.WithAttributes(
+					attribute.String("file", fileName),
+				),
+			)
 		}
 	}
 

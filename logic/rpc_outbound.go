@@ -227,7 +227,7 @@ func (n *RaftBrainImpl) BroadcastAppendEntries(ctx context.Context) (majorityOK 
 					}
 
 					input = common.InstallSnapshotInput{
-						Term:       n.GetCurrentTerm(),
+						Term:       currentTerm,
 						LeaderId:   n.leaderID,
 						LastIndex:  offset.Snapshot.LastLogIndex,
 						LastTerm:   offset.Snapshot.LastLogTerm,

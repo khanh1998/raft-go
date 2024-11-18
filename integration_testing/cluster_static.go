@@ -76,7 +76,7 @@ func (c *Cluster) init(filePath string) {
 			storage, err := storage.NewStorage(storage.NewStorageParams{
 				WalSize:    config.WalSizeLimit,
 				DataFolder: dataFolder,
-				Logger:     c.log,
+				Logger:     log,
 			}, storage.FileWrapperImpl{})
 			if err != nil {
 				log.Fatal("new storage", "error", err.Error())
@@ -191,9 +191,21 @@ func (c *Cluster) StopLeader() (nodeId int, err error) {
 	return status.ID, c.StopNode(status.ID)
 }
 
+func (c *Cluster) StartAll() {
+	for _, node := range c.Nodes {
+		err := c.StartNode(node.ID)
+		if err != nil {
+			c.log.Error("StartAll_StartNode", err)
+		}
+	}
+}
+
 func (c *Cluster) StopAll() {
 	for _, node := range c.Nodes {
-		node.Stop(context.Background())
+		err := c.StopNode(node.ID)
+		if err != nil {
+			c.log.Error("StopAll_StopNode", err)
+		}
 	}
 }
 
