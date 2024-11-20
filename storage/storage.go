@@ -245,14 +245,16 @@ func (s *StorageImpl) deleteOutdateWALs() error {
 }
 
 // delete any WALs that older than the currentWAL
-func (s *StorageImpl) DeleteWALsOlderThan(currentWAL string) error {
+func (s *StorageImpl) DeleteWALsOlderOrEqual(currentWAL string) error {
 	// WAL file names are sorted
-	for s.wals[0].FileName < currentWAL {
+	for s.wals[0].FileName <= currentWAL {
 		path := s.dataFolder + s.wals[0].FileName
 		err := s.fileUtils.DeleteFile(path)
 		if err != nil {
-			s.log().Error("DeleteWALsOlderThan", err)
+			s.log().Error("DeleteWALsOlderOrEqual", err)
 			return err
+		} else {
+			s.log().Info("DeleteWALsOlderOrEqual", "wal", s.wals[0])
 		}
 
 		s.wals = s.wals[1:]

@@ -18,7 +18,7 @@ func (n *RaftBrainImpl) loop(ctx context.Context) {
 	majorityOK := false
 	for {
 		if stop {
-			n.log().InfoContext(context.Background(), "Raft main loop has been stopped")
+			n.log().InfoContext(ctx, "Raft main loop has been stopped")
 
 			break
 		}
@@ -28,7 +28,7 @@ func (n *RaftBrainImpl) loop(ctx context.Context) {
 			// Thus, a leader in Raft steps down if an election timeout elapses without a successful round of heartbeats to a majority of its cluster;
 			// this allows clients to retry their requests with another server.
 			// TODO: brings this out of the loop
-			ctx, span := tracer.Start(context.Background(), "ElectionTimeout")
+			ctx, span := tracer.Start(ctx, "ElectionTimeout")
 			if n.state == common.StateLeader && !majorityOK {
 				n.toFollower(ctx)
 				n.setLeaderID(ctx, 0)
@@ -40,10 +40,10 @@ func (n *RaftBrainImpl) loop(ctx context.Context) {
 			n.BroadCastRequestVote(ctx)
 			span.End()
 		case <-n.heartBeatTimeOut.C:
-			ctx, span := tracer.Start(context.Background(), "HeartBeatTimeout")
+			ctx, span := tracer.Start(ctx, "HeartBeatTimeout")
 			majorityOK = n.BroadcastAppendEntries(ctx) || majorityOK
 			span.End()
-		case <-n.stop:
+		case <-ctx.Done():
 			stop = true
 		}
 	}

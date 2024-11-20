@@ -28,7 +28,7 @@ type StorageInterface interface {
 	GetObjectNames() (fileNames []string, err error)
 	DeleteObject(fileName string) error
 	GetWalMetadata(keys []string) (metadata [][]string, fileNames []string, err error)
-	DeleteWALsOlderThan(currentWAL string) error
+	DeleteWALsOlderOrEqual(currentWAL string) error
 }
 
 // responsibility is to store Raft states like votedFor, currentTerm and logs on persistance storage
@@ -423,6 +423,26 @@ func (n *RaftPersistanceStateImpl) LastLogInfo() (index, term int) {
 	defer n.lock.RUnlock()
 
 	return n.lastLogInfo()
+}
+
+func (n *RaftPersistanceStateImpl) GetLastLog() (common.Log, error) {
+	sm := n.latestSnapshot
+	base := sm.LastLogIndex
+
+	if base == 0 && len(n.logs) == 0 {
+		return common.Log{}, errors.New("there is no log")
+	}
+
+	if base > 0 && len(n.logs) == 0 {
+		return common.Log{}, errors.New("last log is in snapshot")
+	}
+
+	if len(n.logs) > 0 {
+		index := len(n.logs) - 1
+		return n.GetLog(base + index)
+	}
+
+	return common.Log{}, errors.New("can't get last log")
 }
 
 func (n *RaftPersistanceStateImpl) lastLogInfo() (index, term int) {

@@ -260,7 +260,7 @@ func TestRaftBrainImpl_deleteLogFrom(t *testing.T) {
 				electionTimeOutMax:        tt.fields.electionTimeOutMax,
 				rpcProxy:                  tt.fields.rpcProxy,
 				arm:                       tt.fields.arm,
-				stop:                      tt.fields.stop,
+				stop:                      nil,
 				inOutLock:                 tt.fields.inOutLock,
 				changeMemberLock:          tt.fields.changeMemberLock,
 				dataLock:                  tt.fields.dataLock,

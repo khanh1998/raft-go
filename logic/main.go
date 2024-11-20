@@ -41,6 +41,7 @@ type RaftPersistanceState interface {
 	LogLength() int
 	InMemoryLogLength() int // length of logs that exclude snapshot logs
 	GetLog(index int) (common.Log, error)
+	GetLastLog() (common.Log, error)
 	GetLatestSnapshotMetadata() (snap common.SnapshotMetadata)
 }
 
@@ -75,7 +76,7 @@ type RaftBrainImpl struct {
 	electionTimeOutMax        time.Duration
 	rpcProxy                  RPCProxy
 	arm                       AsyncResponseManager
-	stop                      chan struct{}
+	stop                      context.CancelFunc // stop background goroutines
 	newMembers                chan common.ClusterMemberChange
 	inOutLock                 sync.RWMutex // this lock help to process requests in sequential order. requests are processed one after the other, not concurrently.
 	changeMemberLock          sync.Mutex   // lock for adding or removing a member from the cluster
@@ -184,6 +185,12 @@ type NewRaftBrainParams struct {
 
 func NewRaftBrain(params NewRaftBrainParams) (*RaftBrainImpl, error) {
 	latestSnapshot := params.PersistenceState.GetLatestSnapshotMetadata()
+	clusterClock := NewClusterClock()
+
+	lastLog, err := params.PersistenceState.GetLastLog()
+	if err == nil {
+		clusterClock.NewEpoch(lastLog.ClusterTime)
+	}
 
 	n := &RaftBrainImpl{
 		id: params.ID,
@@ -194,7 +201,7 @@ func NewRaftBrain(params NewRaftBrainParams) (*RaftBrainImpl, error) {
 			return common.StateFollower
 		}(),
 		arm:          NewAsyncResponseManager(100),
-		stop:         make(chan struct{}),
+		stop:         nil,
 		newMembers:   make(chan common.ClusterMemberChange, 25),
 		nextMemberId: params.ID + 1,
 
@@ -210,7 +217,7 @@ func NewRaftBrain(params NewRaftBrainParams) (*RaftBrainImpl, error) {
 		nextIndex:         make(map[int]int),
 		matchIndex:        make(map[int]int),
 		nextOffset:        make(map[int]NextOffset),
-		clusterClock:      NewClusterClock(),
+		clusterClock:      clusterClock,
 		RpcRequestTimeout: params.RpcRequestTimeout,
 
 		persistState:      params.PersistenceState,
@@ -277,17 +284,11 @@ func NewRaftBrain(params NewRaftBrainParams) (*RaftBrainImpl, error) {
 		}
 	}
 
-	// periodically inject committed logs to state machine
-	go n.logInjector(ctx)
-
 	return n, nil
 }
 
 func (n *RaftBrainImpl) Stop() {
-	select {
-	case n.stop <- struct{}{}:
-	default:
-	}
+	n.stop()
 }
 
 func (n *RaftBrainImpl) Start(ctx context.Context) {
@@ -297,7 +298,14 @@ func (n *RaftBrainImpl) Start(ctx context.Context) {
 	n.resetElectionTimeout(ctx)
 	n.resetHeartBeatTimeout(ctx)
 
+	ctx, cancel := context.WithCancel(ctx)
+	n.stop = cancel
+
 	go n.loop(ctx)
+	// periodically inject committed logs to state machine
+	go n.logInjector(ctx)
+
+	go n.autoCommitClusterTime(ctx)
 
 	n.log().InfoContext(ctx, "Brain start", "members", n.members)
 }

@@ -37,11 +37,10 @@ type RPCProxyImpl struct {
 	brain                RaftBrain
 	rpcServer            *rpc.Server
 	logger               observability.Logger
-	stop                 chan struct{}
+	stop                 context.CancelFunc // stop background goroutines
 	accessible           bool
 	listener             net.Listener
 	lock                 sync.RWMutex
-	connections          []net.Conn // TODO: unsafe, memory leak
 	rpcDialTimeout       time.Duration
 	rpcReconnectDuration time.Duration
 	rpcRequestTimeout    time.Duration
@@ -54,6 +53,7 @@ type PeerRPCProxyConnectInfo struct {
 
 func (r *RPCProxyImpl) log() observability.Logger {
 	l := r.logger.With(
+		"source", "RPCProxy",
 		"RPC_ID", r.hostID,
 		"peers", r.peers,
 	)
@@ -116,7 +116,7 @@ func NewRPCImpl(params NewRPCImplParams) (*RPCProxyImpl, error) {
 		hostID:               params.HostID,
 		hostURL:              params.HostURL,
 		logger:               params.Logger,
-		stop:                 make(chan struct{}),
+		stop:                 nil,
 		accessible:           true,
 		peers:                make(map[int]common.PeerRPCProxy),
 		rpcDialTimeout:       params.RpcDialTimeout,
@@ -300,65 +300,41 @@ func (r *RPCProxyImpl) initServer(ctx context.Context, url string) error {
 
 	r.listener = listener
 
-	go func() {
-		<-r.stop
-		err := r.listener.Close()
-		if err != nil {
-			r.log().ErrorContext(ctx, "initRPCProxy: Listener error", err)
-		}
-
-		r.log().InfoContext(ctx, "RPC Proxy stopping triggered")
-
-		r.lock.Lock()
-		defer r.lock.Unlock()
-
-		for _, conn := range r.connections {
-			if err := conn.Close(); err != nil {
-				r.log().ErrorContext(ctx, "RPC Proxy stopping: close connection", err)
-			}
-		}
-
-		r.connections = []net.Conn{} // delete all closed connections
-	}()
-
-	go func() {
-		for {
-			conn, err := r.listener.Accept()
-			if err != nil {
-				r.log().ErrorContext(ctx, "RPCProxy: listener error", err)
-
-				break
-			} else {
-				r.lock.Lock()
-				r.connections = append(r.connections, conn)
-				r.lock.Unlock()
-				r.log().DebugContext(
-					ctx,
-					"RPCProxy: new connection created",
-					"total", len(r.connections),
-					"remoteAddr", conn.RemoteAddr().String(),
-					"localAddr", conn.LocalAddr().String(),
-				)
-
-				go r.rpcServer.ServeConn(conn)
-			}
-
-		}
-
-		r.log().InfoContext(ctx, "RPCProxy: main loop stop")
-	}()
-
 	r.log().InfoContext(ctx, "initRPCProxy: finished register node")
 
 	return nil
 }
 
+func (r *RPCProxyImpl) waitForConnection(ctx context.Context) {
+	for {
+		conn, err := r.listener.Accept()
+		if err != nil {
+			r.log().ErrorContext(ctx, "RPCProxy: listener error", err)
+
+			break
+		} else {
+			go r.rpcServer.ServeConn(conn)
+		}
+
+	}
+
+	r.log().InfoContext(ctx, "RPCProxy waitForConnection stop")
+}
+
+func (r *RPCProxyImpl) stopConnections(ctx context.Context) {
+	err := r.listener.Close()
+	if err != nil {
+		r.log().ErrorContext(ctx, "initRPCProxy: Listener error", err)
+	}
+}
+
 // this function periodically attempt to connecting crashed peers
-func (r *RPCProxyImpl) reconnectPeer() {
+func (r *RPCProxyImpl) reconnectPeer(ctx context.Context) {
 	ticker := time.NewTicker(r.rpcReconnectDuration)
 	for {
 		select {
-		case <-r.stop:
+		case <-ctx.Done():
+			r.log().InfoContext(ctx, "reconnectPeer stop")
 			return
 		case <-ticker.C:
 			for peerId, peer := range r.peers {
@@ -380,9 +356,23 @@ func (r *RPCProxyImpl) Start(ctx context.Context) {
 		r.log().FatalContext(ctx, "Start RPC Proxy", "error", err.Error())
 	}
 
-	// waiting for member changes
-	go func() {
-		for member := range r.brain.GetNewMembersChannel() {
+	ctx, cancel := context.WithCancel(ctx)
+
+	r.stop = cancel
+
+	go r.waitForMemberChange(ctx, r.brain.GetNewMembersChannel())
+	go r.waitForConnection(ctx)
+	go r.reconnectPeer(ctx)
+}
+
+// add or remove member (node) from the cluster
+func (r *RPCProxyImpl) waitForMemberChange(ctx context.Context, channel <-chan common.ClusterMemberChange) {
+	for {
+		select {
+		case <-ctx.Done():
+			r.logger.InfoContext(ctx, "waitForMemberChange stop")
+			return
+		case member := <-channel:
 			if r.hostID != member.ID {
 				if member.Add {
 					r.logger.Info("connect new member", "member", member)
@@ -394,10 +384,7 @@ func (r *RPCProxyImpl) Start(ctx context.Context) {
 				}
 			}
 		}
-	}()
-
-	go r.reconnectPeer()
-
+	}
 }
 
 var (
@@ -486,8 +473,6 @@ func (r *RPCProxyImpl) SetInaccessible() {
 }
 
 func (r *RPCProxyImpl) Stop() {
-	select {
-	case r.stop <- struct{}{}:
-	default:
-	}
+	r.stop()
+	r.stopConnections(context.Background())
 }

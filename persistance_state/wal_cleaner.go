@@ -2,7 +2,6 @@ package persistance_state
 
 import (
 	"context"
-	"errors"
 	"fmt"
 	"khanh/raft-go/common"
 	"sort"
@@ -64,16 +63,17 @@ func (r *RaftPersistanceStateImpl) cleanupWal(ctx context.Context, sm common.Sna
 
 	sort.Strings(toBeDeletedWal)
 
-	for _, fileName := range toBeDeletedWal {
-		err1 := r.storage.DeleteWALsOlderThan(fileName)
-		errors.Join(err, err1)
-		if err1 != nil {
+	if len(toBeDeletedWal) > 0 {
+		fileName := toBeDeletedWal[len(toBeDeletedWal)-1]
+
+		err = r.storage.DeleteWALsOlderOrEqual(fileName)
+		if err != nil {
 			r.log().ErrorContext(ctx, "WalCleanup_DeleteObject", err)
 			span.AddEvent(
 				"delete WAL failed",
 				trace.WithAttributes(
-					attribute.String("error", err1.Error()),
-					attribute.String("file", fileName),
+					attribute.String("error", err.Error()),
+					attribute.String("files", fileName),
 				),
 			)
 		} else {

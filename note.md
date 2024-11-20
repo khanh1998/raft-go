@@ -26,7 +26,6 @@ todos:
     membership -> add/remove server
     stop channel
 
-- use env variable for rpc and http timeout
 - write a db engine
 - compare and set
 - upgrade rpc to gRPC
@@ -37,8 +36,7 @@ todos:
 - do benchmark
 - need a new method that let a new node can join the cluster easier
 - test key delete again
-- cleanup outdated snapshot and wal
 - concurrency testing
 - async set, don't wait for log commit
-- cluster time auto commit (lastlog)
 - allow node with some data to catch up, currently only completely new node (no data) can.
+- etcd v2.3 api clone

@@ -127,4 +127,5 @@ func TestClusterRestart(t *testing.T) {
 	c.StartAll()
 	AssertHavingOneLeader(t, c)
 	AssertGet(t, c, "count", "30")
+	c.StopAll()
 }

@@ -92,6 +92,10 @@ func (n *RaftBrainImpl) GetLog(index int) (common.Log, error) {
 	return n.persistState.GetLog(index)
 }
 
+func (n *RaftBrainImpl) GetLastLog() (common.Log, error) {
+	return n.persistState.GetLastLog()
+}
+
 func (n *RaftBrainImpl) setLeaderID(ctx context.Context, leaderId int) {
 	n.leaderID = leaderId
 }
@@ -122,8 +126,12 @@ func (n *RaftBrainImpl) isLogUpToDate(lastLogIndex int, lastLogTerm int) bool {
 // this function will pick committed logs and push it to state machine
 func (n *RaftBrainImpl) logInjector(ctx context.Context) {
 	for {
-		<-time.After(n.heartBeatTimeOutMax)
-		n.applyLog(ctx)
+		select {
+		case <-ctx.Done():
+			return
+		case <-time.After(n.heartBeatTimeOutMax):
+			n.applyLog(ctx)
+		}
 	}
 }
 
@@ -159,11 +167,9 @@ func (n *RaftBrainImpl) applyLog(ctx context.Context) {
 		// rethink about the logic here to better prevent consecutive snapshot requests,
 		// can't use lastApplied > limit
 		if n.lastApplied%n.logLengthLimit == 0 {
-			go func() {
-				if err = n.stateMachine.StartSnapshot(ctx); err != nil {
-					n.log().ErrorContext(ctx, "applyLog_startSnapshot", err)
-				}
-			}()
+			if err = n.stateMachine.StartSnapshot(ctx); err != nil {
+				n.log().ErrorContext(ctx, "applyLog_startSnapshot", err)
+			}
 		}
 	}
 }

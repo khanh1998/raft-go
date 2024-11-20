@@ -133,13 +133,15 @@ func (k *KeyValueStateMachine) StartSnapshot(ctx context.Context) (err error) {
 	snapshot := k.current.Copy()
 	k.lock.RUnlock()
 
-	k.snapshotLock.Lock()
-	defer k.snapshotLock.Unlock()
+	go func() {
+		k.snapshotLock.Lock()
+		defer k.snapshotLock.Unlock()
 
-	err = k.persistanceState.SaveSnapshot(ctx, snapshot)
-	if err != nil {
-		return err
-	}
+		err = k.persistanceState.SaveSnapshot(ctx, snapshot)
+		if err != nil {
+			k.log().ErrorContext(ctx, "StartSnapshot_SaveSnapshot", err)
+		}
+	}()
 
 	return nil
 }

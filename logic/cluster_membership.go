@@ -123,7 +123,7 @@ func (r *RaftBrainImpl) RemoveServer(ctx context.Context, input common.RemoveSer
 	isLeaderRemoved := isLeader && input.ID == r.id
 	if isLeaderRemoved {
 		r.state = common.StateRemoved
-		r.stop <- struct{}{}
+		r.stop()
 		r.log().InfoContext(ctx, "the server will be shut down in 5s")
 		time.AfterFunc(5*time.Second, func() {
 			pid := os.Getpid()
