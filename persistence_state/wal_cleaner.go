@@ -1,4 +1,4 @@
-package persistance_state
+package persistence_state
 
 import (
 	"context"
@@ -21,7 +21,7 @@ const prevWalLastLogInfoKey = "prev_wal_last_log"
 // this function can be triggered to be running in background every time a new snapshot get committed.
 // this is a bad design, when it violate the separation-of-concern principle,
 // but currently i haven't figure out any better design.
-func (r *RaftPersistanceStateImpl) cleanupWal(ctx context.Context, sm common.SnapshotMetadata) error {
+func (r *RaftPersistenceStateImpl) cleanupWal(ctx context.Context, sm common.SnapshotMetadata) error {
 	ctx, span := tracer.Start(ctx, "CleanupWAL")
 	defer span.End()
 

@@ -1,4 +1,4 @@
-package persistance_state
+package persistence_state
 
 import (
 	"context"
@@ -83,7 +83,7 @@ func TestRaftPersistanceState_TrimPrefixLog(t *testing.T) {
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
 			for _, sub := range tt.subcases {
-				r := &RaftPersistanceStateImpl{
+				r := &RaftPersistenceStateImpl{
 					logs: common.CopySlice(tt.fields.Logs),
 				}
 
@@ -104,22 +104,22 @@ func TestRaftPersistanceState_Deserialize(t *testing.T) {
 	}
 	tests := []struct {
 		name             string
-		raft             RaftPersistanceStateImpl
+		raft             RaftPersistenceStateImpl
 		args             args
-		want             RaftPersistanceStateImpl
+		want             RaftPersistenceStateImpl
 		wantLastLogIndex int
 		wantErr          bool
 	}{
 		{
 			name: "no log",
-			raft: RaftPersistanceStateImpl{},
+			raft: RaftPersistenceStateImpl{},
 			args: args{
 				data: []string{
 					"current_term", "1",
 					"voted_for", "3",
 				},
 			},
-			want: *NewRaftPersistanceState(NewRaftPersistanceStateParams{
+			want: *NewRaftPersistenceState(NewRaftPersistenceStateParams{
 				CurrentTerm: 1,
 				VotedFor:    3,
 				Logs:        nil,
@@ -129,7 +129,7 @@ func TestRaftPersistanceState_Deserialize(t *testing.T) {
 		},
 		{
 			name: "with logs",
-			raft: RaftPersistanceStateImpl{},
+			raft: RaftPersistenceStateImpl{},
 			args: args{
 				data: []string{
 					"current_term", "1",
@@ -141,7 +141,7 @@ func TestRaftPersistanceState_Deserialize(t *testing.T) {
 					"delete_log", "1",
 				},
 			},
-			want: *NewRaftPersistanceState(NewRaftPersistanceStateParams{
+			want: *NewRaftPersistenceState(NewRaftPersistenceStateParams{
 				CurrentTerm: 1,
 				VotedFor:    3,
 				Logs: []common.Log{
@@ -154,7 +154,7 @@ func TestRaftPersistanceState_Deserialize(t *testing.T) {
 		},
 		{
 			name: "with logs, with previous state",
-			raft: *NewRaftPersistanceState(NewRaftPersistanceStateParams{
+			raft: *NewRaftPersistenceState(NewRaftPersistenceStateParams{
 				VotedFor:    4,
 				CurrentTerm: 3,
 				Logs: []common.Log{
@@ -173,7 +173,7 @@ func TestRaftPersistanceState_Deserialize(t *testing.T) {
 					"delete_log", "1",
 				},
 			},
-			want: *NewRaftPersistanceState(NewRaftPersistanceStateParams{
+			want: *NewRaftPersistenceState(NewRaftPersistenceStateParams{
 				CurrentTerm: 4,
 				VotedFor:    2,
 				Logs: []common.Log{
@@ -188,7 +188,7 @@ func TestRaftPersistanceState_Deserialize(t *testing.T) {
 		},
 		{
 			name: "with logs, with snapshot 001",
-			raft: RaftPersistanceStateImpl{},
+			raft: RaftPersistenceStateImpl{},
 			args: args{
 				data: []string{
 					"current_term", "1",
@@ -201,7 +201,7 @@ func TestRaftPersistanceState_Deserialize(t *testing.T) {
 				},
 				latestSnapshot: common.SnapshotMetadata{LastLogTerm: 2, LastLogIndex: 2, FileName: "snapshot.001.dat"},
 			},
-			want: *NewRaftPersistanceState(NewRaftPersistanceStateParams{
+			want: *NewRaftPersistenceState(NewRaftPersistenceStateParams{
 				CurrentTerm: 1,
 				VotedFor:    3,
 				Logs:        []common.Log{},
@@ -211,7 +211,7 @@ func TestRaftPersistanceState_Deserialize(t *testing.T) {
 		},
 		{
 			name: "with logs, with snapshot 002",
-			raft: RaftPersistanceStateImpl{},
+			raft: RaftPersistenceStateImpl{},
 			args: args{
 				data: []string{
 					"current_term", "1",
@@ -226,7 +226,7 @@ func TestRaftPersistanceState_Deserialize(t *testing.T) {
 				},
 				latestSnapshot: common.SnapshotMetadata{LastLogTerm: 2, LastLogIndex: 2, FileName: "snapshot.001.dat"},
 			},
-			want: *NewRaftPersistanceState(NewRaftPersistanceStateParams{
+			want: *NewRaftPersistenceState(NewRaftPersistenceStateParams{
 				CurrentTerm: 1,
 				VotedFor:    3,
 				Logs: []common.Log{
@@ -239,7 +239,7 @@ func TestRaftPersistanceState_Deserialize(t *testing.T) {
 		},
 		{
 			name: "with logs, with snapshot, with previous logs 001",
-			raft: *NewRaftPersistanceState(NewRaftPersistanceStateParams{
+			raft: *NewRaftPersistenceState(NewRaftPersistenceStateParams{
 				VotedFor:    4,
 				CurrentTerm: 3,
 				Logs: []common.Log{
@@ -260,7 +260,7 @@ func TestRaftPersistanceState_Deserialize(t *testing.T) {
 				},
 				latestSnapshot: common.SnapshotMetadata{LastLogTerm: 1, LastLogIndex: 2, FileName: "snapshot.001.dat"},
 			},
-			want: *NewRaftPersistanceState(NewRaftPersistanceStateParams{
+			want: *NewRaftPersistenceState(NewRaftPersistenceStateParams{
 				CurrentTerm: 5,
 				VotedFor:    1,
 				Logs: []common.Log{
@@ -276,7 +276,7 @@ func TestRaftPersistanceState_Deserialize(t *testing.T) {
 		},
 		{
 			name: "with logs, with snapshot, with previous logs 002",
-			raft: *NewRaftPersistanceState(NewRaftPersistanceStateParams{
+			raft: *NewRaftPersistenceState(NewRaftPersistenceStateParams{
 				VotedFor:    4,
 				CurrentTerm: 3,
 				Logs:        []common.Log{}, // logs are deleted from previous run
@@ -295,7 +295,7 @@ func TestRaftPersistanceState_Deserialize(t *testing.T) {
 				},
 				latestSnapshot: common.SnapshotMetadata{LastLogTerm: 2, LastLogIndex: 5, FileName: "snapshot.001.dat"},
 			},
-			want: *NewRaftPersistanceState(NewRaftPersistanceStateParams{
+			want: *NewRaftPersistenceState(NewRaftPersistenceStateParams{
 				CurrentTerm: 5,
 				VotedFor:    1,
 				Logs: []common.Log{
@@ -308,7 +308,7 @@ func TestRaftPersistanceState_Deserialize(t *testing.T) {
 		},
 		{
 			name: "with logs, with snapshot, with previous logs, with previous snapshot 001",
-			raft: *NewRaftPersistanceState(NewRaftPersistanceStateParams{
+			raft: *NewRaftPersistenceState(NewRaftPersistenceStateParams{
 				VotedFor:    4,
 				CurrentTerm: 3,
 				Logs:        []common.Log{}, // log are deleted from previous run
@@ -327,7 +327,7 @@ func TestRaftPersistanceState_Deserialize(t *testing.T) {
 				},
 				latestSnapshot: common.SnapshotMetadata{LastLogTerm: 4, LastLogIndex: 8, FileName: "snapshot.002.dat"},
 			},
-			want: *NewRaftPersistanceState(NewRaftPersistanceStateParams{
+			want: *NewRaftPersistenceState(NewRaftPersistenceStateParams{
 				CurrentTerm: 6,
 				VotedFor:    1,
 				Logs: []common.Log{
@@ -447,7 +447,7 @@ func TestRaftPersistanceStateImpl_GetLog(t *testing.T) {
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			r := RaftPersistanceStateImpl{
+			r := RaftPersistenceStateImpl{
 				logs:           tt.fields.logs,
 				latestSnapshot: tt.fields.latestSnapshot,
 			}
@@ -513,7 +513,7 @@ func TestRaftPersistanceStateImpl_LastLogInfo(t *testing.T) {
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			n := &RaftPersistanceStateImpl{
+			n := &RaftPersistenceStateImpl{
 				logs:           tt.fields.logs,
 				latestSnapshot: tt.fields.latestSnapshot,
 			}
@@ -576,7 +576,7 @@ func TestRaftPersistanceStateImpl_cleanupSnapshot(t *testing.T) {
 		t.Run(tt.name, func(t *testing.T) {
 			fw := &tt.fields.fileUtils
 			s := storage.NewStorageForTest(tt.fields.storage, fw)
-			r := &RaftPersistanceStateImpl{
+			r := &RaftPersistenceStateImpl{
 				latestSnapshot: tt.fields.latestSnapshot,
 				storage:        s,
 				lock:           sync.RWMutex{},
@@ -648,7 +648,7 @@ func TestRaftPersistanceStateImpl_CommitSnapshot(t *testing.T) {
 		t.Run(tt.name, func(t *testing.T) {
 			fw := &tt.fields.fileUtils
 			s := storage.NewStorageForTest(tt.fields.storage, fw)
-			r := &RaftPersistanceStateImpl{
+			r := &RaftPersistenceStateImpl{
 				latestSnapshot: tt.fields.latestSnapshot,
 				storage:        s,
 				lock:           sync.RWMutex{},

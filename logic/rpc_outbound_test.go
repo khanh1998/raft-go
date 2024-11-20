@@ -4,7 +4,7 @@ import (
 	"context"
 	"khanh/raft-go/common"
 	"khanh/raft-go/observability"
-	"khanh/raft-go/persistance_state"
+	"khanh/raft-go/persistence_state"
 	"khanh/raft-go/rpc_proxy"
 	"khanh/raft-go/storage"
 	"reflect"
@@ -74,7 +74,7 @@ func TestRaftBrainImpl_BroadCastRequestVote(t *testing.T) {
 				electionTimeOutMin:  tt.fields.ElectionTimeOutMin,
 				electionTimeOutMax:  tt.fields.ElectionTimeOutMax,
 				rpcProxy:            tt.fields.RpcProxy,
-				persistState: persistance_state.NewRaftPersistanceState(persistance_state.NewRaftPersistanceStateParams{
+				persistState: persistence_state.NewRaftPersistenceState(persistence_state.NewRaftPersistenceStateParams{
 					CurrentTerm: tt.fields.CurrentTerm,
 					VotedFor:    tt.fields.VotedFor,
 					Logs:        tt.fields.Logs,
@@ -142,7 +142,7 @@ func TestRaftBrainImpl_BroadcastAppendEntries(t *testing.T) {
 				members: []common.ClusterMember{
 					{ID: 1}, {ID: 2},
 				},
-				persistState: persistance_state.NewRaftPersistanceState(persistance_state.NewRaftPersistanceStateParams{
+				persistState: persistence_state.NewRaftPersistenceState(persistence_state.NewRaftPersistenceStateParams{
 					VotedFor:    1,
 					CurrentTerm: 1,
 					Logs: []common.Log{

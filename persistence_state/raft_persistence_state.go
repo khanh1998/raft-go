@@ -1,4 +1,4 @@
-package persistance_state
+package persistence_state
 
 import (
 	"context"
@@ -15,7 +15,7 @@ import (
 )
 
 var (
-	tracer = otel.Tracer("persistance-state")
+	tracer = otel.Tracer("persistence-state")
 )
 
 type StorageInterface interface {
@@ -31,8 +31,8 @@ type StorageInterface interface {
 	DeleteWALsOlderOrEqual(currentWAL string) error
 }
 
-// responsibility is to store Raft states like votedFor, currentTerm and logs on persistance storage
-type RaftPersistanceStateImpl struct {
+// responsibility is to store Raft states like votedFor, currentTerm and logs on persistence storage
+type RaftPersistenceStateImpl struct {
 	votedFor    int
 	currentTerm int
 	logs        []common.Log
@@ -43,7 +43,7 @@ type RaftPersistanceStateImpl struct {
 	logger         observability.Logger
 }
 
-type NewRaftPersistanceStateParams struct {
+type NewRaftPersistenceStateParams struct {
 	VotedFor         int
 	CurrentTerm      int
 	Logs             []common.Log
@@ -52,8 +52,8 @@ type NewRaftPersistanceStateParams struct {
 	Logger           observability.Logger
 }
 
-func NewRaftPersistanceState(params NewRaftPersistanceStateParams) *RaftPersistanceStateImpl {
-	return &RaftPersistanceStateImpl{
+func NewRaftPersistenceState(params NewRaftPersistenceStateParams) *RaftPersistenceStateImpl {
+	return &RaftPersistenceStateImpl{
 		votedFor:    params.VotedFor,
 		currentTerm: params.CurrentTerm,
 		logs:        params.Logs,
@@ -65,22 +65,22 @@ func NewRaftPersistanceState(params NewRaftPersistanceStateParams) *RaftPersista
 	}
 }
 
-func (r *RaftPersistanceStateImpl) log() observability.Logger {
+func (r *RaftPersistenceStateImpl) log() observability.Logger {
 	return r.logger.With(
-		"source", "raft_persistance_state",
+		"source", "raft_persistence_state",
 	)
 }
 
-func (r *RaftPersistanceStateImpl) SetStorage(s StorageInterface) {
+func (r *RaftPersistenceStateImpl) SetStorage(s StorageInterface) {
 	r.storage = s
 }
 
-func (r *RaftPersistanceStateImpl) InMemoryLogLength() int {
+func (r *RaftPersistenceStateImpl) InMemoryLogLength() int {
 	return len(r.logs)
 }
 
 // retain only the latest snapshot
-func (r *RaftPersistanceStateImpl) cleanupSnapshot(ctx context.Context, sm common.SnapshotMetadata) (err error) {
+func (r *RaftPersistenceStateImpl) cleanupSnapshot(ctx context.Context, sm common.SnapshotMetadata) (err error) {
 	ctx, span := tracer.Start(ctx, "CleanupSnapshot")
 	defer span.End()
 
@@ -124,13 +124,13 @@ func (r *RaftPersistanceStateImpl) cleanupSnapshot(ctx context.Context, sm commo
 }
 
 // to read snapshot as a sequence of small chunks
-func (r *RaftPersistanceStateImpl) StreamSnapshot(ctx context.Context, sm common.SnapshotMetadata, offset int64, maxLength int) (data []byte, eof bool, err error) {
+func (r *RaftPersistenceStateImpl) StreamSnapshot(ctx context.Context, sm common.SnapshotMetadata, offset int64, maxLength int) (data []byte, eof bool, err error) {
 	fileName := sm.FileName
 	return r.storage.StreamObject(ctx, fileName, offset, maxLength)
 }
 
 // to write snapshot as a sequence of small chunks
-func (r *RaftPersistanceStateImpl) InstallSnapshot(ctx context.Context, fileName string, offset int64, data []byte) (err error) {
+func (r *RaftPersistenceStateImpl) InstallSnapshot(ctx context.Context, fileName string, offset int64, data []byte) (err error) {
 	ctx, span := tracer.Start(ctx, "InstallSnapshot")
 	defer span.End()
 
@@ -154,7 +154,7 @@ func (r *RaftPersistanceStateImpl) InstallSnapshot(ctx context.Context, fileName
 
 // snapshot will be write as a sequence of small chunks into a temporary file,
 // this function will rename the temporary into a standard snapshot file name.
-func (r *RaftPersistanceStateImpl) CommitSnapshot(ctx context.Context, sm common.SnapshotMetadata) (err error) {
+func (r *RaftPersistenceStateImpl) CommitSnapshot(ctx context.Context, sm common.SnapshotMetadata) (err error) {
 	ctx, span := tracer.Start(ctx, "CommitSnapshot")
 	defer span.End()
 
@@ -196,7 +196,7 @@ func (r *RaftPersistanceStateImpl) CommitSnapshot(ctx context.Context, sm common
 }
 
 // save the whole snapshot into file at once
-func (r *RaftPersistanceStateImpl) SaveSnapshot(ctx context.Context, snapshot *common.Snapshot) (err error) {
+func (r *RaftPersistenceStateImpl) SaveSnapshot(ctx context.Context, snapshot *common.Snapshot) (err error) {
 	ctx, span := tracer.Start(ctx, "SaveSnapshot")
 	defer span.End()
 
@@ -227,7 +227,7 @@ func (r *RaftPersistanceStateImpl) SaveSnapshot(ctx context.Context, snapshot *c
 	return nil
 }
 
-func (r *RaftPersistanceStateImpl) ReadLatestSnapshot(ctx context.Context) (snap *common.Snapshot, err error) {
+func (r *RaftPersistenceStateImpl) ReadLatestSnapshot(ctx context.Context) (snap *common.Snapshot, err error) {
 	r.lock.RLock()
 	latestSnapshot := r.latestSnapshot
 	r.lock.RUnlock()
@@ -246,7 +246,7 @@ func (r *RaftPersistanceStateImpl) ReadLatestSnapshot(ctx context.Context) (snap
 	return snap, nil
 }
 
-func (r *RaftPersistanceStateImpl) GetLog(index int) (common.Log, error) {
+func (r *RaftPersistenceStateImpl) GetLog(index int) (common.Log, error) {
 	r.lock.RLock()
 	defer r.lock.RUnlock()
 
@@ -274,19 +274,19 @@ func (r *RaftPersistanceStateImpl) GetLog(index int) (common.Log, error) {
 	return r.logs[physicalIndex], nil
 }
 
-func (r *RaftPersistanceStateImpl) LogLength() int {
+func (r *RaftPersistenceStateImpl) LogLength() int {
 	r.lock.RLock()
 	defer r.lock.RUnlock()
 	return r.logLength()
 }
 
-func (r *RaftPersistanceStateImpl) logLength() int {
+func (r *RaftPersistenceStateImpl) logLength() int {
 	base := r.latestSnapshot.LastLogIndex
 
 	return base + len(r.logs)
 }
 
-func (r *RaftPersistanceStateImpl) AppendLog(ctx context.Context, logItems []common.Log) (index int, err error) {
+func (r *RaftPersistenceStateImpl) AppendLog(ctx context.Context, logItems []common.Log) (index int, err error) {
 	keyValuePairs := []string{}
 	for i := 0; i < len(logItems); i++ {
 		keyValuePairs = append(keyValuePairs, "append_log", logItems[i].ToString())
@@ -307,7 +307,7 @@ func (r *RaftPersistanceStateImpl) AppendLog(ctx context.Context, logItems []com
 }
 
 // delete all logs that are in memory
-func (r *RaftPersistanceStateImpl) DeleteAllLog(ctx context.Context) (err error) {
+func (r *RaftPersistenceStateImpl) DeleteAllLog(ctx context.Context) (err error) {
 	deletedLogCount := len(r.logs)
 	if err := r.storage.AppendWal(r.metadata(), "delete_log", strconv.Itoa(deletedLogCount)); err != nil {
 		return err
@@ -320,7 +320,7 @@ func (r *RaftPersistanceStateImpl) DeleteAllLog(ctx context.Context) (err error)
 	return nil
 }
 
-func (r *RaftPersistanceStateImpl) DeleteLogFrom(ctx context.Context, index int) (deletedLogs []common.Log, err error) {
+func (r *RaftPersistenceStateImpl) DeleteLogFrom(ctx context.Context, index int) (deletedLogs []common.Log, err error) {
 	r.lock.Lock()
 	defer r.lock.Unlock()
 
@@ -354,7 +354,7 @@ func (r *RaftPersistanceStateImpl) DeleteLogFrom(ctx context.Context, index int)
 // after the prefix WAL get trim, we will lost some information.
 // so every the underlying storage create a new WAL,
 // it will write some necessary data in the beginning of new WAL.
-func (r *RaftPersistanceStateImpl) metadata() []string {
+func (r *RaftPersistenceStateImpl) metadata() []string {
 	index, term := r.lastLogInfo()
 	return []string{
 		"voted_for", strconv.Itoa(r.votedFor),
@@ -364,21 +364,21 @@ func (r *RaftPersistanceStateImpl) metadata() []string {
 	}
 }
 
-func (r *RaftPersistanceStateImpl) GetCurrentTerm() int {
+func (r *RaftPersistenceStateImpl) GetCurrentTerm() int {
 	r.lock.RLock()
 	defer r.lock.RUnlock()
 
 	return r.currentTerm
 }
 
-func (r *RaftPersistanceStateImpl) GetVotedFor() int {
+func (r *RaftPersistenceStateImpl) GetVotedFor() int {
 	r.lock.RLock()
 	defer r.lock.RUnlock()
 
 	return r.votedFor
 }
 
-func (r *RaftPersistanceStateImpl) SetCurrentTerm(ctx context.Context, currentTerm int) (err error) {
+func (r *RaftPersistenceStateImpl) SetCurrentTerm(ctx context.Context, currentTerm int) (err error) {
 	err = r.storage.AppendWal(r.metadata(), "current_term", strconv.Itoa(currentTerm))
 	if err != nil {
 		return err
@@ -391,7 +391,7 @@ func (r *RaftPersistanceStateImpl) SetCurrentTerm(ctx context.Context, currentTe
 	return nil
 }
 
-func (r *RaftPersistanceStateImpl) SetVotedFor(ctx context.Context, votedFor int) (err error) {
+func (r *RaftPersistenceStateImpl) SetVotedFor(ctx context.Context, votedFor int) (err error) {
 	err = r.storage.AppendWal(r.metadata(), "voted_for", strconv.Itoa(votedFor))
 	if err != nil {
 		return err
@@ -404,11 +404,11 @@ func (r *RaftPersistanceStateImpl) SetVotedFor(ctx context.Context, votedFor int
 	return nil
 }
 
-func (r *RaftPersistanceStateImpl) GetLatestSnapshotMetadata() (snap common.SnapshotMetadata) {
+func (r *RaftPersistenceStateImpl) GetLatestSnapshotMetadata() (snap common.SnapshotMetadata) {
 	return r.latestSnapshot
 }
 
-func (r *RaftPersistanceStateImpl) trimPrefixLog(newSnapshot common.SnapshotMetadata) {
+func (r *RaftPersistenceStateImpl) trimPrefixLog(newSnapshot common.SnapshotMetadata) {
 	base := r.latestSnapshot.LastLogIndex
 
 	target := newSnapshot.LastLogIndex - base
@@ -418,14 +418,14 @@ func (r *RaftPersistanceStateImpl) trimPrefixLog(newSnapshot common.SnapshotMeta
 	}
 }
 
-func (n *RaftPersistanceStateImpl) LastLogInfo() (index, term int) {
+func (n *RaftPersistenceStateImpl) LastLogInfo() (index, term int) {
 	n.lock.RLock()
 	defer n.lock.RUnlock()
 
 	return n.lastLogInfo()
 }
 
-func (n *RaftPersistanceStateImpl) GetLastLog() (common.Log, error) {
+func (n *RaftPersistenceStateImpl) GetLastLog() (common.Log, error) {
 	sm := n.latestSnapshot
 	base := sm.LastLogIndex
 
@@ -445,7 +445,7 @@ func (n *RaftPersistanceStateImpl) GetLastLog() (common.Log, error) {
 	return common.Log{}, errors.New("can't get last log")
 }
 
-func (n *RaftPersistanceStateImpl) lastLogInfo() (index, term int) {
+func (n *RaftPersistenceStateImpl) lastLogInfo() (index, term int) {
 	sm := n.latestSnapshot
 	base := sm.LastLogIndex
 
@@ -463,7 +463,7 @@ func (n *RaftPersistanceStateImpl) lastLogInfo() (index, term int) {
 	return 0, -1
 }
 
-func (r *RaftPersistanceStateImpl) Deserialize(keyValuePairs []string, snapshot common.SnapshotMetadata) (lastLogIndex int, err error) {
+func (r *RaftPersistenceStateImpl) Deserialize(keyValuePairs []string, snapshot common.SnapshotMetadata) (lastLogIndex int, err error) {
 	r.lock.RLock()
 	defer r.lock.RUnlock()
 	// index of the last logs that get recorded in the current WAL file

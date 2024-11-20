@@ -10,7 +10,7 @@ import (
 	"khanh/raft-go/logic"
 	"khanh/raft-go/node"
 	"khanh/raft-go/observability"
-	"khanh/raft-go/persistance_state"
+	"khanh/raft-go/persistence_state"
 	"khanh/raft-go/rpc_proxy"
 	"khanh/raft-go/state_machine"
 	"khanh/raft-go/storage"
@@ -139,7 +139,7 @@ func main() {
 		logger.Fatal("new storage", "error", err.Error())
 	}
 
-	snapshot, raftPersistState, tmpClusterMembers, err := persistance_state.Deserialize(ctx, storage, config.Cluster.Mode, logger)
+	snapshot, raftPersistState, tmpClusterMembers, err := persistence_state.Deserialize(ctx, storage, config.Cluster.Mode, logger)
 	if err != nil {
 		logger.Fatal("Deserialize system", "error", err.Error())
 	}

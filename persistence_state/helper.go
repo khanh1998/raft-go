@@ -1,4 +1,4 @@
-package persistance_state
+package persistence_state
 
 import (
 	"context"
@@ -31,9 +31,9 @@ func findLatestSnapshot(fileNames []string) (fileName string, err error) {
 	return fileName, nil
 }
 
-func Deserialize(ctx context.Context, s WalReader, clusterMode common.ClusterMode, logger observability.Logger) (latestSnapshot *common.Snapshot, raftPersistedState *RaftPersistanceStateImpl, clusterMembers []common.ClusterMember, err error) {
+func Deserialize(ctx context.Context, s WalReader, clusterMode common.ClusterMode, logger observability.Logger) (latestSnapshot *common.Snapshot, raftPersistedState *RaftPersistenceStateImpl, clusterMembers []common.ClusterMember, err error) {
 	latestSnapshot = common.NewSnapshot()
-	raftPersistedState = &RaftPersistanceStateImpl{
+	raftPersistedState = &RaftPersistenceStateImpl{
 		votedFor:    0,
 		currentTerm: 0,
 		logs:        []common.Log{},

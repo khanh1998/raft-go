@@ -8,7 +8,7 @@ import (
 	"khanh/raft-go/logic"
 	"khanh/raft-go/node"
 	"khanh/raft-go/observability"
-	"khanh/raft-go/persistance_state"
+	"khanh/raft-go/persistence_state"
 	"khanh/raft-go/rpc_proxy"
 	"khanh/raft-go/state_machine"
 	"khanh/raft-go/storage"
@@ -64,7 +64,7 @@ func (c *Cluster) createNewNode(ctx context.Context, id int) error {
 		return err
 	}
 
-	snapshot, raftPersistState, clusterMembers, err := persistance_state.Deserialize(ctx, storage, common.Dynamic, c.log)
+	snapshot, raftPersistState, clusterMembers, err := persistence_state.Deserialize(ctx, storage, common.Dynamic, c.log)
 	if err != nil {
 		return err
 	}

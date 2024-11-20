@@ -1,4 +1,4 @@
-package persistance_state
+package persistence_state
 
 import (
 	"context"
@@ -11,7 +11,7 @@ import (
 	"testing"
 )
 
-func TestRaftPersistanceStateImpl_WalCleanup(t *testing.T) {
+func TestRaftPersistenceStateImpl_WalCleanup(t *testing.T) {
 	logger := observability.NewZerologForTest()
 
 	type fields struct {
@@ -105,18 +105,18 @@ func TestRaftPersistanceStateImpl_WalCleanup(t *testing.T) {
 		t.Run(tt.name, func(t *testing.T) {
 			fw := tt.fields.fileWrapper
 			s := storage.NewStorageForTest(tt.fields.storage, &fw)
-			r := &RaftPersistanceStateImpl{
+			r := &RaftPersistenceStateImpl{
 				latestSnapshot: tt.fields.latestSnapshot,
 				storage:        s,
 				lock:           sync.RWMutex{},
 				logger:         tt.fields.logger,
 			}
 			if err := r.cleanupWal(context.Background(), tt.args.sm); (err != nil) != tt.wantErr {
-				t.Errorf("RaftPersistanceStateImpl.WalCleanup() error = %v, wantErr %v", err, tt.wantErr)
+				t.Errorf("RaftPersistenceStateImpl.WalCleanup() error = %v, wantErr %v", err, tt.wantErr)
 			}
 
 			if !reflect.DeepEqual(fw.Data, tt.wantData) {
-				t.Errorf("RaftPersistanceStateImpl.WalCleanup() data = %v, want %v", tt.fields.fileWrapper.Data, tt.wantData)
+				t.Errorf("RaftPersistenceStateImpl.WalCleanup() data = %v, want %v", tt.fields.fileWrapper.Data, tt.wantData)
 			}
 		})
 	}

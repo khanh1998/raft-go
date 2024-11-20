@@ -5,7 +5,7 @@ import (
 	"fmt"
 	"khanh/raft-go/common"
 	"khanh/raft-go/observability"
-	"khanh/raft-go/persistance_state"
+	"khanh/raft-go/persistence_state"
 	"khanh/raft-go/state_machine"
 	"khanh/raft-go/storage"
 	"testing"
@@ -28,7 +28,7 @@ func Test_nodeImpl_RequestVote(t *testing.T) {
 		{
 			name: "1. Reply false if term < currentTerm (§5.1)",
 			n: RaftBrainImpl{
-				persistState: persistance_state.NewRaftPersistanceState(persistance_state.NewRaftPersistanceStateParams{
+				persistState: persistence_state.NewRaftPersistenceState(persistence_state.NewRaftPersistenceStateParams{
 					CurrentTerm: 3,
 					Storage: storage.NewStorageForTest(
 						storage.NewStorageParams{WalSize: 1024, DataFolder: "data/", Logger: logger},
@@ -45,7 +45,7 @@ func Test_nodeImpl_RequestVote(t *testing.T) {
 		{
 			name: "2. If votedFor is null or candidateId, and candidate’s log is at least as up-to-date as receiver’s log, grant vote (§5.2, §5.4)",
 			n: RaftBrainImpl{
-				persistState: persistance_state.NewRaftPersistanceState(persistance_state.NewRaftPersistanceStateParams{
+				persistState: persistence_state.NewRaftPersistenceState(persistence_state.NewRaftPersistenceStateParams{
 					CurrentTerm: 3,
 					VotedFor:    4,
 					Storage: storage.NewStorageForTest(
@@ -63,7 +63,7 @@ func Test_nodeImpl_RequestVote(t *testing.T) {
 		{
 			name: "2. If votedFor is null or candidateId, and candidate’s log is at least as up-to-date as receiver’s log, grant vote (§5.2, §5.4)",
 			n: RaftBrainImpl{
-				persistState: persistance_state.NewRaftPersistanceState(persistance_state.NewRaftPersistanceStateParams{
+				persistState: persistence_state.NewRaftPersistenceState(persistence_state.NewRaftPersistenceStateParams{
 					CurrentTerm: 3,
 					VotedFor:    0,
 					Logs:        []common.Log{{Term: 1}, {Term: 2}, {Term: 3}},
@@ -82,7 +82,7 @@ func Test_nodeImpl_RequestVote(t *testing.T) {
 		{
 			name: "2. If votedFor is null or candidateId, and candidate’s log is at least as up-to-date as receiver’s log, grant vote (§5.2, §5.4)",
 			n: RaftBrainImpl{
-				persistState: persistance_state.NewRaftPersistanceState(persistance_state.NewRaftPersistanceStateParams{
+				persistState: persistence_state.NewRaftPersistenceState(persistence_state.NewRaftPersistenceStateParams{
 					CurrentTerm: 3,
 					VotedFor:    0,
 					Logs:        []common.Log{{Term: 1}, {Term: 2}, {Term: 3}},
@@ -122,7 +122,7 @@ func Test_nodeImpl_AppendEntries(t *testing.T) {
 
 	type TestCase struct {
 		name    string
-		ps      *persistance_state.RaftPersistanceStateImpl
+		ps      *persistence_state.RaftPersistenceStateImpl
 		n       RaftBrainImpl
 		in      common.AppendEntriesInput
 		out     common.AppendEntriesOutput
@@ -134,7 +134,7 @@ func Test_nodeImpl_AppendEntries(t *testing.T) {
 	testCases := []TestCase{
 		{
 			name: "1. Reply false if term < currentTerm (§5.1)",
-			ps: persistance_state.NewRaftPersistanceState(persistance_state.NewRaftPersistanceStateParams{
+			ps: persistence_state.NewRaftPersistenceState(persistence_state.NewRaftPersistenceStateParams{
 				CurrentTerm: 5,
 				Storage: storage.NewStorageForTest(
 					storage.NewStorageParams{WalSize: 1024, DataFolder: "data/", Logger: logger},
@@ -162,7 +162,7 @@ func Test_nodeImpl_AppendEntries(t *testing.T) {
 		},
 		{
 			name: "2. Reply false if log doesn’t contain an entry at prevLogIndex whose term matches prevLogTerm (§5.3)",
-			ps: persistance_state.NewRaftPersistanceState(persistance_state.NewRaftPersistanceStateParams{
+			ps: persistence_state.NewRaftPersistenceState(persistence_state.NewRaftPersistenceStateParams{
 				CurrentTerm: 2,
 				Logs:        []common.Log{{Term: 1}, {Term: 1}},
 				Storage: storage.NewStorageForTest(
@@ -193,7 +193,7 @@ func Test_nodeImpl_AppendEntries(t *testing.T) {
 		},
 		{
 			name: "2. Reply false if log doesn’t contain an entry at prevLogIndex whose term matches prevLogTerm (§5.3)",
-			ps: persistance_state.NewRaftPersistanceState(persistance_state.NewRaftPersistanceStateParams{
+			ps: persistence_state.NewRaftPersistenceState(persistence_state.NewRaftPersistenceStateParams{
 				CurrentTerm: 2,
 				Logs:        []common.Log{},
 				Storage: storage.NewStorageForTest(
@@ -224,7 +224,7 @@ func Test_nodeImpl_AppendEntries(t *testing.T) {
 		},
 		{
 			name: "2. Reply false if log doesn’t contain an entry at prevLogIndex whose term matches prevLogTerm (§5.3)",
-			ps: persistance_state.NewRaftPersistanceState(persistance_state.NewRaftPersistanceStateParams{
+			ps: persistence_state.NewRaftPersistenceState(persistence_state.NewRaftPersistenceStateParams{
 				CurrentTerm: 2,
 				Logs:        []common.Log{{Term: 1}},
 				Storage: storage.NewStorageForTest(
@@ -255,7 +255,7 @@ func Test_nodeImpl_AppendEntries(t *testing.T) {
 		},
 		{
 			name: "3. If an existing entry conflicts with a new one (same index but different terms), delete the existing entry and all that follow it (§5.3)",
-			ps: persistance_state.NewRaftPersistanceState(persistance_state.NewRaftPersistanceStateParams{
+			ps: persistence_state.NewRaftPersistenceState(persistence_state.NewRaftPersistenceStateParams{
 				VotedFor:    5,
 				CurrentTerm: 3,
 				Logs: []common.Log{
@@ -292,7 +292,7 @@ func Test_nodeImpl_AppendEntries(t *testing.T) {
 		},
 		{
 			name: "4. Append any new entries not already in the log",
-			ps: persistance_state.NewRaftPersistanceState(persistance_state.NewRaftPersistanceStateParams{
+			ps: persistence_state.NewRaftPersistenceState(persistence_state.NewRaftPersistenceStateParams{
 				VotedFor:    5,
 				CurrentTerm: 3,
 				Logs:        []common.Log{},
@@ -328,7 +328,7 @@ func Test_nodeImpl_AppendEntries(t *testing.T) {
 		},
 		{
 			name: "4. Append any new entries not already in the log",
-			ps: persistance_state.NewRaftPersistanceState(persistance_state.NewRaftPersistanceStateParams{
+			ps: persistence_state.NewRaftPersistenceState(persistence_state.NewRaftPersistenceStateParams{
 				VotedFor:    5,
 				CurrentTerm: 3,
 				Logs: []common.Log{
@@ -367,7 +367,7 @@ func Test_nodeImpl_AppendEntries(t *testing.T) {
 		},
 		{
 			name: "5. If leaderCommit > commitIndex, set commitIndex = min(leaderCommit, index of last new entry)",
-			ps: persistance_state.NewRaftPersistanceState(persistance_state.NewRaftPersistanceStateParams{
+			ps: persistence_state.NewRaftPersistenceState(persistence_state.NewRaftPersistenceStateParams{
 				VotedFor:    5,
 				CurrentTerm: 3,
 				Logs: []common.Log{
@@ -403,7 +403,7 @@ func Test_nodeImpl_AppendEntries(t *testing.T) {
 		},
 		{
 			name: "5. If leaderCommit > commitIndex, set commitIndex = min(leaderCommit, index of last new entry)",
-			ps: persistance_state.NewRaftPersistanceState(persistance_state.NewRaftPersistanceStateParams{
+			ps: persistence_state.NewRaftPersistenceState(persistence_state.NewRaftPersistenceStateParams{
 				VotedFor:    1,
 				CurrentTerm: 1,
 				Logs:        []common.Log{},
