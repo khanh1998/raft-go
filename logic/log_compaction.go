@@ -110,7 +110,7 @@ func (n *RaftBrainImpl) InstallSnapshot(ctx context.Context, input *common.Insta
 	}
 
 	// load cluster config
-	members := n.stateMachine.GetMembers()
+	members := n.stateMachine.GetLastConfig()
 	for _, mem := range members {
 		err = n.addMember(mem.ID, mem.HttpUrl, mem.RpcUrl)
 		if err != nil {

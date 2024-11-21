@@ -200,7 +200,6 @@ func TestRaftBrainImpl_deleteLogFrom(t *testing.T) {
 	type fields struct {
 		clusterClock              *ClusterClock
 		logger                    observability.Logger
-		db                        Persistence
 		members                   []common.ClusterMember
 		nextMemberId              int
 		state                     common.RaftState

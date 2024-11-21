@@ -140,7 +140,6 @@ type SimpleStateMachine interface {
 	Process(ctx context.Context, logIndex int, log common.Log) (result string, err error)
 	StartSnapshot(ctx context.Context) error
 	GetLastConfig() map[int]common.ClusterMember
-	GetMembers() []common.ClusterMember
 }
 
 type RPCProxy interface {
@@ -151,13 +150,6 @@ type RPCProxy interface {
 
 	ConnectToNewPeer(ctx context.Context, peerID int, peerURL string, retry int, retryDelay time.Duration) error
 	SendToVotingMember(ctx context.Context, peerId int, timeout *time.Duration) (err error)
-}
-
-type Persistence interface {
-	AppendKeyValuePairsMap(data map[string]string) error
-	AppendKeyValuePairsArray(keyValues ...string) error
-	ReadKeyValuePairsToMap(keys []string) (map[string]string, error)
-	ReadKeyValuePairsToArray() ([]string, error)
 }
 
 type PeerInfo struct {

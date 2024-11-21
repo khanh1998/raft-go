@@ -30,16 +30,16 @@ type KeyValueStateMachine struct {
 	clientSessionDuration uint64 // duration in nanosecond
 	logger                observability.Logger
 	snapshotLock          sync.Mutex // prevent more than one snapshot at the same time
-	persistanceState      RaftPersistanceState
+	persistenceState      RaftPersistenceState
 }
 
-type RaftPersistanceState interface {
+type RaftPersistenceState interface {
 	SaveSnapshot(ctx context.Context, snapshot *common.Snapshot) (err error)
 	ReadLatestSnapshot(ctx context.Context) (snap *common.Snapshot, err error)
 }
 
 type NewKeyValueStateMachineParams struct {
-	PersistState          RaftPersistanceState
+	PersistState          RaftPersistenceState
 	ClientSessionDuration uint64 // duration in nanosecond
 	Logger                observability.Logger
 	Snapshot              *common.Snapshot
@@ -49,7 +49,7 @@ func NewKeyValueStateMachine(params NewKeyValueStateMachineParams) *KeyValueStat
 	k := &KeyValueStateMachine{
 		clientSessionDuration: params.ClientSessionDuration,
 		logger:                params.Logger,
-		persistanceState:      params.PersistState,
+		persistenceState:      params.PersistState,
 	}
 
 	if params.Snapshot == nil {
@@ -78,8 +78,8 @@ func (k *KeyValueStateMachine) log() observability.Logger {
 	return sub
 }
 
-func (k *KeyValueStateMachine) SetPersistanceStatus(ps RaftPersistanceState) {
-	k.persistanceState = ps
+func (k *KeyValueStateMachine) SetPersistenceStatus(ps RaftPersistenceState) {
+	k.persistenceState = ps
 }
 
 func (k *KeyValueStateMachine) setSession(clientID int, sequenceNum int, response string) {
@@ -96,7 +96,7 @@ func (k *KeyValueStateMachine) Reset(ctx context.Context) (err error) {
 	k.lock.Lock()
 	defer k.lock.Unlock()
 
-	k.current, err = k.persistanceState.ReadLatestSnapshot(ctx)
+	k.current, err = k.persistenceState.ReadLatestSnapshot(ctx)
 	if err != nil {
 		return err
 	}
@@ -137,7 +137,7 @@ func (k *KeyValueStateMachine) StartSnapshot(ctx context.Context) (err error) {
 		k.snapshotLock.Lock()
 		defer k.snapshotLock.Unlock()
 
-		err = k.persistanceState.SaveSnapshot(ctx, snapshot)
+		err = k.persistenceState.SaveSnapshot(ctx, snapshot)
 		if err != nil {
 			k.log().ErrorContext(ctx, "StartSnapshot_SaveSnapshot", err)
 		}
