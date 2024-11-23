@@ -24,7 +24,7 @@ func TestKeyValueStateMachine_Process(t *testing.T) {
 		name       string
 		fields     fields
 		args       args
-		wantResult string
+		wantResult common.LogResult
 		wantFields *fields
 		wantErr    bool
 	}{

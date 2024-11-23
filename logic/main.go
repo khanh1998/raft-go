@@ -118,7 +118,7 @@ func (k *RaftBrainImpl) SubscribeToMemberChangeEvent(subscriber MemberChangeSubs
 }
 
 type AsyncResponseItem struct {
-	Response string
+	Response common.LogResult
 	Err      error
 }
 type AsyncResponse struct {
@@ -138,7 +138,7 @@ type LogAppliedEvent struct {
 
 type SimpleStateMachine interface {
 	Reset(ctx context.Context) error
-	Process(ctx context.Context, logIndex int, log common.Log) (result string, err error)
+	Process(ctx context.Context, logIndex int, log common.Log) (result common.LogResult, err error)
 	StartSnapshot(ctx context.Context) error
 	GetLastConfig() map[int]common.ClusterMember
 }

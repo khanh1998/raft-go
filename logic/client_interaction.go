@@ -29,7 +29,7 @@ func (r *RaftBrainImpl) KeepAlive(ctx context.Context, input common.Log, output 
 	defer span.End()
 	defer func() {
 		if output.Status == common.StatusNotOK {
-			span.SetStatus(codes.Error, output.Response)
+			span.SetStatus(codes.Error, err.Error())
 		} else {
 			span.SetStatus(codes.Ok, "finished client request")
 		}
@@ -52,7 +52,12 @@ func (r *RaftBrainImpl) KeepAlive(ctx context.Context, input common.Log, output 
 
 	newLog, err := r.logFactory.AttachTermAndTime(input, r.GetCurrentTerm(), r.clusterClock.LeaderStamp())
 	if err != nil {
-		return err
+		*output = common.KeepAliveClientOutput{
+			Status:   common.StatusNotOK,
+			Response: err.Error(),
+		}
+
+		return nil
 	}
 
 	index, err := r.appendLog(ctx, newLog)
@@ -71,7 +76,7 @@ func (r *RaftBrainImpl) KeepAlive(ctx context.Context, input common.Log, output 
 	span.AddEvent("log appended")
 
 	var status common.ClientRequestStatus = common.StatusOK
-	var response string = ""
+	var response common.LogResult
 
 	if err := r.arm.Register(index); err != nil {
 		r.log().ErrorContext(ctx, "KeepAlive_Register", err)
@@ -113,7 +118,7 @@ func (r *RaftBrainImpl) ClientRequest(ctx context.Context, input common.Log, out
 
 	defer func() {
 		if output.Status == common.StatusNotOK {
-			span.SetStatus(codes.Error, output.Response)
+			span.SetStatus(codes.Error, err.Error())
 		} else {
 			span.SetStatus(codes.Ok, "finished client request")
 		}
@@ -136,7 +141,12 @@ func (r *RaftBrainImpl) ClientRequest(ctx context.Context, input common.Log, out
 
 	newLog, err := r.logFactory.AttachTermAndTime(input, r.GetCurrentTerm(), r.clusterClock.LeaderStamp())
 	if err != nil {
-		return err
+		*output = common.ClientRequestOutput{
+			Status:   common.StatusNotOK,
+			Response: err.Error(),
+		}
+
+		return nil
 	}
 
 	index, err := r.appendLog(ctx, newLog)
@@ -155,7 +165,7 @@ func (r *RaftBrainImpl) ClientRequest(ctx context.Context, input common.Log, out
 	span.AddEvent("log appended")
 
 	var status common.ClientRequestStatus = common.StatusOK
-	var response string = ""
+	var response common.LogResult
 
 	if err := r.arm.Register(index); err != nil {
 		r.log().ErrorContext(ctx, "ClientRequest_Register", err)
@@ -197,7 +207,7 @@ func (r *RaftBrainImpl) RegisterClient(ctx context.Context, input common.Log, ou
 
 	defer func() {
 		if output.Status == common.StatusNotOK {
-			span.SetStatus(codes.Error, output.Response)
+			span.SetStatus(codes.Error, err.Error())
 		} else {
 			span.SetStatus(codes.Ok, "finished client request")
 		}
@@ -221,7 +231,12 @@ func (r *RaftBrainImpl) RegisterClient(ctx context.Context, input common.Log, ou
 
 	newLog, err := r.logFactory.AttachTermAndTime(input, r.GetCurrentTerm(), r.clusterClock.LeaderStamp())
 	if err != nil {
-		return err
+		*output = common.RegisterClientOutput{
+			Status:   common.StatusNotOK,
+			Response: err.Error(),
+		}
+
+		return nil
 	}
 
 	index, err := r.appendLog(ctx, newLog)
@@ -278,7 +293,7 @@ func (r *RaftBrainImpl) ClientQuery(ctx context.Context, input common.Log, outpu
 
 	defer func() {
 		if err != nil {
-			span.SetStatus(codes.Error, output.Response)
+			span.SetStatus(codes.Error, "")
 		} else {
 			span.SetStatus(codes.Ok, "query success")
 		}
@@ -298,7 +313,12 @@ func (r *RaftBrainImpl) ClientQuery(ctx context.Context, input common.Log, outpu
 
 	log, err := r.logFactory.AttachTermAndTime(input, r.GetCurrentTerm(), r.clusterClock.LeaderStamp())
 	if err != nil {
+		*output = common.ClientQueryOutput{
+			Status:   common.StatusNotOK,
+			Response: err.Error(),
+		}
 
+		return nil
 	}
 
 	var ok bool

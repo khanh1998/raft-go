@@ -18,7 +18,7 @@ type ClientRequestInput struct {
 
 type ClientRequestOutput struct {
 	Status     ClientRequestStatus `json:"status"`
-	Response   string              `json:"response"`
+	Response   LogResult           `json:"response"`
 	LeaderHint string              `json:"leader_hint"`
 }
 
@@ -26,7 +26,7 @@ type RegisterClientInput struct{}
 type RegisterClientOutput struct {
 	Status     ClientRequestStatus `json:"status"`
 	LeaderHint string              `json:"leader_hint"`
-	Response   string              `json:"response,omitempty"`
+	Response   LogResult           `json:"response,omitempty"`
 }
 
 type KeepAliveClientInput struct {
@@ -37,7 +37,7 @@ type KeepAliveClientInput struct {
 type KeepAliveClientOutput struct {
 	Status     ClientRequestStatus `json:"status"`
 	LeaderHint string              `json:"leader_hint"`
-	Response   string              `json:"response,omitempty"`
+	Response   LogResult           `json:"response,omitempty"`
 }
 
 type ClientQueryInput struct {
@@ -46,6 +46,6 @@ type ClientQueryInput struct {
 
 type ClientQueryOutput struct {
 	Status     ClientRequestStatus `json:"status"`
-	Response   string              `json:"response"`
+	Response   LogResult           `json:"response"`
 	LeaderHint string              `json:"leader_hint"`
 }

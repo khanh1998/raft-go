@@ -2,6 +2,7 @@ package logic
 
 import (
 	"fmt"
+	"khanh/raft-go/common"
 	"sync"
 	"time"
 
@@ -44,7 +45,7 @@ func (a *AsyncResponseManager) Register(logIndex int) error {
 	return nil
 }
 
-func (a *AsyncResponseManager) PutResponse(logIndex int, msg string, resErr error, timeout time.Duration) error {
+func (a *AsyncResponseManager) PutResponse(logIndex int, msg common.LogResult, resErr error, timeout time.Duration) error {
 	a.lock.Lock()
 	index := AsyncResponseIndex{logIndex}
 
@@ -68,7 +69,7 @@ func (a *AsyncResponseManager) PutResponse(logIndex int, msg string, resErr erro
 }
 
 // blocking call
-func (a *AsyncResponseManager) TakeResponse(logIndex int, timeout time.Duration) (string, error) {
+func (a *AsyncResponseManager) TakeResponse(logIndex int, timeout time.Duration) (common.LogResult, error) {
 	a.lock.RLock()
 
 	index := AsyncResponseIndex{logIndex}

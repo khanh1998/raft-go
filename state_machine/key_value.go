@@ -147,7 +147,7 @@ func (k *KeyValueStateMachine) StartSnapshot(ctx context.Context) (err error) {
 	return nil
 }
 
-func (k *KeyValueStateMachine) Process(ctx context.Context, logIndex int, logI common.Log) (result string, err error) {
+func (k *KeyValueStateMachine) Process(ctx context.Context, logIndex int, logI common.Log) (result common.LogResult, err error) {
 	k.lock.Lock()
 	defer k.lock.Unlock()
 
@@ -168,7 +168,7 @@ func (k *KeyValueStateMachine) Process(ctx context.Context, logIndex int, logI c
 	}
 
 	defer func() {
-		k.setSession(log.ClientID, log.SequenceNum, result)
+		k.setSession(log.ClientID, log.SequenceNum, result.(string))
 
 		k.current.LastLogIndex = logIndex
 		k.current.LastLogTerm = log.Term

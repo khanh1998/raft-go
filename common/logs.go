@@ -1,5 +1,7 @@
 package common
 
+type LogResult interface{}
+
 // we will inject a sample concrete log to raft brain,
 // so it can call for example `CreateNoOp()` to create an internal NO-OP log.
 type Log interface {
