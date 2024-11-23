@@ -215,11 +215,11 @@ func (r *RPCProxyImpl) disconnectToPeer(ctx context.Context, peerID int) error {
 
 	r.log().DebugContext(ctx, "disconnectToPeer", "peerId", peerID)
 
-	r.setPeer(peerID, common.PeerRPCProxy{Conn: nil, URL: peer.URL})
-
 	if err := peer.Conn.Close(); err != nil {
-		return err
+		r.log().ErrorContext(ctx, "disconnectToPeer_close", err)
 	}
+
+	r.setPeer(peerID, common.PeerRPCProxy{Conn: nil, URL: peer.URL})
 
 	return nil
 }

@@ -64,7 +64,9 @@ func (c *Cluster) createNewNode(ctx context.Context, id int) error {
 		return err
 	}
 
-	snapshot, raftPersistState, clusterMembers, err := persistence_state.Deserialize(ctx, storage, common.Dynamic, c.log)
+	logFactory := common.ClassicLogFactory{}
+
+	snapshot, raftPersistState, clusterMembers, err := persistence_state.Deserialize(ctx, storage, common.Dynamic, c.log, logFactory)
 	if err != nil {
 		return err
 	}
@@ -92,6 +94,7 @@ func (c *Cluster) createNewNode(ctx context.Context, id int) error {
 			PersistenceState:  raftPersistState,
 			LogLengthLimit:    c.config.LogLengthLimit,
 			SnapshotChunkSize: c.config.SnapshotChunkSize,
+			LogFactory:        logFactory,
 		},
 		RPCProxy: rpc_proxy.NewRPCImplParams{
 			HostURL:              rpcUrl,

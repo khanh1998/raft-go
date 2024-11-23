@@ -85,7 +85,7 @@ func (n *RaftBrainImpl) AppendEntries(ctx context.Context, input *common.AppendE
 
 			return nil
 		case nil, common.ErrLogIsInSnapshot:
-			if logItem.Term != input.PrevLogTerm {
+			if logItem.GetTerm() != input.PrevLogTerm {
 				*output = common.AppendEntriesOutput{Term: currentTerm, Success: false, Message: MsgPreviousLogTermsAreNotMatched, NodeID: n.id}
 
 				return nil
@@ -95,7 +95,7 @@ func (n *RaftBrainImpl) AppendEntries(ctx context.Context, input *common.AppendE
 		// 3. If an existing entry conflicts with a new one (same index but different terms), delete the existing entry and all that follow it (§5.3)
 		logItem, err = n.GetLog(input.PrevLogIndex + 1)
 		if err == nil {
-			if logItem.Term != input.Term {
+			if logItem.GetTerm() != input.Term {
 				err := n.deleteLogFrom(ctx, input.PrevLogIndex+1)
 				if err != nil {
 					*output = common.AppendEntriesOutput{Term: currentTerm, Success: false, Message: MsgCannotDeleteLog, NodeID: n.id}
@@ -109,7 +109,7 @@ func (n *RaftBrainImpl) AppendEntries(ctx context.Context, input *common.AppendE
 		}
 
 		if err != nil && errors.Is(err, common.ErrLogIsInSnapshot) {
-			if logItem.Term != input.Term {
+			if logItem.GetTerm() != input.Term {
 				// delete latest snapshot
 				*output = common.AppendEntriesOutput{Term: currentTerm, Success: false, Message: MsgTheResponderSnapshotIsOutdated, NodeID: n.id}
 

@@ -40,3 +40,4 @@ todos:
 - async set, don't wait for log commit
 - allow node with some data to catch up, currently only completely new node (no data) can.
 - etcd v2.3 api clone
+- vault

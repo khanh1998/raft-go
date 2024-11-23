@@ -1,6 +1,7 @@
 package integration_testing
 
 import (
+	"os"
 	"strconv"
 	"strings"
 	"sync"
@@ -19,6 +20,7 @@ func random(min, max int, unit time.Duration) time.Duration {
 
 // This test demonstrates how you can use the key-locking feature to coordinate multiple concurrent processes taking turns and working together.
 func TestKeyLocking(t *testing.T) {
+	os.RemoveAll("data/")
 	c := NewCluster("config/3-nodes.yml")
 	defer c.Clean()
 

@@ -66,7 +66,7 @@ func Test_nodeImpl_RequestVote(t *testing.T) {
 				persistState: persistence_state.NewRaftPersistenceState(persistence_state.NewRaftPersistenceStateParams{
 					CurrentTerm: 3,
 					VotedFor:    0,
-					Logs:        []common.Log{{Term: 1}, {Term: 2}, {Term: 3}},
+					Logs:        []common.Log{common.ClassicLog{Term: 1}, common.ClassicLog{Term: 2}, common.ClassicLog{Term: 3}},
 					Storage: storage.NewStorageForTest(
 						storage.NewStorageParams{WalSize: 1024, DataFolder: "data/", Logger: logger},
 						storage.NewFileWrapperMock(),
@@ -85,7 +85,7 @@ func Test_nodeImpl_RequestVote(t *testing.T) {
 				persistState: persistence_state.NewRaftPersistenceState(persistence_state.NewRaftPersistenceStateParams{
 					CurrentTerm: 3,
 					VotedFor:    0,
-					Logs:        []common.Log{{Term: 1}, {Term: 2}, {Term: 3}},
+					Logs:        []common.Log{common.ClassicLog{Term: 1}, common.ClassicLog{Term: 2}, common.ClassicLog{Term: 3}},
 					Storage: storage.NewStorageForTest(
 						storage.NewStorageParams{WalSize: 1024, DataFolder: "data/", Logger: logger},
 						storage.NewFileWrapperMock(),
@@ -164,7 +164,7 @@ func Test_nodeImpl_AppendEntries(t *testing.T) {
 			name: "2. Reply false if log doesn’t contain an entry at prevLogIndex whose term matches prevLogTerm (§5.3)",
 			ps: persistence_state.NewRaftPersistenceState(persistence_state.NewRaftPersistenceStateParams{
 				CurrentTerm: 2,
-				Logs:        []common.Log{{Term: 1}, {Term: 1}},
+				Logs:        []common.Log{common.ClassicLog{Term: 1}, common.ClassicLog{Term: 1}},
 				Storage: storage.NewStorageForTest(
 					storage.NewStorageParams{WalSize: 1024, DataFolder: "data/", Logger: logger},
 					storage.NewFileWrapperMock(),
@@ -200,6 +200,7 @@ func Test_nodeImpl_AppendEntries(t *testing.T) {
 					storage.NewStorageParams{WalSize: 1024, DataFolder: "data/", Logger: logger},
 					storage.NewFileWrapperMock(),
 				),
+				LogFactory: common.ClassicLogFactory{},
 			}),
 			n: RaftBrainImpl{
 				persistState:        nil,
@@ -210,6 +211,7 @@ func Test_nodeImpl_AppendEntries(t *testing.T) {
 				electionTimeOutMax:  500,
 				stateMachine:        nil,
 				clusterClock:        NewClusterClock(),
+				logFactory:          common.ClassicLogFactory{},
 			},
 			in: common.AppendEntriesInput{
 				Term:         3,
@@ -226,11 +228,12 @@ func Test_nodeImpl_AppendEntries(t *testing.T) {
 			name: "2. Reply false if log doesn’t contain an entry at prevLogIndex whose term matches prevLogTerm (§5.3)",
 			ps: persistence_state.NewRaftPersistenceState(persistence_state.NewRaftPersistenceStateParams{
 				CurrentTerm: 2,
-				Logs:        []common.Log{{Term: 1}},
+				Logs:        []common.Log{common.ClassicLog{Term: 1}},
 				Storage: storage.NewStorageForTest(
 					storage.NewStorageParams{WalSize: 1024, DataFolder: "data/", Logger: logger},
 					storage.NewFileWrapperMock(),
 				),
+				LogFactory: common.ClassicLogFactory{},
 			}),
 			n: RaftBrainImpl{
 				persistState:        nil,
@@ -241,6 +244,7 @@ func Test_nodeImpl_AppendEntries(t *testing.T) {
 				electionTimeOutMax:  500,
 				stateMachine:        nil,
 				clusterClock:        NewClusterClock(),
+				logFactory:          common.ClassicLogFactory{},
 			},
 			in: common.AppendEntriesInput{
 				Term:         3,
@@ -259,14 +263,15 @@ func Test_nodeImpl_AppendEntries(t *testing.T) {
 				VotedFor:    5,
 				CurrentTerm: 3,
 				Logs: []common.Log{
-					{Term: 1, Command: "set x 5"},
-					{Term: 2, Command: "set x 5"},
-					{Term: 2, Command: "set x 5"},
+					common.ClassicLog{Term: 1, Command: "set x 5"},
+					common.ClassicLog{Term: 2, Command: "set x 5"},
+					common.ClassicLog{Term: 2, Command: "set x 5"},
 				},
 				Storage: storage.NewStorageForTest(
 					storage.NewStorageParams{WalSize: 1024, DataFolder: "data/", Logger: logger},
 					storage.NewFileWrapperMock(),
 				),
+				LogFactory: common.ClassicLogFactory{},
 			}),
 			n: RaftBrainImpl{
 				persistState:        nil,
@@ -277,6 +282,7 @@ func Test_nodeImpl_AppendEntries(t *testing.T) {
 				electionTimeOutMax:  500,
 				stateMachine:        nil,
 				clusterClock:        NewClusterClock(),
+				logFactory:          common.ClassicLogFactory{},
 			},
 			in: common.AppendEntriesInput{
 				Term:         3,
@@ -300,6 +306,7 @@ func Test_nodeImpl_AppendEntries(t *testing.T) {
 					storage.NewStorageParams{WalSize: 1024, DataFolder: "data/", Logger: logger},
 					storage.NewFileWrapperMock(),
 				),
+				LogFactory: common.ClassicLogFactory{},
 			}),
 			n: RaftBrainImpl{
 				persistState:        nil,
@@ -310,13 +317,14 @@ func Test_nodeImpl_AppendEntries(t *testing.T) {
 				electionTimeOutMax:  500,
 				stateMachine:        nil,
 				clusterClock:        NewClusterClock(),
+				logFactory:          common.ClassicLogFactory{},
 			},
 			in: common.AppendEntriesInput{
 				Term:         3,
 				PrevLogIndex: 0,
 				PrevLogTerm:  0,
 				Entries: []common.Log{
-					{Term: 1, Command: "set z 3"},
+					common.ClassicLog{Term: 1, Command: "set z 3"},
 				},
 			},
 			out: common.AppendEntriesOutput{
@@ -332,13 +340,14 @@ func Test_nodeImpl_AppendEntries(t *testing.T) {
 				VotedFor:    5,
 				CurrentTerm: 3,
 				Logs: []common.Log{
-					{Term: 1, Command: "set x 5"},
-					{Term: 2, Command: "set y 5"},
+					common.ClassicLog{Term: 1, Command: "set x 5"},
+					common.ClassicLog{Term: 2, Command: "set y 5"},
 				},
 				Storage: storage.NewStorageForTest(
 					storage.NewStorageParams{WalSize: 1024, DataFolder: "data/", Logger: logger},
 					storage.NewFileWrapperMock(),
 				),
+				LogFactory: common.ClassicLogFactory{},
 			}),
 			n: RaftBrainImpl{
 				persistState:        nil,
@@ -349,13 +358,14 @@ func Test_nodeImpl_AppendEntries(t *testing.T) {
 				electionTimeOutMax:  500,
 				stateMachine:        nil,
 				clusterClock:        NewClusterClock(),
+				logFactory:          common.ClassicLogFactory{},
 			},
 			in: common.AppendEntriesInput{
 				Term:         3,
 				PrevLogIndex: 2,
 				PrevLogTerm:  2,
 				Entries: []common.Log{
-					{Term: 1, Command: "set z 3"},
+					common.ClassicLog{Term: 1, Command: "set z 3"},
 				},
 			},
 			out: common.AppendEntriesOutput{
@@ -371,13 +381,14 @@ func Test_nodeImpl_AppendEntries(t *testing.T) {
 				VotedFor:    5,
 				CurrentTerm: 3,
 				Logs: []common.Log{
-					{Term: 1, Command: "set x 5"},
-					{Term: 2, Command: "set y 5"},
+					common.ClassicLog{Term: 1, Command: "set x 5"},
+					common.ClassicLog{Term: 2, Command: "set y 5"},
 				},
 				Storage: storage.NewStorageForTest(
 					storage.NewStorageParams{WalSize: 1024, DataFolder: "data/", Logger: logger},
 					storage.NewFileWrapperMock(),
 				),
+				LogFactory: common.ClassicLogFactory{},
 			}),
 			n: RaftBrainImpl{
 				persistState:        nil,
@@ -388,6 +399,7 @@ func Test_nodeImpl_AppendEntries(t *testing.T) {
 				electionTimeOutMax:  500,
 				stateMachine:        nil,
 				clusterClock:        NewClusterClock(),
+				logFactory:          common.ClassicLogFactory{},
 			},
 			in: common.AppendEntriesInput{
 				Term:         3,
@@ -411,6 +423,7 @@ func Test_nodeImpl_AppendEntries(t *testing.T) {
 					storage.NewStorageParams{WalSize: 1024, DataFolder: "data/", Logger: logger},
 					storage.NewFileWrapperMock(),
 				),
+				LogFactory: common.ClassicLogFactory{},
 			}),
 			n: RaftBrainImpl{
 				persistState:        nil,
@@ -421,6 +434,7 @@ func Test_nodeImpl_AppendEntries(t *testing.T) {
 				electionTimeOutMax:  500,
 				stateMachine:        nil,
 				clusterClock:        NewClusterClock(),
+				logFactory:          common.ClassicLogFactory{},
 			},
 			in: common.AppendEntriesInput{
 				Term:         1,

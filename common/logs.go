@@ -1,51 +1,29 @@
 package common
 
-import (
-	"errors"
-	"fmt"
-	"strconv"
-	"strings"
-)
-
-type Log struct {
-	Term        int
-	ClientID    int
-	SequenceNum int
-	ClusterTime uint64
-	Command     string
+// we will inject a sample concrete log to raft brain,
+// so it can call for example `CreateNoOp()` to create an internal NO-OP log.
+type Log interface {
+	Serialize() []byte
+	ToString() string
+	GetTerm() int
+	GetTime() uint64
+	DecomposeChangeSeverCommand() (addition bool, serverId int, httpUrl string, rpcUrl string, err error)
 }
 
-func (l Log) ToString() string {
-	return fmt.Sprintf("%d|%d|%d|%s|%s", l.Term, l.ClientID, l.SequenceNum, strconv.FormatUint(l.ClusterTime, 10), l.Command)
-}
-
-func NewLogFromString(s string) (Log, error) {
-	tokens := strings.Split(s, "|")
-	if len(tokens) != 5 {
-		return Log{}, errors.New("not enough token to create log")
-	}
-
-	term, err := strconv.ParseInt(tokens[0], 10, 32)
-	if err != nil {
-		return Log{}, err
-	}
-
-	clientID, err := strconv.ParseInt(tokens[1], 10, 32)
-	if err != nil {
-		return Log{}, err
-	}
-
-	sequenceNum, err := strconv.ParseInt(tokens[2], 10, 32)
-	if err != nil {
-		return Log{}, err
-	}
-
-	clusterTime, err := strconv.ParseUint(tokens[3], 10, 64)
-	if err != nil {
-		return Log{}, err
-	}
-
-	command := tokens[4]
-
-	return Log{Term: int(term), Command: command, ClientID: int(clientID), SequenceNum: int(sequenceNum), ClusterTime: clusterTime}, nil
+// Raft brain module need to create some logs internally,
+// but it don't what implementation of Log to use.
+type LogFactory interface {
+	AttachTermAndTime(log Log, term int, time uint64) (Log, error)
+	Empty() Log
+	Deserialize([]byte) (log Log, err error)
+	FromString(string) (log Log, err error)
+	// after a new leader elected, it will append a NO-OP log
+	NoOperation(term int, time uint64) Log
+	// for dynamic cluster,
+	// to add a new node (server, member) to the cluster
+	AddNewNode(term int, time uint64, nodeId int, httpUrl string, rpcUrl string) Log
+	// to remove a node from a cluster
+	RemoveNode(term int, time uint64, nodeId int, httpUrl string, rpcUrl string) Log
+	// periodically the brain need to commit time,
+	CreateTimeCommit(term int, nanosecond uint64) Log
 }

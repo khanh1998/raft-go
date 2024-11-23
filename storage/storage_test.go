@@ -54,7 +54,7 @@ func TestStorageImpl_AppendWal(t *testing.T) {
 			args: args{
 				metadata: []string{"current_term", "1", "voted_for", "3"},
 				keyValuesPairs: []string{
-					"append_log", common.Log{Term: 1, Command: "set x 1"}.ToString(),
+					"append_log", common.ClassicLog{Term: 1, Command: "set x 1"}.ToString(),
 				},
 			},
 			wantErr: false,
@@ -65,7 +65,7 @@ func TestStorageImpl_AppendWal(t *testing.T) {
 				Data: map[string][]string{
 					"data/wal.0001.dat": {
 						"current_term=1", "voted_for=3",
-						fmt.Sprintf("append_log=%s", common.Log{Term: 1, Command: "set x 1"}.ToString()),
+						fmt.Sprintf("append_log=%s", common.ClassicLog{Term: 1, Command: "set x 1"}.ToString()),
 					},
 				},
 				Size: map[string]int64{
@@ -94,7 +94,7 @@ func TestStorageImpl_AppendWal(t *testing.T) {
 			args: args{
 				metadata: []string{"current_term", "1", "voted_for", "3"},
 				keyValuesPairs: []string{
-					"append_log", common.Log{Term: 1, Command: "set x 1"}.ToString(),
+					"append_log", common.ClassicLog{Term: 1, Command: "set x 1"}.ToString(),
 				},
 			},
 			wantErr: false,
@@ -106,7 +106,7 @@ func TestStorageImpl_AppendWal(t *testing.T) {
 				Data: map[string][]string{
 					"data/wal.0001.dat": {
 						"current_term=1", "voted_for=3",
-						fmt.Sprintf("append_log=%s", common.Log{Term: 1, Command: "set x 1"}.ToString()),
+						fmt.Sprintf("append_log=%s", common.ClassicLog{Term: 1, Command: "set x 1"}.ToString()),
 					},
 					"data/wal.0002.dat": {
 						"current_term=1", "voted_for=3",

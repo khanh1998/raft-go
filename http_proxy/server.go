@@ -22,12 +22,12 @@ var (
 
 type RaftBrain interface {
 	// todo: remove returned error, error should be included in output
-	ClientRequest(ctx context.Context, input *common.ClientRequestInput, output *common.ClientRequestOutput) (err error)
-	RegisterClient(ctx context.Context, input *common.RegisterClientInput, output *common.RegisterClientOutput) (err error)
-	KeepAlive(ctx context.Context, input *common.KeepAliveClientInput, output *common.KeepAliveClientOutput) (err error)
-	ClientQuery(ctx context.Context, input *common.ClientQueryInput, output *common.ClientQueryOutput) (err error)
-	AddServer(ctx context.Context, input common.AddServerInput, output *common.AddServerOutput) (err error)
-	RemoveServer(ctx context.Context, input common.RemoveServerInput, output *common.RemoveServerOutput) (err error)
+	ClientRequest(ctx context.Context, input common.Log, output *common.ClientRequestOutput) (err error)
+	RegisterClient(ctx context.Context, input common.Log, output *common.RegisterClientOutput) (err error)
+	KeepAlive(ctx context.Context, input common.Log, output *common.KeepAliveClientOutput) (err error)
+	ClientQuery(ctx context.Context, input common.Log, output *common.ClientQueryOutput) (err error)
+	AddServer(ctx context.Context, input common.Log, output *common.AddServerOutput) (err error)
+	RemoveServer(ctx context.Context, input common.Log, output *common.RemoveServerOutput) (err error)
 	GetInfo() common.GetStatusResponse
 }
 
@@ -140,98 +140,75 @@ func (h *HttpProxy) cli(r *gin.Engine) {
 		switch cmdType {
 		case CommandTypeGet:
 			var response common.ClientQueryOutput
-			request := common.ClientQueryInput{
-				Query: requestData.Command,
+
+			log := common.ClassicLog{
+				Command: requestData.Command,
 			}
-			err = h.brain.ClientQuery(ctx, &request, &response)
+
+			err = h.brain.ClientQuery(ctx, log, &response)
 			responseData = common.ClientRequestOutput{
 				Status:     response.Status,
 				Response:   response.Response,
 				LeaderHint: response.LeaderHint,
 			}
 		case CommandTypeSet, CommandTypeDel:
-			request := common.ClientRequestInput{
+			log := common.ClassicLog{
 				ClientID:    requestData.ClientID,
 				SequenceNum: requestData.SequenceNum,
 				Command:     requestData.Command,
 			}
 			var response common.ClientRequestOutput
-			err = h.brain.ClientRequest(ctx, &request, &response)
+			err = h.brain.ClientRequest(ctx, log, &response)
 			responseData = common.ClientRequestOutput{
 				Status:     response.Status,
 				Response:   response.Response,
 				LeaderHint: response.LeaderHint,
 			}
 		case CommandTypeRegister:
-			var request common.RegisterClientInput
 			var response common.RegisterClientOutput
-			err = h.brain.RegisterClient(ctx, &request, &response)
+			log := common.ClassicLog{
+				Command: "register",
+			}
+			err = h.brain.RegisterClient(ctx, log, &response)
 			responseData = common.ClientRequestOutput{
 				Status:     response.Status,
 				LeaderHint: response.LeaderHint,
 				Response:   response.Response,
 			}
 		case CommandTypeKeepAlive:
-			request := common.KeepAliveClientInput{
+			log := common.ClassicLog{
 				ClientID:    requestData.ClientID,
 				SequenceNum: requestData.SequenceNum,
+				Command:     "keep-alive",
 			}
 			var response common.KeepAliveClientOutput
-			err = h.brain.KeepAlive(ctx, &request, &response)
+			err = h.brain.KeepAlive(ctx, log, &response)
 			responseData = common.ClientRequestOutput{
 				Status:     response.Status,
 				LeaderHint: response.LeaderHint,
 				Response:   response.Response,
 			}
 		case CommandTypeAddServer:
-			var (
-				httpUrl, rpcUrl string
-				id              int
-			)
-			id, httpUrl, rpcUrl, err = common.DecomposeAddServerCommand(requestData.Command)
-			if err != nil {
-				responseData = common.ClientRequestOutput{
-					Status:   common.StatusNotOK,
-					Response: "invalid command",
-				}
-			} else {
-				request := common.AddServerInput{
-					ID:               id,
-					NewServerHttpUrl: httpUrl,
-					NewServerRpcUrl:  rpcUrl,
-				}
-				var response common.AddServerOutput
-				err = h.brain.AddServer(ctx, request, &response)
-				responseData = common.ClientRequestOutput{
-					Status:     response.Status,
-					LeaderHint: response.LeaderHint,
-					Response:   response.Response,
-				}
+			log := common.ClassicLog{
+				Command: requestData.Command,
+			}
+			var response common.AddServerOutput
+			err = h.brain.AddServer(ctx, log, &response)
+			responseData = common.ClientRequestOutput{
+				Status:     response.Status,
+				LeaderHint: response.LeaderHint,
+				Response:   response.Response,
 			}
 		case CommandTypeRemoveServer:
-			var (
-				httpUrl, rpcUrl string
-				id              int
-			)
-			id, httpUrl, rpcUrl, err = common.DecomposeRemoveServerCommand(requestData.Command)
-			if err != nil {
-				responseData = common.ClientRequestOutput{
-					Status:   common.StatusNotOK,
-					Response: "invalid command",
-				}
-			} else {
-				request := common.RemoveServerInput{
-					ID:               id,
-					NewServerHttpUrl: httpUrl,
-					NewServerRpcUrl:  rpcUrl,
-				}
-				var response common.RemoveServerOutput
-				err = h.brain.RemoveServer(ctx, request, &response)
-				responseData = common.ClientRequestOutput{
-					Status:     response.Status,
-					LeaderHint: response.LeaderHint,
-					Response:   response.Response,
-				}
+			log := common.ClassicLog{
+				Command: requestData.Command,
+			}
+			var response common.RemoveServerOutput
+			err = h.brain.RemoveServer(ctx, log, &response)
+			responseData = common.ClientRequestOutput{
+				Status:     response.Status,
+				LeaderHint: response.LeaderHint,
+				Response:   response.Response,
 			}
 		}
 

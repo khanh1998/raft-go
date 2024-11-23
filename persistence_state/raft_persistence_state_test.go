@@ -34,10 +34,10 @@ func TestRaftPersistanceState_TrimPrefixLog(t *testing.T) {
 			name: "",
 			fields: fields{
 				Logs: []common.Log{
-					{Term: 1, Command: "set counter 1"},
-					{Term: 2, Command: "set counter 2"},
-					{Term: 3, Command: "set counter 3"},
-					{Term: 4, Command: "set counter 4"},
+					common.ClassicLog{Term: 1, Command: "set counter 1"},
+					common.ClassicLog{Term: 2, Command: "set counter 2"},
+					common.ClassicLog{Term: 3, Command: "set counter 3"},
+					common.ClassicLog{Term: 4, Command: "set counter 4"},
 				},
 			},
 			subcases: []subCase{
@@ -50,9 +50,9 @@ func TestRaftPersistanceState_TrimPrefixLog(t *testing.T) {
 						},
 					},
 					want: []common.Log{
-						{Term: 2, Command: "set counter 2"},
-						{Term: 3, Command: "set counter 3"},
-						{Term: 4, Command: "set counter 4"},
+						common.ClassicLog{Term: 2, Command: "set counter 2"},
+						common.ClassicLog{Term: 3, Command: "set counter 3"},
+						common.ClassicLog{Term: 4, Command: "set counter 4"},
 					},
 				},
 				{
@@ -64,7 +64,7 @@ func TestRaftPersistanceState_TrimPrefixLog(t *testing.T) {
 						},
 					},
 					want: []common.Log{
-						{Term: 4, Command: "set counter 4"},
+						common.ClassicLog{Term: 4, Command: "set counter 4"},
 					},
 				},
 				{
@@ -112,7 +112,9 @@ func TestRaftPersistanceState_Deserialize(t *testing.T) {
 	}{
 		{
 			name: "no log",
-			raft: RaftPersistenceStateImpl{},
+			raft: RaftPersistenceStateImpl{
+				logFactory: common.ClassicLogFactory{},
+			},
 			args: args{
 				data: []string{
 					"current_term", "1",
@@ -123,21 +125,24 @@ func TestRaftPersistanceState_Deserialize(t *testing.T) {
 				CurrentTerm: 1,
 				VotedFor:    3,
 				Logs:        nil,
+				LogFactory:  common.ClassicLogFactory{},
 			}),
 			wantLastLogIndex: 0,
 			wantErr:          false,
 		},
 		{
 			name: "with logs",
-			raft: RaftPersistenceStateImpl{},
+			raft: RaftPersistenceStateImpl{
+				logFactory: common.ClassicLogFactory{},
+			},
 			args: args{
 				data: []string{
 					"current_term", "1",
 					"voted_for", "3",
-					prevWalLastLogInfoKey, "0|1",
-					"append_log", common.Log{Term: 1, Command: "set x 1", ClientID: 3, SequenceNum: 2}.ToString(),
-					"append_log", common.Log{Term: 2, Command: "set y 3", ClientID: 5, SequenceNum: 1}.ToString(),
-					"append_log", common.Log{Term: 2, Command: "set y 4", ClientID: 5, SequenceNum: 1}.ToString(),
+					prevWalLastLogInfoKey, "1|0",
+					"append_log", common.ClassicLog{Term: 1, Command: "set x 1", ClientID: 3, SequenceNum: 2}.ToString(),
+					"append_log", common.ClassicLog{Term: 2, Command: "set y 3", ClientID: 5, SequenceNum: 1}.ToString(),
+					"append_log", common.ClassicLog{Term: 2, Command: "set y 4", ClientID: 5, SequenceNum: 1}.ToString(),
 					"delete_log", "1",
 				},
 			},
@@ -145,9 +150,10 @@ func TestRaftPersistanceState_Deserialize(t *testing.T) {
 				CurrentTerm: 1,
 				VotedFor:    3,
 				Logs: []common.Log{
-					{Term: 1, Command: "set x 1", ClientID: 3, SequenceNum: 2},
-					{Term: 2, Command: "set y 3", ClientID: 5, SequenceNum: 1},
+					common.ClassicLog{Term: 1, Command: "set x 1", ClientID: 3, SequenceNum: 2},
+					common.ClassicLog{Term: 2, Command: "set y 3", ClientID: 5, SequenceNum: 1},
 				},
+				LogFactory: common.ClassicLogFactory{},
 			}),
 			wantLastLogIndex: 2,
 			wantErr:          false,
@@ -158,18 +164,19 @@ func TestRaftPersistanceState_Deserialize(t *testing.T) {
 				VotedFor:    4,
 				CurrentTerm: 3,
 				Logs: []common.Log{
-					{Term: 1, Command: "set x 1", ClientID: 1, SequenceNum: 2},
-					{Term: 2, Command: "set y 2", ClientID: 2, SequenceNum: 1},
+					common.ClassicLog{Term: 1, Command: "set x 1", ClientID: 1, SequenceNum: 2},
+					common.ClassicLog{Term: 2, Command: "set y 2", ClientID: 2, SequenceNum: 1},
 				},
+				LogFactory: common.ClassicLogFactory{},
 			}),
 			args: args{
 				data: []string{
 					"current_term", "4",
 					"voted_for", "2",
 					prevWalLastLogInfoKey, "2|2",
-					"append_log", common.Log{Term: 3, Command: "set y 3", ClientID: 3, SequenceNum: 2}.ToString(),
-					"append_log", common.Log{Term: 4, Command: "set y 4", ClientID: 5, SequenceNum: 1}.ToString(),
-					"append_log", common.Log{Term: 4, Command: "set y 5", ClientID: 5, SequenceNum: 2}.ToString(),
+					"append_log", common.ClassicLog{Term: 3, Command: "set y 3", ClientID: 3, SequenceNum: 2}.ToString(),
+					"append_log", common.ClassicLog{Term: 4, Command: "set y 4", ClientID: 5, SequenceNum: 1}.ToString(),
+					"append_log", common.ClassicLog{Term: 4, Command: "set y 5", ClientID: 5, SequenceNum: 2}.ToString(),
 					"delete_log", "1",
 				},
 			},
@@ -177,26 +184,29 @@ func TestRaftPersistanceState_Deserialize(t *testing.T) {
 				CurrentTerm: 4,
 				VotedFor:    2,
 				Logs: []common.Log{
-					{Term: 1, Command: "set x 1", ClientID: 1, SequenceNum: 2},
-					{Term: 2, Command: "set y 2", ClientID: 2, SequenceNum: 1},
-					{Term: 3, Command: "set y 3", ClientID: 3, SequenceNum: 2},
-					{Term: 4, Command: "set y 4", ClientID: 5, SequenceNum: 1},
+					common.ClassicLog{Term: 1, Command: "set x 1", ClientID: 1, SequenceNum: 2},
+					common.ClassicLog{Term: 2, Command: "set y 2", ClientID: 2, SequenceNum: 1},
+					common.ClassicLog{Term: 3, Command: "set y 3", ClientID: 3, SequenceNum: 2},
+					common.ClassicLog{Term: 4, Command: "set y 4", ClientID: 5, SequenceNum: 1},
 				},
+				LogFactory: common.ClassicLogFactory{},
 			}),
 			wantLastLogIndex: 4,
 			wantErr:          false,
 		},
 		{
 			name: "with logs, with snapshot 001",
-			raft: RaftPersistenceStateImpl{},
+			raft: RaftPersistenceStateImpl{
+				logFactory: common.ClassicLogFactory{},
+			},
 			args: args{
 				data: []string{
 					"current_term", "1",
 					"voted_for", "3",
-					prevWalLastLogInfoKey, "0|1",
-					"append_log", common.Log{Term: 1, Command: "set x 1", ClientID: 3, SequenceNum: 2}.ToString(),
-					"append_log", common.Log{Term: 2, Command: "set y 3", ClientID: 5, SequenceNum: 1}.ToString(),
-					"append_log", common.Log{Term: 2, Command: "set y 4", ClientID: 5, SequenceNum: 1}.ToString(),
+					prevWalLastLogInfoKey, "1|0",
+					"append_log", common.ClassicLog{Term: 1, Command: "set x 1", ClientID: 3, SequenceNum: 2}.ToString(),
+					"append_log", common.ClassicLog{Term: 2, Command: "set y 3", ClientID: 5, SequenceNum: 1}.ToString(),
+					"append_log", common.ClassicLog{Term: 2, Command: "set y 4", ClientID: 5, SequenceNum: 1}.ToString(),
 					"delete_log", "1",
 				},
 				latestSnapshot: common.SnapshotMetadata{LastLogTerm: 2, LastLogIndex: 2, FileName: "snapshot.001.dat"},
@@ -205,24 +215,27 @@ func TestRaftPersistanceState_Deserialize(t *testing.T) {
 				CurrentTerm: 1,
 				VotedFor:    3,
 				Logs:        []common.Log{},
+				LogFactory:  common.ClassicLogFactory{},
 			}),
 			wantLastLogIndex: 2,
 			wantErr:          false,
 		},
 		{
 			name: "with logs, with snapshot 002",
-			raft: RaftPersistenceStateImpl{},
+			raft: RaftPersistenceStateImpl{
+				logFactory: common.ClassicLogFactory{},
+			},
 			args: args{
 				data: []string{
 					"current_term", "1",
 					"voted_for", "3",
-					prevWalLastLogInfoKey, "0|1",
-					"append_log", common.Log{Term: 1, Command: "set x 1", ClientID: 3, SequenceNum: 2}.ToString(),
-					"append_log", common.Log{Term: 2, Command: "set y 3", ClientID: 5, SequenceNum: 1}.ToString(),
-					"append_log", common.Log{Term: 2, Command: "set y 4", ClientID: 5, SequenceNum: 1}.ToString(),
+					prevWalLastLogInfoKey, "1|0",
+					"append_log", common.ClassicLog{Term: 1, Command: "set x 1", ClientID: 3, SequenceNum: 2}.ToString(),
+					"append_log", common.ClassicLog{Term: 2, Command: "set y 3", ClientID: 5, SequenceNum: 1}.ToString(),
+					"append_log", common.ClassicLog{Term: 2, Command: "set y 4", ClientID: 5, SequenceNum: 1}.ToString(),
 					"delete_log", "1",
-					"append_log", common.Log{Term: 3, Command: "set y 5", ClientID: 6, SequenceNum: 1}.ToString(),
-					"append_log", common.Log{Term: 3, Command: "set y 6", ClientID: 6, SequenceNum: 2}.ToString(),
+					"append_log", common.ClassicLog{Term: 3, Command: "set y 5", ClientID: 6, SequenceNum: 1}.ToString(),
+					"append_log", common.ClassicLog{Term: 3, Command: "set y 6", ClientID: 6, SequenceNum: 2}.ToString(),
 				},
 				latestSnapshot: common.SnapshotMetadata{LastLogTerm: 2, LastLogIndex: 2, FileName: "snapshot.001.dat"},
 			},
@@ -230,9 +243,10 @@ func TestRaftPersistanceState_Deserialize(t *testing.T) {
 				CurrentTerm: 1,
 				VotedFor:    3,
 				Logs: []common.Log{
-					{Term: 3, Command: "set y 5", ClientID: 6, SequenceNum: 1},
-					{Term: 3, Command: "set y 6", ClientID: 6, SequenceNum: 2},
+					common.ClassicLog{Term: 3, Command: "set y 5", ClientID: 6, SequenceNum: 1},
+					common.ClassicLog{Term: 3, Command: "set y 6", ClientID: 6, SequenceNum: 2},
 				},
+				LogFactory: common.ClassicLogFactory{},
 			}),
 			wantLastLogIndex: 4,
 			wantErr:          false,
@@ -243,20 +257,21 @@ func TestRaftPersistanceState_Deserialize(t *testing.T) {
 				VotedFor:    4,
 				CurrentTerm: 3,
 				Logs: []common.Log{
-					{Term: 1, Command: "set y 3", ClientID: 2, SequenceNum: 2},
+					common.ClassicLog{Term: 1, Command: "set y 3", ClientID: 2, SequenceNum: 2},
 				},
+				LogFactory: common.ClassicLogFactory{},
 			}),
 			args: args{
 				data: []string{
 					"current_term", "5",
 					"voted_for", "1",
-					prevWalLastLogInfoKey, "3|1",
-					"append_log", common.Log{Term: 1, Command: "set y 2", ClientID: 3, SequenceNum: 2}.ToString(),
-					"append_log", common.Log{Term: 2, Command: "set y 3", ClientID: 5, SequenceNum: 1}.ToString(),
-					"append_log", common.Log{Term: 2, Command: "set y 4", ClientID: 5, SequenceNum: 1}.ToString(),
+					prevWalLastLogInfoKey, "1|3",
+					"append_log", common.ClassicLog{Term: 1, Command: "set y 2", ClientID: 3, SequenceNum: 2}.ToString(),
+					"append_log", common.ClassicLog{Term: 2, Command: "set y 3", ClientID: 5, SequenceNum: 1}.ToString(),
+					"append_log", common.ClassicLog{Term: 2, Command: "set y 4", ClientID: 5, SequenceNum: 1}.ToString(),
 					"delete_log", "1",
-					"append_log", common.Log{Term: 3, Command: "set y 5", ClientID: 6, SequenceNum: 1}.ToString(),
-					"append_log", common.Log{Term: 3, Command: "set y 6", ClientID: 6, SequenceNum: 2}.ToString(),
+					"append_log", common.ClassicLog{Term: 3, Command: "set y 5", ClientID: 6, SequenceNum: 1}.ToString(),
+					"append_log", common.ClassicLog{Term: 3, Command: "set y 6", ClientID: 6, SequenceNum: 2}.ToString(),
 				},
 				latestSnapshot: common.SnapshotMetadata{LastLogTerm: 1, LastLogIndex: 2, FileName: "snapshot.001.dat"},
 			},
@@ -264,12 +279,13 @@ func TestRaftPersistanceState_Deserialize(t *testing.T) {
 				CurrentTerm: 5,
 				VotedFor:    1,
 				Logs: []common.Log{
-					{Term: 1, Command: "set y 3", ClientID: 2, SequenceNum: 2},
-					{Term: 1, Command: "set y 2", ClientID: 3, SequenceNum: 2},
-					{Term: 2, Command: "set y 3", ClientID: 5, SequenceNum: 1},
-					{Term: 3, Command: "set y 5", ClientID: 6, SequenceNum: 1},
-					{Term: 3, Command: "set y 6", ClientID: 6, SequenceNum: 2},
+					common.ClassicLog{Term: 1, Command: "set y 3", ClientID: 2, SequenceNum: 2},
+					common.ClassicLog{Term: 1, Command: "set y 2", ClientID: 3, SequenceNum: 2},
+					common.ClassicLog{Term: 2, Command: "set y 3", ClientID: 5, SequenceNum: 1},
+					common.ClassicLog{Term: 3, Command: "set y 5", ClientID: 6, SequenceNum: 1},
+					common.ClassicLog{Term: 3, Command: "set y 6", ClientID: 6, SequenceNum: 2},
 				},
+				LogFactory: common.ClassicLogFactory{},
 			}),
 			wantLastLogIndex: 7,
 			wantErr:          false,
@@ -280,18 +296,19 @@ func TestRaftPersistanceState_Deserialize(t *testing.T) {
 				VotedFor:    4,
 				CurrentTerm: 3,
 				Logs:        []common.Log{}, // logs are deleted from previous run
+				LogFactory:  common.ClassicLogFactory{},
 			}),
 			args: args{
 				data: []string{
 					"current_term", "5",
 					"voted_for", "1",
-					prevWalLastLogInfoKey, "3|1",
-					"append_log", common.Log{Term: 1, Command: "set y 2", ClientID: 3, SequenceNum: 2}.ToString(),
-					"append_log", common.Log{Term: 2, Command: "set y 3", ClientID: 5, SequenceNum: 1}.ToString(),
-					"append_log", common.Log{Term: 2, Command: "set y 4", ClientID: 5, SequenceNum: 1}.ToString(),
+					prevWalLastLogInfoKey, "1|3",
+					"append_log", common.ClassicLog{Term: 1, Command: "set y 2", ClientID: 3, SequenceNum: 2}.ToString(),
+					"append_log", common.ClassicLog{Term: 2, Command: "set y 3", ClientID: 5, SequenceNum: 1}.ToString(),
+					"append_log", common.ClassicLog{Term: 2, Command: "set y 4", ClientID: 5, SequenceNum: 1}.ToString(),
 					"delete_log", "1",
-					"append_log", common.Log{Term: 3, Command: "set y 5", ClientID: 6, SequenceNum: 1}.ToString(),
-					"append_log", common.Log{Term: 3, Command: "set y 6", ClientID: 6, SequenceNum: 2}.ToString(),
+					"append_log", common.ClassicLog{Term: 3, Command: "set y 5", ClientID: 6, SequenceNum: 1}.ToString(),
+					"append_log", common.ClassicLog{Term: 3, Command: "set y 6", ClientID: 6, SequenceNum: 2}.ToString(),
 				},
 				latestSnapshot: common.SnapshotMetadata{LastLogTerm: 2, LastLogIndex: 5, FileName: "snapshot.001.dat"},
 			},
@@ -299,9 +316,10 @@ func TestRaftPersistanceState_Deserialize(t *testing.T) {
 				CurrentTerm: 5,
 				VotedFor:    1,
 				Logs: []common.Log{
-					{Term: 3, Command: "set y 5", ClientID: 6, SequenceNum: 1},
-					{Term: 3, Command: "set y 6", ClientID: 6, SequenceNum: 2},
+					common.ClassicLog{Term: 3, Command: "set y 5", ClientID: 6, SequenceNum: 1},
+					common.ClassicLog{Term: 3, Command: "set y 6", ClientID: 6, SequenceNum: 2},
 				},
+				LogFactory: common.ClassicLogFactory{},
 			}),
 			wantLastLogIndex: 7,
 			wantErr:          false,
@@ -312,18 +330,19 @@ func TestRaftPersistanceState_Deserialize(t *testing.T) {
 				VotedFor:    4,
 				CurrentTerm: 3,
 				Logs:        []common.Log{}, // log are deleted from previous run
+				LogFactory:  common.ClassicLogFactory{},
 			}),
 			args: args{
 				data: []string{
 					"current_term", "6",
 					"voted_for", "1",
-					prevWalLastLogInfoKey, "6|3",
-					"append_log", common.Log{Term: 4, Command: "set y 7", ClientID: 3, SequenceNum: 2}.ToString(),
-					"append_log", common.Log{Term: 4, Command: "set y 8", ClientID: 5, SequenceNum: 1}.ToString(),
-					"append_log", common.Log{Term: 5, Command: "set y 9", ClientID: 5, SequenceNum: 1}.ToString(),
+					prevWalLastLogInfoKey, "3|6",
+					"append_log", common.ClassicLog{Term: 4, Command: "set y 7", ClientID: 3, SequenceNum: 2}.ToString(),
+					"append_log", common.ClassicLog{Term: 4, Command: "set y 8", ClientID: 5, SequenceNum: 1}.ToString(),
+					"append_log", common.ClassicLog{Term: 5, Command: "set y 9", ClientID: 5, SequenceNum: 1}.ToString(),
 					"delete_log", "1",
-					"append_log", common.Log{Term: 6, Command: "set y 10", ClientID: 6, SequenceNum: 1}.ToString(),
-					"append_log", common.Log{Term: 6, Command: "set y 11", ClientID: 6, SequenceNum: 2}.ToString(),
+					"append_log", common.ClassicLog{Term: 6, Command: "set y 10", ClientID: 6, SequenceNum: 1}.ToString(),
+					"append_log", common.ClassicLog{Term: 6, Command: "set y 11", ClientID: 6, SequenceNum: 2}.ToString(),
 				},
 				latestSnapshot: common.SnapshotMetadata{LastLogTerm: 4, LastLogIndex: 8, FileName: "snapshot.002.dat"},
 			},
@@ -331,9 +350,10 @@ func TestRaftPersistanceState_Deserialize(t *testing.T) {
 				CurrentTerm: 6,
 				VotedFor:    1,
 				Logs: []common.Log{
-					{Term: 6, Command: "set y 10", ClientID: 6, SequenceNum: 1},
-					{Term: 6, Command: "set y 11", ClientID: 6, SequenceNum: 2},
+					common.ClassicLog{Term: 6, Command: "set y 10", ClientID: 6, SequenceNum: 1},
+					common.ClassicLog{Term: 6, Command: "set y 11", ClientID: 6, SequenceNum: 2},
 				},
+				LogFactory: common.ClassicLogFactory{},
 			}),
 			wantLastLogIndex: 10,
 			wantErr:          false,
@@ -348,10 +368,12 @@ func TestRaftPersistanceState_Deserialize(t *testing.T) {
 				return
 			}
 			if gotLastLogIndex != tt.wantLastLogIndex {
-				t.Errorf("RaftPersistanceState.Deserialize() = %v, want %v", gotLastLogIndex, tt.wantLastLogIndex)
+				t.Errorf("RaftPersistanceState.Deserialize() lastLogIndex = %v, want %v", gotLastLogIndex, tt.wantLastLogIndex)
+				return
 			}
 			if !reflect.DeepEqual(tt.raft, tt.want) {
-				t.Errorf("RaftPersistanceState.Deserialize() = %v, want %v", tt.raft, tt.want)
+				t.Errorf("RaftPersistanceState.Deserialize() persistence = %v, want %v", tt.raft, tt.want)
+				return
 			}
 		})
 	}
@@ -361,6 +383,7 @@ func TestRaftPersistanceStateImpl_GetLog(t *testing.T) {
 	type fields struct {
 		logs           []common.Log
 		latestSnapshot common.SnapshotMetadata
+		logFactory     common.LogFactory
 	}
 	type args struct {
 		index int
@@ -377,71 +400,77 @@ func TestRaftPersistanceStateImpl_GetLog(t *testing.T) {
 			fields: fields{
 				logs:           []common.Log{},
 				latestSnapshot: common.SnapshotMetadata{},
+				logFactory:     common.ClassicLogFactory{},
 			},
 			args: args{
 				index: 0,
 			},
-			want:    common.Log{},
+			want:    common.ClassicLog{},
 			wantErr: common.ErrLogIsEmpty,
 		},
 		{
 			name: "index out of range",
 			fields: fields{
-				logs:           []common.Log{{Term: 1, Command: "set x 1"}},
+				logs:           []common.Log{common.ClassicLog{Term: 1, Command: "set x 1"}},
 				latestSnapshot: common.SnapshotMetadata{},
+				logFactory:     common.ClassicLogFactory{},
 			},
 			args: args{
 				index: 0,
 			},
-			want:    common.Log{},
+			want:    common.ClassicLog{},
 			wantErr: common.ErrIndexOutOfRange,
 		},
 		{
 			name: "index out of range",
 			fields: fields{
-				logs:           []common.Log{{Term: 1, Command: "set x 1"}},
+				logs:           []common.Log{common.ClassicLog{Term: 1, Command: "set x 1"}},
 				latestSnapshot: common.SnapshotMetadata{},
+				logFactory:     common.ClassicLogFactory{},
 			},
 			args: args{
 				index: 2,
 			},
-			want:    common.Log{},
+			want:    common.ClassicLog{},
 			wantErr: common.ErrIndexOutOfRange,
 		},
 		{
 			name: "index is in range",
 			fields: fields{
-				logs:           []common.Log{{Term: 1, Command: "set x 1"}},
+				logs:           []common.Log{common.ClassicLog{Term: 1, Command: "set x 1"}},
 				latestSnapshot: common.SnapshotMetadata{},
+				logFactory:     common.ClassicLogFactory{},
 			},
 			args: args{
 				index: 1,
 			},
-			want:    common.Log{Term: 1, Command: "set x 1"},
+			want:    common.ClassicLog{Term: 1, Command: "set x 1"},
 			wantErr: nil,
 		},
 		{
 			name: "log is in snapshot",
 			fields: fields{
-				logs:           []common.Log{{Term: 4, Command: "set x 4"}},
+				logs:           []common.Log{common.ClassicLog{Term: 4, Command: "set x 4"}},
 				latestSnapshot: common.SnapshotMetadata{LastLogTerm: 3, LastLogIndex: 3},
+				logFactory:     common.ClassicLogFactory{},
 			},
 			args: args{
 				index: 1,
 			},
-			want:    common.Log{Term: 3},
+			want:    common.ClassicLog{Term: 3},
 			wantErr: common.ErrLogIsInSnapshot,
 		},
 		{
 			name: "log is not in snapshot",
 			fields: fields{
-				logs:           []common.Log{{Term: 4, Command: "set x 4"}},
+				logs:           []common.Log{common.ClassicLog{Term: 4, Command: "set x 4"}},
 				latestSnapshot: common.SnapshotMetadata{LastLogTerm: 3, LastLogIndex: 3},
+				logFactory:     common.ClassicLogFactory{},
 			},
 			args: args{
 				index: 4,
 			},
-			want:    common.Log{Term: 4, Command: "set x 4"},
+			want:    common.ClassicLog{Term: 4, Command: "set x 4"},
 			wantErr: nil,
 		},
 	}
@@ -450,6 +479,7 @@ func TestRaftPersistanceStateImpl_GetLog(t *testing.T) {
 			r := RaftPersistenceStateImpl{
 				logs:           tt.fields.logs,
 				latestSnapshot: tt.fields.latestSnapshot,
+				logFactory:     tt.fields.logFactory,
 			}
 			got, err := r.GetLog(tt.args.index)
 			if (err != nil) && !errors.Is(err, tt.wantErr) {
@@ -486,7 +516,7 @@ func TestRaftPersistanceStateImpl_LastLogInfo(t *testing.T) {
 		{
 			name: "2",
 			fields: fields{
-				logs:           []common.Log{{Term: 3}},
+				logs:           []common.Log{common.ClassicLog{Term: 3}},
 				latestSnapshot: common.SnapshotMetadata{},
 			},
 			wantIndex: 1,
@@ -504,7 +534,7 @@ func TestRaftPersistanceStateImpl_LastLogInfo(t *testing.T) {
 		{
 			name: "4",
 			fields: fields{
-				logs:           []common.Log{{Term: 3}},
+				logs:           []common.Log{common.ClassicLog{Term: 3}},
 				latestSnapshot: common.SnapshotMetadata{LastLogTerm: 3, LastLogIndex: 10},
 			},
 			wantIndex: 11,

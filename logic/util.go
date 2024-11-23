@@ -26,6 +26,8 @@ func (n *RaftBrainImpl) deleteLogFrom(ctx context.Context, index int) (err error
 		return err
 	}
 
+	n.resetClusterTime()
+
 	// clear all data in state machine, reload latest snapshot from file,
 	// so logs can be applied from beginning again.
 	err = n.stateMachine.Reset(ctx) // TODO: in log compaction, no need to to this.
@@ -40,7 +42,7 @@ func (n *RaftBrainImpl) deleteLogFrom(ctx context.Context, index int) (err error
 	n.commitIndex = snapshot.LastLogIndex
 
 	for i := len(deletedLogs) - 1; i >= 0; i-- {
-		n.revertChangeMember(deletedLogs[i].Command)
+		n.revertChangeMember(deletedLogs[i])
 	}
 
 	return nil
@@ -48,9 +50,9 @@ func (n *RaftBrainImpl) deleteLogFrom(ctx context.Context, index int) (err error
 
 func (n *RaftBrainImpl) appendLogs(ctx context.Context, logItems []common.Log) (err error) {
 	for _, logItem := range logItems {
-		err := n.changeMember(logItem.Command)
+		err := n.changeMember(logItem)
 		if err != nil {
-			n.log().ErrorContext(ctx, "appendLog_changeMember", err, "command", logItem.Command)
+			n.log().ErrorContext(ctx, "appendLog_changeMember", err, "command", logItem)
 		}
 	}
 
@@ -67,10 +69,7 @@ func (n *RaftBrainImpl) appendLogs(ctx context.Context, logItems []common.Log) (
 func (n *RaftBrainImpl) appendLog(ctx context.Context, logItem common.Log) (int, error) {
 	// we need to update cluster membership information as soon as we receive the log,
 	// don't need to wait until it get committed.
-	err := n.changeMember(logItem.Command)
-	if err != nil {
-		n.log().ErrorContext(ctx, "appendLog_changeMember", err, "command", logItem.Command)
-	}
+	n.changeMember(logItem)
 
 	index, err := n.persistState.AppendLog(ctx, []common.Log{logItem})
 	if err != nil {
@@ -147,7 +146,7 @@ func (n *RaftBrainImpl) applyLog(ctx context.Context) {
 			break
 		}
 
-		n.clusterClock.NewEpoch(log.ClusterTime)
+		// n.clusterClock.NewEpoch(log.GetTime())
 
 		res, err := n.stateMachine.Process(ctx, n.lastApplied, log)
 

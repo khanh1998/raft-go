@@ -82,7 +82,9 @@ func (c *Cluster) init(filePath string) {
 				log.Fatal("new storage", "error", err.Error())
 			}
 
-			snapshot, raftPersistState, _, err := persistence_state.Deserialize(ctx, storage, common.Static, log)
+			logFactory := common.ClassicLogFactory{}
+
+			snapshot, raftPersistState, _, err := persistence_state.Deserialize(ctx, storage, common.Static, log, logFactory)
 			if err != nil {
 				log.Fatal("deserialize system", "error", err.Error())
 			}
@@ -105,6 +107,7 @@ func (c *Cluster) init(filePath string) {
 					PersistenceState:    raftPersistState,
 					LogLengthLimit:      config.LogLengthLimit,
 					SnapshotChunkSize:   config.SnapshotChunkSize,
+					LogFactory:          logFactory,
 				},
 				RPCProxy: rpc_proxy.NewRPCImplParams{
 					HostURL:              mem.RpcUrl,

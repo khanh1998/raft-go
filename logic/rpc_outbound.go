@@ -172,7 +172,7 @@ func (n *RaftBrainImpl) BroadcastAppendEntries(ctx context.Context) (majorityOK 
 				prevLog, err := n.GetLog(nextIdx - 1)
 				if err == nil || errors.Is(err, common.ErrLogIsInSnapshot) {
 					// if previous log is in snapshot, we just sent lastTerm and lastIndex
-					input.PrevLogTerm = prevLog.Term
+					input.PrevLogTerm = prevLog.GetTerm()
 				}
 			}
 
@@ -320,7 +320,7 @@ func (n *RaftBrainImpl) BroadcastAppendEntries(ctx context.Context) (majorityOK 
 				}
 			}
 
-			if count >= n.Quorum() && log.Term == currentTerm {
+			if count >= n.Quorum() && log.GetTerm() == currentTerm {
 				n.commitIndex = N
 
 				break

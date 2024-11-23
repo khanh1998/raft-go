@@ -41,6 +41,19 @@ func (c *ClientEntry) FromString(str string) (clientId int, err error) {
 	return clientId, nil
 }
 
+type KeyValueData struct {
+	Value         string
+	CreatedIndex  int
+	ModifiedIndex int
+}
+
+type SnapshotV2 struct {
+	LastConfig map[int]ClusterMember // cluster members
+	KeyValue   map[string]KeyValueData
+	Sessions   map[int]ClientEntry
+	SnapshotMetadata
+}
+
 type Snapshot struct {
 	LastConfig map[int]ClusterMember // cluster members
 	KeyValue   map[string]string

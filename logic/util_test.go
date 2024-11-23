@@ -27,22 +27,23 @@ func Test_nodeImpl_DeleteFrom(t *testing.T) {
 			DataFolder: "data/",
 			Logger:     logger,
 		}, storage.NewFileWrapperMock()),
+		LogFactory: common.ClassicLogFactory{},
 	})
 	sm := state_machine.NewKeyValueStateMachine(state_machine.NewKeyValueStateMachineParams{
 		PersistState: ps,
 	})
 	n := RaftBrainImpl{
 		persistState: ps,
-		stateMachine: sm, commitIndex: 0, lastApplied: 0}
+		stateMachine: sm, commitIndex: 0, lastApplied: 0, clusterClock: NewClusterClock()}
 	n.applyLog(ctx)
 
 	err := n.deleteLogFrom(ctx, 1)
 	assert.ErrorIs(t, err, common.ErrLogIsEmpty)
 
 	data := []common.Log{
-		{Term: 1, Command: "set x 1"},
-		{Term: 2, Command: "set x 2"},
-		{Term: 3, Command: "set x 3"},
+		common.ClassicLog{Term: 1, Command: "set x 1"},
+		common.ClassicLog{Term: 2, Command: "set x 2"},
+		common.ClassicLog{Term: 3, Command: "set x 3"},
 	}
 
 	copyData := func() []common.Log {
@@ -58,13 +59,14 @@ func Test_nodeImpl_DeleteFrom(t *testing.T) {
 			DataFolder: "data/",
 			Logger:     logger,
 		}, storage.NewFileWrapperMock()),
+		LogFactory: common.ClassicLogFactory{},
 	})
 	sm = state_machine.NewKeyValueStateMachine(state_machine.NewKeyValueStateMachineParams{
 		PersistState: ps,
 	})
 	n = RaftBrainImpl{
 		persistState: ps,
-		stateMachine: sm, commitIndex: 3, lastApplied: 0}
+		stateMachine: sm, commitIndex: 3, lastApplied: 0, clusterClock: NewClusterClock()}
 	err = n.deleteLogFrom(ctx, 4)
 	assert.ErrorIs(t, err, common.ErrIndexOutOfRange)
 	err = n.deleteLogFrom(ctx, 0)
@@ -77,13 +79,14 @@ func Test_nodeImpl_DeleteFrom(t *testing.T) {
 			DataFolder: "data/",
 			Logger:     logger,
 		}, storage.NewFileWrapperMock()),
+		LogFactory: common.ClassicLogFactory{},
 	})
 	sm = state_machine.NewKeyValueStateMachine(state_machine.NewKeyValueStateMachineParams{
 		PersistState: ps,
 	})
 	n = RaftBrainImpl{
 		persistState: ps,
-		stateMachine: sm, commitIndex: 3, lastApplied: 0}
+		stateMachine: sm, commitIndex: 3, lastApplied: 0, clusterClock: NewClusterClock()}
 	err = n.deleteLogFrom(ctx, 3)
 	assert.NoError(t, err)
 	// assert.Equal(t, data[:2], n.logs)
@@ -95,13 +98,14 @@ func Test_nodeImpl_DeleteFrom(t *testing.T) {
 			DataFolder: "data/",
 			Logger:     logger,
 		}, storage.NewFileWrapperMock()),
+		LogFactory: common.ClassicLogFactory{},
 	})
 	sm = state_machine.NewKeyValueStateMachine(state_machine.NewKeyValueStateMachineParams{
 		PersistState: ps,
 	})
 	n = RaftBrainImpl{
 		persistState: ps,
-		stateMachine: sm, commitIndex: 3, lastApplied: 0}
+		stateMachine: sm, commitIndex: 3, lastApplied: 0, clusterClock: NewClusterClock()}
 	err = n.deleteLogFrom(ctx, 2)
 	assert.NoError(t, err)
 	// assert.Equal(t, data[:1], n.logs)
@@ -113,13 +117,14 @@ func Test_nodeImpl_DeleteFrom(t *testing.T) {
 			DataFolder: "data/",
 			Logger:     logger,
 		}, storage.NewFileWrapperMock()),
+		LogFactory: common.ClassicLogFactory{},
 	})
 	sm = state_machine.NewKeyValueStateMachine(state_machine.NewKeyValueStateMachineParams{
 		PersistState: ps,
 	})
 	n = RaftBrainImpl{
 		persistState: ps,
-		stateMachine: sm, commitIndex: 3, lastApplied: 0}
+		stateMachine: sm, commitIndex: 3, lastApplied: 0, clusterClock: NewClusterClock()}
 	err = n.deleteLogFrom(ctx, 1)
 	assert.NoError(t, err)
 	// assert.Equal(t, []common.Log{}, n.logs)
@@ -149,7 +154,7 @@ func Test_nodeImpl_isLogUpToDate(t *testing.T) {
 			lastLogIndex: 3,
 			lastLogTerm:  5,
 			n: RaftBrainImpl{persistState: persistence_state.NewRaftPersistenceState(persistence_state.NewRaftPersistenceStateParams{
-				Logs: []common.Log{{Term: 1}, {Term: 2}},
+				Logs: []common.Log{common.ClassicLog{Term: 1}, common.ClassicLog{Term: 2}},
 			})},
 			output: true,
 		},
@@ -158,7 +163,7 @@ func Test_nodeImpl_isLogUpToDate(t *testing.T) {
 			lastLogIndex: 3,
 			lastLogTerm:  5,
 			n: RaftBrainImpl{persistState: persistence_state.NewRaftPersistenceState(persistence_state.NewRaftPersistenceStateParams{
-				Logs: []common.Log{{Term: 1}, {Term: 2}, {Term: 5}},
+				Logs: []common.Log{common.ClassicLog{Term: 1}, common.ClassicLog{Term: 2}, common.ClassicLog{Term: 5}},
 			})},
 			output: true,
 		},
@@ -167,7 +172,7 @@ func Test_nodeImpl_isLogUpToDate(t *testing.T) {
 			lastLogIndex: 3,
 			lastLogTerm:  5,
 			n: RaftBrainImpl{persistState: persistence_state.NewRaftPersistenceState(persistence_state.NewRaftPersistenceStateParams{
-				Logs: []common.Log{{Term: 1}, {Term: 5}},
+				Logs: []common.Log{common.ClassicLog{Term: 1}, common.ClassicLog{Term: 5}},
 			})},
 			output: true,
 		},
@@ -176,7 +181,7 @@ func Test_nodeImpl_isLogUpToDate(t *testing.T) {
 			lastLogIndex: 1,
 			lastLogTerm:  5,
 			n: RaftBrainImpl{persistState: persistence_state.NewRaftPersistenceState(persistence_state.NewRaftPersistenceStateParams{
-				Logs: []common.Log{{Term: 1}, {Term: 5}},
+				Logs: []common.Log{common.ClassicLog{Term: 1}, common.ClassicLog{Term: 5}},
 			})},
 			output: false,
 		},
@@ -185,7 +190,7 @@ func Test_nodeImpl_isLogUpToDate(t *testing.T) {
 			lastLogIndex: 3,
 			lastLogTerm:  3,
 			n: RaftBrainImpl{persistState: persistence_state.NewRaftPersistenceState(persistence_state.NewRaftPersistenceStateParams{
-				Logs: []common.Log{{Term: 3}, {Term: 4}},
+				Logs: []common.Log{common.ClassicLog{Term: 3}, common.ClassicLog{Term: 4}},
 			})},
 			output: false,
 		},
@@ -284,8 +289,9 @@ func TestRaftBrainImpl_deleteLogFrom(t *testing.T) {
 
 func TestRaftBrainImpl_GetLog(t *testing.T) {
 	type fields struct {
-		snapshots common.SnapshotMetadata
-		logs      []common.Log
+		snapshots  common.SnapshotMetadata
+		logs       []common.Log
+		logFactory common.LogFactory
 	}
 	type args struct {
 		index int
@@ -300,13 +306,14 @@ func TestRaftBrainImpl_GetLog(t *testing.T) {
 		{
 			name: "",
 			fields: fields{
-				snapshots: common.SnapshotMetadata{},
-				logs:      []common.Log{},
+				snapshots:  common.SnapshotMetadata{},
+				logs:       []common.Log{},
+				logFactory: common.ClassicLogFactory{},
 			},
 			args: args{
 				index: 1,
 			},
-			want:    common.Log{},
+			want:    common.ClassicLog{},
 			wantErr: true,
 		},
 		{
@@ -315,12 +322,13 @@ func TestRaftBrainImpl_GetLog(t *testing.T) {
 				snapshots: common.SnapshotMetadata{
 					LastLogTerm: 4, LastLogIndex: 5,
 				},
-				logs: []common.Log{},
+				logs:       []common.Log{},
+				logFactory: common.ClassicLogFactory{},
 			},
 			args: args{
 				index: 1,
 			},
-			want:    common.Log{Term: 4},
+			want:    common.ClassicLog{Term: 4},
 			wantErr: true,
 		},
 		{
@@ -328,15 +336,16 @@ func TestRaftBrainImpl_GetLog(t *testing.T) {
 			fields: fields{
 				snapshots: common.SnapshotMetadata{},
 				logs: []common.Log{
-					{Term: 1, Command: "set counter 1"},
-					{Term: 2, Command: "set counter 2"},
-					{Term: 3, Command: "set counter 3"},
+					common.ClassicLog{Term: 1, Command: "set counter 1"},
+					common.ClassicLog{Term: 2, Command: "set counter 2"},
+					common.ClassicLog{Term: 3, Command: "set counter 3"},
 				},
+				logFactory: common.ClassicLogFactory{},
 			},
 			args: args{
 				index: 1,
 			},
-			want:    common.Log{Term: 1, Command: "set counter 1"},
+			want:    common.ClassicLog{Term: 1, Command: "set counter 1"},
 			wantErr: false,
 		},
 		{
@@ -346,15 +355,16 @@ func TestRaftBrainImpl_GetLog(t *testing.T) {
 					LastLogTerm: 3, LastLogIndex: 3,
 				},
 				logs: []common.Log{
-					{Term: 4, Command: "set counter 4"},
-					{Term: 5, Command: "set counter 5"},
-					{Term: 6, Command: "set counter 6"},
+					common.ClassicLog{Term: 4, Command: "set counter 4"},
+					common.ClassicLog{Term: 5, Command: "set counter 5"},
+					common.ClassicLog{Term: 6, Command: "set counter 6"},
 				},
+				logFactory: common.ClassicLogFactory{},
 			},
 			args: args{
 				index: 4,
 			},
-			want:    common.Log{Term: 4, Command: "set counter 4"},
+			want:    common.ClassicLog{Term: 4, Command: "set counter 4"},
 			wantErr: false,
 		},
 	}
@@ -364,6 +374,7 @@ func TestRaftBrainImpl_GetLog(t *testing.T) {
 				persistState: persistence_state.NewRaftPersistenceState(persistence_state.NewRaftPersistenceStateParams{
 					Logs:             tt.fields.logs,
 					SnapshotMetadata: tt.fields.snapshots,
+					LogFactory:       tt.fields.logFactory,
 				}),
 			}
 			got, err := n.GetLog(tt.args.index)

@@ -31,13 +31,14 @@ func findLatestSnapshot(fileNames []string) (fileName string, err error) {
 	return fileName, nil
 }
 
-func Deserialize(ctx context.Context, s WalReader, clusterMode common.ClusterMode, logger observability.Logger) (latestSnapshot *common.Snapshot, raftPersistedState *RaftPersistenceStateImpl, clusterMembers []common.ClusterMember, err error) {
+func Deserialize(ctx context.Context, s WalReader, clusterMode common.ClusterMode, logger observability.Logger, logFactory common.LogFactory) (latestSnapshot *common.Snapshot, raftPersistedState *RaftPersistenceStateImpl, clusterMembers []common.ClusterMember, err error) {
 	latestSnapshot = common.NewSnapshot()
 	raftPersistedState = &RaftPersistenceStateImpl{
 		votedFor:    0,
 		currentTerm: 0,
 		logs:        []common.Log{},
 		logger:      logger,
+		logFactory:  logFactory,
 	}
 
 	fileNames, err := s.GetObjectNames()
@@ -96,7 +97,7 @@ func Deserialize(ctx context.Context, s WalReader, clusterMode common.ClusterMod
 		}
 
 		for _, logs := range raftPersistedState.logs {
-			addition, peerId, httpUrl, rpcUrl, err := common.DecomposeChangeSeverCommand(logs.Command)
+			addition, peerId, httpUrl, rpcUrl, err := logs.DecomposeChangeSeverCommand()
 			if err != nil {
 				continue
 			}

@@ -139,7 +139,9 @@ func main() {
 		logger.Fatal("new storage", "error", err.Error())
 	}
 
-	snapshot, raftPersistState, tmpClusterMembers, err := persistence_state.Deserialize(ctx, storage, config.Cluster.Mode, logger)
+	logFactory := common.ClassicLogFactory{}
+
+	snapshot, raftPersistState, tmpClusterMembers, err := persistence_state.Deserialize(ctx, storage, config.Cluster.Mode, logger, logFactory)
 	if err != nil {
 		logger.Fatal("Deserialize system", "error", err.Error())
 	}
@@ -166,6 +168,7 @@ func main() {
 			PersistenceState:    raftPersistState,
 			LogLengthLimit:      config.LogLengthLimit,
 			SnapshotChunkSize:   config.SnapshotChunkSize,
+			LogFactory:          logFactory,
 		},
 		RPCProxy: rpc_proxy.NewRPCImplParams{
 			HostID:               id,

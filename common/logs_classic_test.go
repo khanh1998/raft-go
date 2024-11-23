@@ -32,7 +32,7 @@ func TestLog_ToString(t *testing.T) {
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			l := Log{
+			l := ClassicLog{
 				Term:        tt.fields.Term,
 				Command:     tt.fields.Command,
 				ClientID:    tt.fields.ClientID,
@@ -52,7 +52,7 @@ func TestNewLogFromString(t *testing.T) {
 	tests := []struct {
 		name    string
 		args    args
-		want    Log
+		want    ClassicLog
 		wantErr bool
 	}{
 		{
@@ -60,7 +60,7 @@ func TestNewLogFromString(t *testing.T) {
 			args: args{
 				s: "5|9|10|1|set x 250",
 			},
-			want: Log{
+			want: ClassicLog{
 				Term:        5,
 				Command:     "set x 250",
 				ClientID:    9,
@@ -74,7 +74,7 @@ func TestNewLogFromString(t *testing.T) {
 			args: args{
 				s: "hehe|set x 250",
 			},
-			want: Log{
+			want: ClassicLog{
 				Term:        0,
 				Command:     "",
 				ClientID:    0,

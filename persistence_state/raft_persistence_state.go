@@ -41,12 +41,14 @@ type RaftPersistenceStateImpl struct {
 	storage        StorageInterface
 	lock           sync.RWMutex
 	logger         observability.Logger
+	logFactory     common.LogFactory
 }
 
 type NewRaftPersistenceStateParams struct {
 	VotedFor         int
 	CurrentTerm      int
 	Logs             []common.Log
+	LogFactory       common.LogFactory
 	SnapshotMetadata common.SnapshotMetadata
 	Storage          StorageInterface
 	Logger           observability.Logger
@@ -57,6 +59,7 @@ func NewRaftPersistenceState(params NewRaftPersistenceStateParams) *RaftPersiste
 		votedFor:    params.VotedFor,
 		currentTerm: params.CurrentTerm,
 		logs:        params.Logs,
+		logFactory:  params.LogFactory,
 
 		latestSnapshot: params.SnapshotMetadata,
 		storage:        params.Storage,
@@ -209,12 +212,12 @@ func (r *RaftPersistenceStateImpl) SaveSnapshot(ctx context.Context, snapshot *c
 
 	sm := snapshot.Metadata()
 
+	r.lock.Lock()
 	err = r.storage.AppendWal(r.metadata(), "snapshot", sm.ToString())
 	if err != nil {
 		return err
 	}
 
-	r.lock.Lock()
 	r.trimPrefixLog(sm)
 	r.latestSnapshot = sm
 	r.lock.Unlock()
@@ -253,16 +256,22 @@ func (r *RaftPersistenceStateImpl) GetLog(index int) (common.Log, error) {
 	base := r.latestSnapshot.LastLogIndex
 
 	if base == 0 && len(r.logs) == 0 {
-		return common.Log{}, common.ErrLogIsEmpty
+		return r.logFactory.Empty(), common.ErrLogIsEmpty
 	}
 
 	minIdex, maxIndex := 1, base+len(r.logs)
 	if index < minIdex || index > maxIndex {
-		return common.Log{}, common.ErrIndexOutOfRange
+		return r.logFactory.Empty(), common.ErrIndexOutOfRange
 	}
 
 	if index <= base {
-		return common.Log{Term: r.latestSnapshot.LastLogTerm}, common.ErrLogIsInSnapshot
+		log := r.logFactory.Empty()
+		var err error
+		log, err = r.logFactory.AttachTermAndTime(log, r.latestSnapshot.LastLogTerm, 0)
+		if err != nil {
+			return log, err
+		}
+		return log, common.ErrLogIsInSnapshot
 	}
 
 	// valid index: base < index <= maxIndex
@@ -292,11 +301,11 @@ func (r *RaftPersistenceStateImpl) AppendLog(ctx context.Context, logItems []com
 		keyValuePairs = append(keyValuePairs, "append_log", logItems[i].ToString())
 	}
 
+	r.lock.Lock()
 	if err := r.storage.AppendWal(r.metadata(), keyValuePairs...); err != nil {
 		return 0, err
 	}
 
-	r.lock.Lock()
 	r.logs = append(r.logs, logItems...)
 	base := r.latestSnapshot.LastLogIndex
 	r.lock.Unlock()
@@ -308,12 +317,12 @@ func (r *RaftPersistenceStateImpl) AppendLog(ctx context.Context, logItems []com
 
 // delete all logs that are in memory
 func (r *RaftPersistenceStateImpl) DeleteAllLog(ctx context.Context) (err error) {
+	r.lock.Lock()
 	deletedLogCount := len(r.logs)
 	if err := r.storage.AppendWal(r.metadata(), "delete_log", strconv.Itoa(deletedLogCount)); err != nil {
 		return err
 	}
 
-	r.lock.Lock()
 	r.logs = []common.Log{}
 	r.lock.Unlock()
 
@@ -379,12 +388,12 @@ func (r *RaftPersistenceStateImpl) GetVotedFor() int {
 }
 
 func (r *RaftPersistenceStateImpl) SetCurrentTerm(ctx context.Context, currentTerm int) (err error) {
+	r.lock.Lock()
 	err = r.storage.AppendWal(r.metadata(), "current_term", strconv.Itoa(currentTerm))
 	if err != nil {
 		return err
 	}
 
-	r.lock.Lock()
 	r.currentTerm = currentTerm
 	r.lock.Unlock()
 
@@ -392,12 +401,12 @@ func (r *RaftPersistenceStateImpl) SetCurrentTerm(ctx context.Context, currentTe
 }
 
 func (r *RaftPersistenceStateImpl) SetVotedFor(ctx context.Context, votedFor int) (err error) {
+	r.lock.Lock()
 	err = r.storage.AppendWal(r.metadata(), "voted_for", strconv.Itoa(votedFor))
 	if err != nil {
 		return err
 	}
 
-	r.lock.Lock()
 	defer r.lock.Unlock()
 	r.votedFor = votedFor
 
@@ -426,23 +435,26 @@ func (n *RaftPersistenceStateImpl) LastLogInfo() (index, term int) {
 }
 
 func (n *RaftPersistenceStateImpl) GetLastLog() (common.Log, error) {
+	n.lock.RLock()
+	defer n.lock.RUnlock()
+
 	sm := n.latestSnapshot
 	base := sm.LastLogIndex
 
 	if base == 0 && len(n.logs) == 0 {
-		return common.Log{}, errors.New("there is no log")
+		return n.logFactory.Empty(), errors.New("there is no log")
 	}
 
 	if base > 0 && len(n.logs) == 0 {
-		return common.Log{}, errors.New("last log is in snapshot")
+		return n.logFactory.Empty(), errors.New("last log is in snapshot")
 	}
 
 	if len(n.logs) > 0 {
 		index := len(n.logs) - 1
-		return n.GetLog(base + index)
+		return n.logs[index], nil
 	}
 
-	return common.Log{}, errors.New("can't get last log")
+	return n.logFactory.Empty(), errors.New("can't get last log")
 }
 
 func (n *RaftPersistenceStateImpl) lastLogInfo() (index, term int) {
@@ -451,7 +463,7 @@ func (n *RaftPersistenceStateImpl) lastLogInfo() (index, term int) {
 
 	if len(n.logs) > 0 {
 		index = len(n.logs) - 1
-		term = n.logs[index].Term
+		term = n.logs[index].GetTerm()
 
 		return base + index + 1, term
 	}
@@ -477,7 +489,7 @@ func (r *RaftPersistenceStateImpl) Deserialize(keyValuePairs []string, snapshot 
 		key, value := keyValuePairs[i], keyValuePairs[i+1]
 		switch key {
 		case prevWalLastLogInfoKey:
-			_, err = fmt.Sscanf(value, "%d|%d", &prevLogTerm, &lastLogIndex)
+			_, err = fmt.Sscanf(value, "%d|%d", &prevLogTerm, &prevLogIndex)
 			if err != nil {
 				return 0, err
 			}
@@ -495,7 +507,7 @@ func (r *RaftPersistenceStateImpl) Deserialize(keyValuePairs []string, snapshot 
 			}
 			r.votedFor = int(votedFor)
 		case "append_log":
-			logItem, err := common.NewLogFromString(value)
+			logItem, err := r.logFactory.FromString(value)
 			if err != nil {
 				return 0, err
 			} else {

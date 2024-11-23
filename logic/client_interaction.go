@@ -24,7 +24,7 @@ func (r *RaftBrainImpl) getLeaderHttpUrl() string {
 	return leaderUrl
 }
 
-func (r *RaftBrainImpl) KeepAlive(ctx context.Context, input *common.KeepAliveClientInput, output *common.KeepAliveClientOutput) (err error) {
+func (r *RaftBrainImpl) KeepAlive(ctx context.Context, input common.Log, output *common.KeepAliveClientOutput) (err error) {
 	ctx, span := tracer.Start(ctx, "ClientRequest")
 	defer span.End()
 	defer func() {
@@ -50,12 +50,9 @@ func (r *RaftBrainImpl) KeepAlive(ctx context.Context, input *common.KeepAliveCl
 		return nil
 	}
 
-	newLog := common.Log{
-		Term:        r.persistState.GetCurrentTerm(),
-		Command:     "keep-alive",
-		ClientID:    input.ClientID,
-		SequenceNum: input.SequenceNum,
-		ClusterTime: r.clusterClock.Interpolate(),
+	newLog, err := r.logFactory.AttachTermAndTime(input, r.GetCurrentTerm(), r.clusterClock.LeaderStamp())
+	if err != nil {
+		return err
 	}
 
 	index, err := r.appendLog(ctx, newLog)
@@ -110,7 +107,7 @@ func (r *RaftBrainImpl) KeepAlive(ctx context.Context, input *common.KeepAliveCl
 	return nil
 }
 
-func (r *RaftBrainImpl) ClientRequest(ctx context.Context, input *common.ClientRequestInput, output *common.ClientRequestOutput) (err error) {
+func (r *RaftBrainImpl) ClientRequest(ctx context.Context, input common.Log, output *common.ClientRequestOutput) (err error) {
 	ctx, span := tracer.Start(ctx, "ClientRequest")
 	defer span.End()
 
@@ -137,12 +134,9 @@ func (r *RaftBrainImpl) ClientRequest(ctx context.Context, input *common.ClientR
 		return nil
 	}
 
-	newLog := common.Log{
-		Term:        r.persistState.GetCurrentTerm(),
-		Command:     input.Command,
-		ClientID:    input.ClientID,
-		SequenceNum: input.SequenceNum,
-		ClusterTime: r.clusterClock.Interpolate(),
+	newLog, err := r.logFactory.AttachTermAndTime(input, r.GetCurrentTerm(), r.clusterClock.LeaderStamp())
+	if err != nil {
+		return err
 	}
 
 	index, err := r.appendLog(ctx, newLog)
@@ -197,7 +191,7 @@ func (r *RaftBrainImpl) ClientRequest(ctx context.Context, input *common.ClientR
 	return nil
 }
 
-func (r *RaftBrainImpl) RegisterClient(ctx context.Context, input *common.RegisterClientInput, output *common.RegisterClientOutput) (err error) {
+func (r *RaftBrainImpl) RegisterClient(ctx context.Context, input common.Log, output *common.RegisterClientOutput) (err error) {
 	ctx, span := tracer.Start(ctx, "RegisterClient")
 	defer span.End()
 
@@ -225,12 +219,9 @@ func (r *RaftBrainImpl) RegisterClient(ctx context.Context, input *common.Regist
 		return nil
 	}
 
-	newLog := common.Log{
-		Term:        r.persistState.GetCurrentTerm(),
-		ClientID:    0,
-		SequenceNum: 0,
-		Command:     "register",
-		ClusterTime: r.clusterClock.Interpolate(),
+	newLog, err := r.logFactory.AttachTermAndTime(input, r.GetCurrentTerm(), r.clusterClock.LeaderStamp())
+	if err != nil {
+		return err
 	}
 
 	index, err := r.appendLog(ctx, newLog)
@@ -281,7 +272,7 @@ func (r *RaftBrainImpl) RegisterClient(ctx context.Context, input *common.Regist
 	return nil
 }
 
-func (r *RaftBrainImpl) ClientQuery(ctx context.Context, input *common.ClientQueryInput, output *common.ClientQueryOutput) (err error) {
+func (r *RaftBrainImpl) ClientQuery(ctx context.Context, input common.Log, output *common.ClientQueryOutput) (err error) {
 	ctx, span := tracer.Start(ctx, "ClientQuery")
 	defer span.End()
 
@@ -305,6 +296,11 @@ func (r *RaftBrainImpl) ClientQuery(ctx context.Context, input *common.ClientQue
 		return nil
 	}
 
+	log, err := r.logFactory.AttachTermAndTime(input, r.GetCurrentTerm(), r.clusterClock.LeaderStamp())
+	if err != nil {
+
+	}
+
 	var ok bool
 	err = errors.New("timeout")
 	for i := 0; i < 100; i++ {
@@ -313,7 +309,7 @@ func (r *RaftBrainImpl) ClientQuery(ctx context.Context, input *common.ClientQue
 			break
 		}
 
-		if log.Term == r.persistState.GetCurrentTerm() {
+		if log.GetTerm() == r.persistState.GetCurrentTerm() {
 			ok = true
 			break
 		}
@@ -355,7 +351,7 @@ func (r *RaftBrainImpl) ClientQuery(ctx context.Context, input *common.ClientQue
 		return nil
 	}
 
-	res, err := r.stateMachine.Process(ctx, 0, common.Log{Command: input.Query, ClusterTime: r.clusterClock.clusterTimeAtEpoch})
+	res, err := r.stateMachine.Process(ctx, 0, log)
 	if err != nil {
 		*output = common.ClientQueryOutput{
 			Status:     common.StatusNotOK,

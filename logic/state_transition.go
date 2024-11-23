@@ -25,14 +25,9 @@ func (n *RaftBrainImpl) toLeader(ctx context.Context) {
 			n.matchIndex[peer.ID] = 0
 		}
 	}
+	n.resetClusterTime()
 
-	n.appendLog(ctx, common.Log{
-		Term:        n.GetCurrentTerm(),
-		Command:     common.NoOperation,
-		ClusterTime: n.clusterClock.Interpolate(),
-		ClientID:    0,
-		SequenceNum: 0,
-	})
+	n.appendLog(ctx, n.logFactory.NoOperation(n.GetCurrentTerm(), n.clusterClock.LeaderStamp()))
 }
 
 func (n *RaftBrainImpl) toFollower(ctx context.Context) {

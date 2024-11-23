@@ -20,6 +20,7 @@ import (
 func TestRpcConnection(t *testing.T) {
 	logger := observability.NewZerolog(common.ObservabilityConfig{}, 1)
 	ctx := context.Background()
+	logFactory := common.ClassicLogFactory{}
 	persistState := persistence_state.NewRaftPersistenceState(persistence_state.NewRaftPersistenceStateParams{
 		CurrentTerm: 2,
 		Logs:        []common.Log{},
@@ -27,6 +28,7 @@ func TestRpcConnection(t *testing.T) {
 			storage.NewStorageParams{WalSize: 1024, DataFolder: "data/", Logger: logger},
 			storage.NewFileWrapperMock(),
 		),
+		LogFactory: logFactory,
 	})
 
 	n := NewNode(ctx, NewNodeParams{
@@ -49,6 +51,7 @@ func TestRpcConnection(t *testing.T) {
 			RpcRequestTimeout:   150 * time.Millisecond,
 			PersistenceState:    persistState,
 			LogLengthLimit:      1000,
+			LogFactory:          logFactory,
 		},
 		RPCProxy: rpc_proxy.NewRPCImplParams{
 			HostID:               1,

@@ -1,6 +1,7 @@
 package integration_testing
 
 import (
+	"os"
 	"testing"
 	"time"
 
@@ -83,6 +84,7 @@ func TestMajorityOfClusterIsCrashed(t *testing.T) {
 }
 
 func TestStartStopFollower(t *testing.T) {
+	os.RemoveAll("data/")
 	c := NewCluster("config/3-nodes.yml")
 	defer c.Clean()
 	l1 := AssertHavingOneLeader(t, c)

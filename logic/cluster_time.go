@@ -95,16 +95,24 @@ func (r *RaftBrainImpl) autoCommitClusterTime(ctx context.Context) {
 			)
 
 			if r.clusterClock.ElapsedSinceEpoch() > limit {
-				_, err := r.appendLog(ctx, common.Log{
-					Term:        r.GetCurrentTerm(),
-					ClusterTime: r.clusterClock.Interpolate(),
-					Command:     "cluster-time",
-				})
+				_, err := r.appendLog(ctx, r.logFactory.CreateTimeCommit(r.GetCurrentTerm(), r.clusterClock.LeaderStamp()))
 
 				if err != nil {
 					r.log().ErrorContext(ctx, "autoCommitClusterTime_appendLog", err)
 				}
 			}
 		}
+	}
+}
+
+// reset current cluster time to the time of the last log,
+// use this after deleting logs, or becoming leader
+func (r *RaftBrainImpl) resetClusterTime() {
+	lastLog, err := r.persistState.GetLastLog()
+	if err == nil {
+		r.clusterClock.NewEpoch(lastLog.GetTime())
+	} else {
+		// if there is no log
+		r.clusterClock = NewClusterClock()
 	}
 }

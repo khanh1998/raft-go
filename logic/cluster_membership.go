@@ -12,28 +12,46 @@ import (
 	"github.com/rs/zerolog/log"
 )
 
-func (r *RaftBrainImpl) isValidAddRequest(input common.AddServerInput) error {
+func (r *RaftBrainImpl) isValidAddRequest(input common.Log) error {
+	addition, id, httpUrl, rpcUrl, err := input.DecomposeChangeSeverCommand()
+	if err != nil {
+		return err
+	}
+
+	if !addition {
+		return fmt.Errorf("wrong add server command: %v", input)
+	}
+
 	for _, mem := range r.members {
-		if mem.ID == input.ID || mem.HttpUrl == input.NewServerHttpUrl || mem.RpcUrl == input.NewServerRpcUrl {
+		if mem.ID == id || mem.HttpUrl == httpUrl || mem.RpcUrl == rpcUrl {
 			return errors.New("the server's information is duplicated")
 		}
 	}
-	if input.ID < r.nextMemberId {
+	if id < r.nextMemberId {
 		return fmt.Errorf("server is should be %d or bigger than that", r.nextMemberId)
 	}
 	return nil
 }
 
-func (r *RaftBrainImpl) isValidRemoveRequest(input common.RemoveServerInput) error {
+func (r *RaftBrainImpl) isValidRemoveRequest(input common.Log) (error, int) {
+	addition, id, httpUrl, rpcUrl, err := input.DecomposeChangeSeverCommand()
+	if err != nil {
+		return err, 0
+	}
+
+	if addition {
+		return fmt.Errorf("wrong remove server command: %v", input), 0
+	}
+
 	for _, mem := range r.members {
-		if mem.ID == input.ID && mem.HttpUrl == input.NewServerHttpUrl && mem.RpcUrl == input.NewServerRpcUrl {
-			return nil
+		if mem.ID == id && mem.HttpUrl == httpUrl && mem.RpcUrl == rpcUrl {
+			return nil, id
 		}
 	}
-	return errors.New("can't found the server to remove")
+	return errors.New("can't found the server to remove"), 0
 }
 
-func (r *RaftBrainImpl) WaitForLogCommited(dur time.Duration, index int) error {
+func (r *RaftBrainImpl) WaitForLogCommitted(dur time.Duration, index int) error {
 	timeout := time.After(dur)
 	stop := false
 	for !stop {
@@ -50,7 +68,7 @@ func (r *RaftBrainImpl) WaitForLogCommited(dur time.Duration, index int) error {
 	return nil
 }
 
-func (r *RaftBrainImpl) RemoveServer(ctx context.Context, input common.RemoveServerInput, output *common.RemoveServerOutput) (err error) {
+func (r *RaftBrainImpl) RemoveServer(ctx context.Context, input common.Log, output *common.RemoveServerOutput) (err error) {
 	ctx, span := tracer.Start(ctx, "RemoveServer")
 	defer span.End()
 
@@ -69,7 +87,8 @@ func (r *RaftBrainImpl) RemoveServer(ctx context.Context, input common.RemoveSer
 		return nil
 	}
 
-	if err := r.isValidRemoveRequest(input); err != nil {
+	var removedId int
+	if err, removedId = r.isValidRemoveRequest(input); err != nil {
 		*output = common.RemoveServerOutput{
 			Status:     common.StatusNotOK,
 			LeaderHint: r.getLeaderHttpUrl(),
@@ -95,12 +114,9 @@ func (r *RaftBrainImpl) RemoveServer(ctx context.Context, input common.RemoveSer
 	}
 	defer r.changeMemberLock.Unlock()
 
-	newLog := common.Log{
-		Term:        r.persistState.GetCurrentTerm(),
-		ClientID:    0,
-		SequenceNum: 0,
-		Command:     common.ComposeRemoveServerCommand(input.ID, input.NewServerHttpUrl, input.NewServerRpcUrl),
-		ClusterTime: r.clusterClock.Interpolate(),
+	newLog, err := r.logFactory.AttachTermAndTime(input, r.GetCurrentTerm(), r.clusterClock.LeaderStamp())
+	if err != nil {
+		return err
 	}
 
 	index, err := r.appendLog(ctx, newLog)
@@ -114,13 +130,13 @@ func (r *RaftBrainImpl) RemoveServer(ctx context.Context, input common.RemoveSer
 		}
 	}
 
-	msg := fmt.Sprintf("server %d can be shut down now", input.ID)
-	err = r.WaitForLogCommited(30*time.Second, index)
+	msg := fmt.Sprintf("server %d can be shut down now", removedId)
+	err = r.WaitForLogCommitted(30*time.Second, index)
 	if err != nil {
-		msg = fmt.Sprintf("log isn't commited, server %d can't be shut down", input.ID)
+		msg = fmt.Sprintf("log isn't committed, server %d can't be shut down", removedId)
 	}
 
-	isLeaderRemoved := isLeader && input.ID == r.id
+	isLeaderRemoved := isLeader && removedId == r.id
 	if isLeaderRemoved {
 		r.state = common.StateRemoved
 		r.stop()
@@ -140,7 +156,7 @@ func (r *RaftBrainImpl) RemoveServer(ctx context.Context, input common.RemoveSer
 	return nil
 }
 
-func (r *RaftBrainImpl) AddServer(ctx context.Context, input common.AddServerInput, output *common.AddServerOutput) (err error) {
+func (r *RaftBrainImpl) AddServer(ctx context.Context, input common.Log, output *common.AddServerOutput) (err error) {
 	ctx, span := tracer.Start(ctx, "AddServer")
 	defer span.End()
 
@@ -167,6 +183,11 @@ func (r *RaftBrainImpl) AddServer(ctx context.Context, input common.AddServerInp
 		return nil
 	}
 
+	newLog, err := r.logFactory.AttachTermAndTime(input, r.GetCurrentTerm(), r.clusterClock.LeaderStamp())
+	if err != nil {
+		return err
+	}
+
 	r.inOutLock.Unlock()
 
 	if !r.changeMemberLock.TryLock() {
@@ -183,7 +204,9 @@ func (r *RaftBrainImpl) AddServer(ctx context.Context, input common.AddServerInp
 	defer r.changeMemberLock.Unlock()
 	timeout := 5 * time.Second
 
-	if err := r.rpcProxy.ConnectToNewPeer(ctx, input.ID, input.NewServerRpcUrl, 5, timeout); err != nil {
+	_, newServerId, _, newServerRpcUrl, _ := input.DecomposeChangeSeverCommand()
+
+	if err := r.rpcProxy.ConnectToNewPeer(ctx, newServerId, newServerRpcUrl, 5, timeout); err != nil {
 		*output = common.AddServerOutput{
 			Status:     common.StatusNotOK,
 			LeaderHint: r.getLeaderHttpUrl(),
@@ -200,7 +223,7 @@ func (r *RaftBrainImpl) AddServer(ctx context.Context, input common.AddServerInp
 		log.Info().Msgf("AddServer catchup start round %d", i)
 		begin := time.Now()
 
-		err := r.catchUpWithNewMember(ctx, input.ID)
+		err := r.catchUpWithNewMember(ctx, newServerId)
 		if err != nil {
 			*output = common.AddServerOutput{
 				Status:     common.StatusNotOK,
@@ -218,14 +241,6 @@ func (r *RaftBrainImpl) AddServer(ctx context.Context, input common.AddServerInp
 		log.Info().Msgf("AddServer catchup end round %d", i)
 	}
 
-	newLog := common.Log{
-		Term:        r.persistState.GetCurrentTerm(),
-		ClientID:    0,
-		SequenceNum: 0,
-		Command:     common.ComposeAddServerCommand(input.ID, input.NewServerHttpUrl, input.NewServerRpcUrl),
-		ClusterTime: r.clusterClock.Interpolate(),
-	}
-
 	index, err := r.appendLog(ctx, newLog)
 	if err != nil {
 		r.log().ErrorContext(ctx, "AddServer_appendLog", err)
@@ -237,21 +252,21 @@ func (r *RaftBrainImpl) AddServer(ctx context.Context, input common.AddServerInp
 		}
 	}
 
-	// after append new config to log, we use it immediately without wating commit
+	// after append new config to log, we use it immediately without waiting commit
 
-	r.nextMemberId = input.ID + 1
+	r.nextMemberId = newServerId + 1
 
 	// allow new server to become follower
-	err = r.rpcProxy.SendToVotingMember(ctx, input.ID, &timeout)
+	err = r.rpcProxy.SendToVotingMember(ctx, newServerId, &timeout)
 	if err != nil {
 		log.Err(err).Msg("SendToVotingMember")
 	}
 
 	// wait for log to committed
 	msg := ""
-	err = r.WaitForLogCommited(30*time.Second, index)
+	err = r.WaitForLogCommitted(30*time.Second, index)
 	if err != nil {
-		msg = fmt.Sprintf("log isn't commited, server %d isn't surely joined the cluster", input.ID)
+		msg = fmt.Sprintf("log isn't committed, server %d isn't surely joined the cluster", newServerId)
 	}
 
 	*output = common.AddServerOutput{
@@ -283,7 +298,7 @@ func (r *RaftBrainImpl) catchUpWithNewMember(ctx context.Context, peerID int) er
 			prevLog, err := r.GetLog(nextIdx - 1)
 			if err == nil || errors.Is(err, common.ErrLogIsInSnapshot) {
 				// if previous log is in snapshot, we just sent lastTerm and lastIndex
-				input.PrevLogTerm = prevLog.Term
+				input.PrevLogTerm = prevLog.GetTerm()
 			}
 		}
 
@@ -391,8 +406,8 @@ func (r *RaftBrainImpl) catchUpWithNewMember(ctx context.Context, peerID int) er
 	return nil
 }
 
-func (r *RaftBrainImpl) revertChangeMember(command string) error {
-	addition, id, httpUrl, rpcUrl, err := common.DecomposeChangeSeverCommand(command)
+func (r *RaftBrainImpl) revertChangeMember(log common.Log) error {
+	addition, id, httpUrl, rpcUrl, err := log.DecomposeChangeSeverCommand()
 	if err != nil {
 		return err
 	}
@@ -405,11 +420,11 @@ func (r *RaftBrainImpl) revertChangeMember(command string) error {
 	}
 }
 
-func (r *RaftBrainImpl) changeMember(command string) error {
+func (r *RaftBrainImpl) changeMember(log common.Log) error {
 	defer func() {
-		r.log().Info("changeMember", "command", command)
+		r.log().Info("changeMember", "command", log)
 	}()
-	addition, id, httpUrl, rpcUrl, err := common.DecomposeChangeSeverCommand(command)
+	addition, id, httpUrl, rpcUrl, err := log.DecomposeChangeSeverCommand()
 	if err != nil {
 		return err
 	}

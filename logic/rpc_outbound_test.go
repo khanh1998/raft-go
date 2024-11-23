@@ -104,13 +104,14 @@ func TestRaftBrainImpl_BroadcastAppendEntries(t *testing.T) {
 		lastHeartbeatReceivedTime time.Time
 		RpcRequestTimeout         time.Duration
 		logLengthLimit            int
-		persistState              RaftPersistanceState
+		persistState              RaftPersistenceState
 		commitIndex               int
 		lastApplied               int
 		nextIndex                 map[int]int
 		matchIndex                map[int]int
 		nextOffset                map[int]NextOffset
 		snapshotChunkSize         int
+		logFactory                common.LogFactory
 	}
 	type args struct {
 	}
@@ -146,7 +147,7 @@ func TestRaftBrainImpl_BroadcastAppendEntries(t *testing.T) {
 					VotedFor:    1,
 					CurrentTerm: 1,
 					Logs: []common.Log{
-						{Term: 1, Command: "set counter 10"},
+						common.ClassicLog{Term: 1, Command: "set counter 10"},
 					},
 					SnapshotMetadata: common.SnapshotMetadata{
 						LastLogTerm:  1,
@@ -163,6 +164,7 @@ func TestRaftBrainImpl_BroadcastAppendEntries(t *testing.T) {
 						},
 						Size: map[string]int64{},
 					}),
+					LogFactory: common.ClassicLogFactory{},
 				}),
 				logger: observability.NewZerologForTest(),
 				nextIndex: map[int]int{
@@ -176,6 +178,7 @@ func TestRaftBrainImpl_BroadcastAppendEntries(t *testing.T) {
 						Snapshot: common.SnapshotMetadata{LastLogTerm: 1, LastLogIndex: 5, FileName: "snapshot.00000000000000000001_00000000000000000005.dat"},
 					},
 				},
+				logFactory: common.ClassicLogFactory{},
 			},
 
 			args:           args{},

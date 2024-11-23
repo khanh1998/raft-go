@@ -37,7 +37,7 @@ func TestKeyValueStateMachine_Process(t *testing.T) {
 				clients: map[int]common.ClientEntry{},
 			},
 			args: args{
-				log: common.Log{Command: "get name"},
+				log: common.ClassicLog{Command: "get name"},
 			},
 			wantResult: "khanh",
 			wantErr:    false,
@@ -56,7 +56,7 @@ func TestKeyValueStateMachine_Process(t *testing.T) {
 				},
 			},
 			args: args{
-				log: common.Log{Command: "get name", ClientID: 1, SequenceNum: 5},
+				log: common.ClassicLog{Command: "get name", ClientID: 1, SequenceNum: 5},
 			},
 			wantResult: "hi you",
 			wantErr:    false,
@@ -75,7 +75,7 @@ func TestKeyValueStateMachine_Process(t *testing.T) {
 				},
 			},
 			args: args{
-				log: common.Log{Command: "get name", ClientID: 1, SequenceNum: 5},
+				log: common.ClassicLog{Command: "get name", ClientID: 1, SequenceNum: 5},
 			},
 			wantResult: "hi you",
 			wantErr:    false,
@@ -94,7 +94,7 @@ func TestKeyValueStateMachine_Process(t *testing.T) {
 				},
 			},
 			args: args{
-				log: common.Log{Command: "get age", ClientID: 1, SequenceNum: 4},
+				log: common.ClassicLog{Command: "get age", ClientID: 1, SequenceNum: 4},
 			},
 			wantResult: "",
 			wantErr:    true,
@@ -108,7 +108,7 @@ func TestKeyValueStateMachine_Process(t *testing.T) {
 				clients: map[int]common.ClientEntry{},
 			},
 			args: args{
-				log: common.Log{Command: "set address ho chi minh city"},
+				log: common.ClassicLog{Command: "set address ho chi minh city"},
 			},
 			wantFields: &fields{
 				data: map[string]string{
@@ -130,7 +130,7 @@ func TestKeyValueStateMachine_Process(t *testing.T) {
 				clients: map[int]common.ClientEntry{},
 			},
 			args: args{
-				log: common.Log{Command: "del name"},
+				log: common.ClassicLog{Command: "del name"},
 			},
 			wantFields: &fields{
 				data: map[string]string{
@@ -151,7 +151,7 @@ func TestKeyValueStateMachine_Process(t *testing.T) {
 				clients: map[int]common.ClientEntry{},
 			},
 			args: args{
-				log: common.Log{Command: "del nation"},
+				log: common.ClassicLog{Command: "del nation"},
 			},
 			wantFields: &fields{
 				data: map[string]string{
@@ -172,7 +172,7 @@ func TestKeyValueStateMachine_Process(t *testing.T) {
 				clients: map[int]common.ClientEntry{},
 			},
 			args: args{
-				log: common.Log{Command: common.NoOperation},
+				log: common.ClassicLog{Command: common.NoOperation},
 			},
 			wantFields: &fields{
 				data: map[string]string{
@@ -192,7 +192,7 @@ func TestKeyValueStateMachine_Process(t *testing.T) {
 				clients: map[int]common.ClientEntry{},
 			},
 			args: args{
-				log: common.Log{},
+				log: common.ClassicLog{},
 			},
 			wantResult: "",
 			wantErr:    true,
@@ -206,7 +206,7 @@ func TestKeyValueStateMachine_Process(t *testing.T) {
 				clients: map[int]common.ClientEntry{},
 			},
 			args: args{
-				log: common.Log{Command: "get"},
+				log: common.ClassicLog{Command: "get"},
 			},
 			wantResult: "",
 			wantErr:    true,
@@ -220,7 +220,7 @@ func TestKeyValueStateMachine_Process(t *testing.T) {
 				clients: map[int]common.ClientEntry{},
 			},
 			args: args{
-				log: common.Log{Command: "set name"},
+				log: common.ClassicLog{Command: "set name"},
 			},
 			wantResult: "",
 			wantErr:    true,
@@ -234,7 +234,7 @@ func TestKeyValueStateMachine_Process(t *testing.T) {
 				clients: map[int]common.ClientEntry{},
 			},
 			args: args{
-				log: common.Log{Command: "do whatever you want", ClientID: 5, SequenceNum: 6},
+				log: common.ClassicLog{Command: "do whatever you want", ClientID: 5, SequenceNum: 6},
 			},
 			wantResult: "",
 			wantErr:    true,
@@ -250,7 +250,7 @@ func TestKeyValueStateMachine_Process(t *testing.T) {
 			},
 			args: args{
 				logIndex: 2,
-				log:      common.Log{Command: "register", ClusterTime: 3},
+				log:      common.ClassicLog{Command: "register", ClusterTime: 3},
 			},
 			wantFields: &fields{
 				data: map[string]string{
@@ -279,7 +279,7 @@ func TestKeyValueStateMachine_Process(t *testing.T) {
 				},
 			},
 			args: args{
-				log: common.Log{Command: "set address ho chi minh city", ClientID: 1, SequenceNum: 1, ClusterTime: 10},
+				log: common.ClassicLog{Command: "set address ho chi minh city", ClientID: 1, SequenceNum: 1, ClusterTime: 10},
 			},
 			wantFields: &fields{
 				data: map[string]string{
@@ -307,7 +307,7 @@ func TestKeyValueStateMachine_Process(t *testing.T) {
 				},
 			},
 			args: args{
-				log: common.Log{Command: "set address ho chi minh city", ClientID: 1, SequenceNum: 1, ClusterTime: 30},
+				log: common.ClassicLog{Command: "set address ho chi minh city", ClientID: 1, SequenceNum: 1, ClusterTime: 30},
 			},
 			wantFields: &fields{
 				data: map[string]string{
@@ -336,7 +336,7 @@ func TestKeyValueStateMachine_Process(t *testing.T) {
 				clientSessionDuration: 5,
 			},
 			args: args{
-				log: common.Log{Command: "keep-alive", ClientID: 3, SequenceNum: 1, ClusterTime: 30},
+				log: common.ClassicLog{Command: "keep-alive", ClientID: 3, SequenceNum: 1, ClusterTime: 30},
 			},
 			wantFields: &fields{
 				data: map[string]string{
@@ -432,7 +432,7 @@ func TestKeyValueStateMachine_Process2(t *testing.T) {
 				keyLock:               map[string]int{},
 			},
 			args: args{
-				log: common.Log{Command: "set --lock nation vietnam", ClientID: 1, SequenceNum: 2, ClusterTime: 30},
+				log: common.ClassicLog{Command: "set --lock nation vietnam", ClientID: 1, SequenceNum: 2, ClusterTime: 30},
 			},
 			wantFields: &fields{
 				data: map[string]string{
@@ -468,7 +468,7 @@ func TestKeyValueStateMachine_Process2(t *testing.T) {
 				keyLock:               map[string]int{},
 			},
 			args: args{
-				log: common.Log{Command: "set --lock name khanh", ClientID: 1, SequenceNum: 2, ClusterTime: 30},
+				log: common.ClassicLog{Command: "set --lock name khanh", ClientID: 1, SequenceNum: 2, ClusterTime: 30},
 			},
 			wantFields: &fields{
 				data: map[string]string{
@@ -509,7 +509,7 @@ func TestKeyValueStateMachine_Process2(t *testing.T) {
 				},
 			},
 			args: args{
-				log: common.Log{Command: "set --lock name kelvin", ClientID: 2, SequenceNum: 2, ClusterTime: 30},
+				log: common.ClassicLog{Command: "set --lock name kelvin", ClientID: 2, SequenceNum: 2, ClusterTime: 30},
 			},
 			wantFields: &fields{
 				data: map[string]string{
@@ -554,7 +554,7 @@ func TestKeyValueStateMachine_Process2(t *testing.T) {
 				},
 			},
 			args: args{
-				log: common.Log{Command: "set --lock name kelvin", ClientID: 2, SequenceNum: 2, ClusterTime: 30},
+				log: common.ClassicLog{Command: "set --lock name kelvin", ClientID: 2, SequenceNum: 2, ClusterTime: 30},
 			},
 			wantFields: &fields{
 				data: map[string]string{
@@ -597,7 +597,7 @@ func TestKeyValueStateMachine_Process2(t *testing.T) {
 				},
 			},
 			args: args{
-				log: common.Log{Command: "del name", ClientID: 1, SequenceNum: 3, ClusterTime: 30},
+				log: common.ClassicLog{Command: "del name", ClientID: 1, SequenceNum: 3, ClusterTime: 30},
 			},
 			wantFields: &fields{
 				data: map[string]string{
@@ -644,7 +644,7 @@ func TestKeyValueStateMachine_Process2(t *testing.T) {
 				},
 			},
 			args: args{
-				log: common.Log{Command: "del nation", ClientID: 1, SequenceNum: 3, ClusterTime: 30},
+				log: common.ClassicLog{Command: "del nation", ClientID: 1, SequenceNum: 3, ClusterTime: 30},
 			},
 			wantFields: &fields{
 				data: map[string]string{
@@ -693,7 +693,7 @@ func TestKeyValueStateMachine_Process2(t *testing.T) {
 				},
 			},
 			args: args{
-				log: common.Log{Command: "del nation", ClientID: 1, SequenceNum: 3, ClusterTime: 30},
+				log: common.ClassicLog{Command: "del nation", ClientID: 1, SequenceNum: 3, ClusterTime: 30},
 			},
 			wantFields: &fields{
 				data: map[string]string{
@@ -775,7 +775,7 @@ func TestKeyValueStateMachine_Process3(t *testing.T) {
 				lastConfig: map[int]common.ClusterMember{},
 			},
 			args: args{
-				log: common.Log{
+				log: common.ClassicLog{
 					Command: common.ComposeAddServerCommand(1, "localhost:8080", "localhost:1234"),
 				},
 			},

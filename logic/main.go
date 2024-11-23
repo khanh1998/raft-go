@@ -25,7 +25,7 @@ type MembershipManager interface {
 // - currentTerm
 // - votedFor
 // - logs
-type RaftPersistanceState interface {
+type RaftPersistenceState interface {
 	AppendLog(ctx context.Context, logItems []common.Log) (index int, err error)
 	DeleteLogFrom(ctx context.Context, index int) (deletedLogs []common.Log, err error)
 	DeleteAllLog(ctx context.Context) (err error)
@@ -85,12 +85,13 @@ type RaftBrainImpl struct {
 	RpcRequestTimeout         time.Duration
 	logLengthLimit            int
 	snapshotChunkSize         int // in byte
+	logFactory                common.LogFactory
 	// Persistent state on all servers:
 	// Updated on stable storage before responding to RPCs
 	// currentTerm int          // latest term server has seen (initialized to 0 on first boot, increases monotonically)
 	// votedFor    int          // candidateId that received vote in current term (or null if none)
 	// logs        []common.Log // log entries; each entry contains command for state machine, and term when entry was received by leader (first index is 1)
-	persistState RaftPersistanceState
+	persistState RaftPersistenceState
 
 	// Volatile state on all servers:
 	commitIndex int // index of highest log entry known to be committed (initialized to 0, increases monotonically)
@@ -170,19 +171,15 @@ type NewRaftBrainParams struct {
 	Logger              observability.Logger
 	CachingUp           bool // will be ignored if the cluster mode is STATIC
 	RpcRequestTimeout   time.Duration
-	PersistenceState    RaftPersistanceState // this will take care of raft's states that need to be persisted
+	PersistenceState    RaftPersistenceState // this will take care of raft's states that need to be persisted
 	LogLengthLimit      int
 	SnapshotChunkSize   int
+	LogFactory          common.LogFactory
 }
 
 func NewRaftBrain(params NewRaftBrainParams) (*RaftBrainImpl, error) {
 	latestSnapshot := params.PersistenceState.GetLatestSnapshotMetadata()
 	clusterClock := NewClusterClock()
-
-	lastLog, err := params.PersistenceState.GetLastLog()
-	if err == nil {
-		clusterClock.NewEpoch(lastLog.ClusterTime)
-	}
 
 	n := &RaftBrainImpl{
 		id: params.ID,
@@ -215,6 +212,7 @@ func NewRaftBrain(params NewRaftBrainParams) (*RaftBrainImpl, error) {
 		persistState:      params.PersistenceState,
 		logLengthLimit:    params.LogLengthLimit,
 		snapshotChunkSize: params.SnapshotChunkSize,
+		logFactory:        params.LogFactory,
 
 		// only committed logs are compacted into snapshot,
 		// for new cluster, it will be zero.
@@ -244,14 +242,7 @@ func NewRaftBrain(params NewRaftBrainParams) (*RaftBrainImpl, error) {
 			// initially add members to the cluster. otherwise, it's already in the log.
 			if n.persistState.LogLength() == 0 {
 				mem := params.Members[0]
-
-				n.appendLog(ctx, common.Log{
-					Term:        1,
-					ClientID:    0,
-					SequenceNum: 0,
-					Command:     common.ComposeAddServerCommand(mem.ID, mem.HttpUrl, mem.RpcUrl),
-					ClusterTime: 0,
-				})
+				n.appendLog(ctx, n.logFactory.AddNewNode(1, 0, mem.ID, mem.HttpUrl, mem.RpcUrl))
 			} else {
 				for _, mem := range params.Members {
 					err := n.addMember(mem.ID, mem.HttpUrl, mem.RpcUrl)

@@ -265,7 +265,9 @@ func TestSnapshot_Serialize(t *testing.T) {
 				SnapshotMetadata: tt.fields.SnapshotMetadata,
 			}
 			gotData := s.Serialize()
-			if !reflect.DeepEqual(sort.StringSlice(gotData), sort.StringSlice(tt.wantData)) {
+			sort.Strings(gotData)
+			sort.Strings(tt.wantData)
+			if !reflect.DeepEqual(gotData, tt.wantData) {
 				t.Errorf("Snapshot.Serialize() = %v, want %v", gotData, tt.wantData)
 			}
 		})

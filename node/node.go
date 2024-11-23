@@ -2,6 +2,7 @@ package node
 
 import (
 	"context"
+	"encoding/gob"
 	"errors"
 	"khanh/raft-go/common"
 	"khanh/raft-go/http_proxy"
@@ -31,6 +32,9 @@ type NewNodeParams struct {
 }
 
 func NewNode(ctx context.Context, params NewNodeParams) *Node {
+	sampleLog := params.Brain.LogFactory.Empty()
+	gob.Register(sampleLog)
+
 	stateMachine := state_machine.NewKeyValueStateMachine(params.StateMachine)
 
 	brain, err := logic.NewRaftBrain(params.Brain)
