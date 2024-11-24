@@ -356,8 +356,8 @@ func TestKeyValueStateMachine_Process(t *testing.T) {
 			if tt.name == "keep-alive" {
 				fmt.Println("breakpoint")
 			}
-			k := KeyValueStateMachine{
-				current: &common.Snapshot{
+			k := ClassicStateMachine{
+				current: &common.ClassicSnapshot{
 					KeyValue: tt.fields.data,
 					Sessions: tt.fields.clients,
 					KeyLock:  tt.fields.keyLock,
@@ -715,8 +715,8 @@ func TestKeyValueStateMachine_Process2(t *testing.T) {
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			k := KeyValueStateMachine{
-				current: &common.Snapshot{
+			k := ClassicStateMachine{
+				current: &common.ClassicSnapshot{
 					KeyValue: tt.fields.data,
 					Sessions: tt.fields.clients,
 					KeyLock:  tt.fields.keyLock,
@@ -794,8 +794,8 @@ func TestKeyValueStateMachine_Process3(t *testing.T) {
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			k := KeyValueStateMachine{
-				current: &common.Snapshot{
+			k := ClassicStateMachine{
+				current: &common.ClassicSnapshot{
 					LastConfig: tt.fields.lastConfig,
 				},
 				logger:                observability.NewZerolog(common.ObservabilityConfig{Disabled: true}, 0),
@@ -912,8 +912,8 @@ func TestKeyValueStateMachine_setCache(t *testing.T) {
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			k := KeyValueStateMachine{
-				current: &common.Snapshot{
+			k := ClassicStateMachine{
+				current: &common.ClassicSnapshot{
 					KeyValue: tt.fields.data,
 					Sessions: tt.fields.cache,
 				},

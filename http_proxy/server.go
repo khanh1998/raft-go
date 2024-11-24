@@ -31,7 +31,7 @@ type RaftBrain interface {
 	GetInfo() common.GetStatusResponse
 }
 
-type HttpProxy struct {
+type ClassicHttpProxy struct {
 	brain      RaftBrain
 	host       string
 	stop       chan struct{}
@@ -39,13 +39,13 @@ type HttpProxy struct {
 	logger     observability.Logger
 }
 
-type NewHttpProxyParams struct {
+type NewClassicHttpProxyParams struct {
 	URL    string
 	Logger observability.Logger
 }
 
-func NewHttpProxy(params NewHttpProxyParams) *HttpProxy {
-	h := HttpProxy{
+func NewClassicHttpProxy(params NewClassicHttpProxyParams) *ClassicHttpProxy {
+	h := ClassicHttpProxy{
 		host:       params.URL,
 		stop:       make(chan struct{}),
 		accessible: true,
@@ -55,7 +55,7 @@ func NewHttpProxy(params NewHttpProxyParams) *HttpProxy {
 	return &h
 }
 
-func (h *HttpProxy) log() observability.Logger {
+func (h *ClassicHttpProxy) log() observability.Logger {
 	sub := h.logger.With(
 		"origin", "HttpProxy",
 	)
@@ -63,36 +63,36 @@ func (h *HttpProxy) log() observability.Logger {
 	return sub
 }
 
-func (h *HttpProxy) Stop() {
+func (h *ClassicHttpProxy) Stop() {
 	select {
 	case h.stop <- struct{}{}:
 	default:
 	}
 }
 
-func (h *HttpProxy) SetAccessible() {
+func (h *ClassicHttpProxy) SetAccessible() {
 	h.accessible = true
 }
 
-func (h *HttpProxy) SetInaccessible() {
+func (h *ClassicHttpProxy) SetInaccessible() {
 	h.accessible = false
 }
 
-func (h *HttpProxy) SetBrain(brain RaftBrain) {
+func (h *ClassicHttpProxy) SetBrain(brain RaftBrain) {
 	h.brain = brain
 }
-func (h *HttpProxy) prometheus(r *gin.Engine) {
+func (h *ClassicHttpProxy) prometheus(r *gin.Engine) {
 	r.GET("/metrics", gin.WrapH(promhttp.Handler()))
 }
 
-func (h *HttpProxy) info(r *gin.Engine) {
+func (h *ClassicHttpProxy) info(r *gin.Engine) {
 	r.GET("/info", func(c *gin.Context) {
 		info := h.brain.GetInfo()
 		c.IndentedJSON(200, info)
 	})
 }
 
-func (h *HttpProxy) cli(r *gin.Engine) {
+func (h *ClassicHttpProxy) cli(r *gin.Engine) {
 	r.POST("/cli", func(c *gin.Context) {
 		ctx, span := tracer.Start(c.Request.Context(), "CliHandler")
 		defer span.End()
@@ -288,7 +288,7 @@ func verifyRequest(request common.ClientRequestInput) (errs []error, cmdType Com
 	return
 }
 
-func (h *HttpProxy) Start() {
+func (h *ClassicHttpProxy) Start() {
 	gin.SetMode(gin.ReleaseMode)
 	r := gin.New()
 	r.Use(otelgin.Middleware("gin-server"))

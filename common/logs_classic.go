@@ -9,6 +9,16 @@ import (
 
 type ClassicLogFactory struct{}
 
+func (c ClassicLogFactory) EmptySnapshot() Snapshot {
+	return &ClassicSnapshot{
+		LastConfig:       map[int]ClusterMember{},
+		KeyValue:         map[string]string{},
+		KeyLock:          map[string]int{},
+		Sessions:         map[int]ClientEntry{},
+		SnapshotMetadata: SnapshotMetadata{},
+	}
+}
+
 func (c ClassicLogFactory) Deserialize(data []byte) (Log, error) {
 	return ClassicLog{}, nil
 }

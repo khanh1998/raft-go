@@ -117,15 +117,17 @@ func (c *Cluster) init(filePath string) {
 					RpcDialTimeout:       config.RpcDialTimeout,
 					RpcReconnectDuration: config.RpcReconnectDuration,
 				},
-				HTTPProxy: http_proxy.NewHttpProxyParams{
-					URL:    mem.HttpUrl,
-					Logger: log,
-				},
-				StateMachine: state_machine.NewKeyValueStateMachineParams{
-					ClientSessionDuration: uint64(config.ClientSessionDuration),
-					Logger:                log,
-					PersistState:          raftPersistState,
-					Snapshot:              snapshot,
+				ClassicSetup: &node.ClassicSetup{
+					HTTPProxy: http_proxy.NewClassicHttpProxyParams{
+						URL:    mem.HttpUrl,
+						Logger: log,
+					},
+					StateMachine: state_machine.NewClassicStateMachineParams{
+						ClientSessionDuration: uint64(config.ClientSessionDuration),
+						Logger:                log,
+						PersistState:          raftPersistState,
+						Snapshot:              snapshot,
+					},
 				},
 				Logger: log,
 			}

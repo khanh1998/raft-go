@@ -25,8 +25,10 @@ var (
 	ErrInputLogTypeIsNotSupported = errors.New("input log type is not supported by state machine")
 )
 
-type KeyValueStateMachine struct {
-	current               *common.Snapshot // live snapshot to serve the users
+// the Classic state machine utilize hashmap to store key value pairs,
+// therefore it only support search by an exact key
+type ClassicStateMachine struct {
+	current               *common.ClassicSnapshot // live snapshot to serve the users
 	lock                  sync.RWMutex
 	clientSessionDuration uint64 // duration in nanosecond
 	logger                observability.Logger
@@ -35,43 +37,50 @@ type KeyValueStateMachine struct {
 }
 
 type RaftPersistenceState interface {
-	SaveSnapshot(ctx context.Context, snapshot *common.Snapshot) (err error)
-	ReadLatestSnapshot(ctx context.Context) (snap *common.Snapshot, err error)
+	SaveSnapshot(ctx context.Context, snapshot common.Snapshot) (err error)
+	ReadLatestSnapshot(ctx context.Context) (snap common.Snapshot, err error)
 }
 
-type NewKeyValueStateMachineParams struct {
+type NewClassicStateMachineParams struct {
 	PersistState          RaftPersistenceState
 	ClientSessionDuration uint64 // duration in nanosecond
 	Logger                observability.Logger
-	Snapshot              *common.Snapshot
+	Snapshot              common.Snapshot
 }
 
-func NewKeyValueStateMachine(params NewKeyValueStateMachineParams) *KeyValueStateMachine {
-	k := &KeyValueStateMachine{
+func NewClassicStateMachine(params NewClassicStateMachineParams) *ClassicStateMachine {
+	k := &ClassicStateMachine{
 		clientSessionDuration: params.ClientSessionDuration,
 		logger:                params.Logger,
 		persistenceState:      params.PersistState,
 	}
 
 	if params.Snapshot == nil {
-		k.current = common.NewSnapshot()
+		k.current = common.NewClassicSnapshot()
 	} else {
-		k.current = params.Snapshot
+		var ok bool
+		k.current, ok = params.Snapshot.(*common.ClassicSnapshot)
+		if !ok {
+			k.logger.Fatal("invalid snapshot:",
+				"got", params.Snapshot,
+				"want", "*common.ClassicSnapshot{}",
+			)
+		}
 	}
 
 	return k
 }
 
-func (k *KeyValueStateMachine) GetLastConfig() map[int]common.ClusterMember {
+func (k *ClassicStateMachine) GetLastConfig() map[int]common.ClusterMember {
 	return k.current.LastConfig
 }
 
 // for static cluster only
-func (k *KeyValueStateMachine) SetLastConfig(config map[int]common.ClusterMember) {
+func (k *ClassicStateMachine) SetLastConfig(config map[int]common.ClusterMember) {
 	k.current.LastConfig = config
 }
 
-func (k *KeyValueStateMachine) log() observability.Logger {
+func (k *ClassicStateMachine) log() observability.Logger {
 	sub := k.logger.With(
 		"source", "state machine",
 	)
@@ -79,33 +88,38 @@ func (k *KeyValueStateMachine) log() observability.Logger {
 	return sub
 }
 
-func (k *KeyValueStateMachine) SetPersistenceStatus(ps RaftPersistenceState) {
+func (k *ClassicStateMachine) SetPersistenceStatus(ps RaftPersistenceState) {
 	k.persistenceState = ps
 }
 
-func (k *KeyValueStateMachine) setSession(clientID int, sequenceNum int, response string) {
+func (k *ClassicStateMachine) setSession(clientID int, sequenceNum int, response common.LogResult) {
 	if clientID > 0 && sequenceNum >= 0 { // when client register, clientID > 0 and sequenceNum == 0
 		tmp := k.current.Sessions[clientID]
-		tmp.LastResponse = response
+		if response == nil {
+			tmp.LastResponse = ""
+		} else {
+			tmp.LastResponse = response.(string)
+		}
 		tmp.LastSequenceNum = sequenceNum
 
 		k.current.Sessions[clientID] = tmp
 	}
 }
 
-func (k *KeyValueStateMachine) Reset(ctx context.Context) (err error) {
+func (k *ClassicStateMachine) Reset(ctx context.Context) (err error) {
 	k.lock.Lock()
 	defer k.lock.Unlock()
 
-	k.current, err = k.persistenceState.ReadLatestSnapshot(ctx)
+	snap, err := k.persistenceState.ReadLatestSnapshot(ctx)
 	if err != nil {
 		return err
 	}
+	k.current = (snap).(*common.ClassicSnapshot)
 
 	return nil
 }
 
-func (k *KeyValueStateMachine) InvalidateExpiredSession(clusterTime uint64) {
+func (k *ClassicStateMachine) InvalidateExpiredSession(clusterTime uint64) {
 	expiredClientIds := map[int]struct{}{}
 	for clientId, session := range k.current.Sessions {
 		if session.ExpiryTime < clusterTime {
@@ -129,7 +143,7 @@ func (k *KeyValueStateMachine) InvalidateExpiredSession(clusterTime uint64) {
 
 }
 
-func (k *KeyValueStateMachine) StartSnapshot(ctx context.Context) (err error) {
+func (k *ClassicStateMachine) StartSnapshot(ctx context.Context) (err error) {
 	k.lock.RLock()
 	snapshot := k.current.Copy()
 	k.lock.RUnlock()
@@ -147,7 +161,7 @@ func (k *KeyValueStateMachine) StartSnapshot(ctx context.Context) (err error) {
 	return nil
 }
 
-func (k *KeyValueStateMachine) Process(ctx context.Context, logIndex int, logI common.Log) (result common.LogResult, err error) {
+func (k *ClassicStateMachine) Process(ctx context.Context, logIndex int, logI common.Log) (result common.LogResult, err error) {
 	k.lock.Lock()
 	defer k.lock.Unlock()
 
@@ -168,7 +182,7 @@ func (k *KeyValueStateMachine) Process(ctx context.Context, logIndex int, logI c
 	}
 
 	defer func() {
-		k.setSession(log.ClientID, log.SequenceNum, result.(string))
+		k.setSession(log.ClientID, log.SequenceNum, result)
 
 		k.current.LastLogIndex = logIndex
 		k.current.LastLogTerm = log.Term
@@ -298,14 +312,14 @@ func (k *KeyValueStateMachine) Process(ctx context.Context, logIndex int, logI c
 	return "", ErrUnsupportedCommand
 }
 
-func (k *KeyValueStateMachine) GetMembers() (members []common.ClusterMember) {
+func (k *ClassicStateMachine) GetMembers() (members []common.ClusterMember) {
 	for _, mem := range k.current.LastConfig {
 		members = append(members, mem)
 	}
 	return members
 }
 
-func (k *KeyValueStateMachine) get(key string) (value string, err error) {
+func (k *ClassicStateMachine) get(key string) (value string, err error) {
 	value, ok := k.current.KeyValue[key]
 	if !ok {
 		return "", ErrKeyDoesNotExist
@@ -314,7 +328,7 @@ func (k *KeyValueStateMachine) get(key string) (value string, err error) {
 	return value, nil
 }
 
-func (k *KeyValueStateMachine) del(key string, clientId int) (err error) {
+func (k *ClassicStateMachine) del(key string, clientId int) (err error) {
 	lockClientId, ok := k.current.KeyLock[key]
 	if ok && lockClientId != clientId {
 		return fmt.Errorf("%w, client id: %d", ErrKeyIsLocked, lockClientId)
@@ -337,7 +351,7 @@ func (k *KeyValueStateMachine) del(key string, clientId int) (err error) {
 	return nil
 }
 
-func (k *KeyValueStateMachine) set(key string, value string, clientId int, lock bool) (string, error) {
+func (k *ClassicStateMachine) set(key string, value string, clientId int, lock bool) (string, error) {
 	lockClientId, ok := k.current.KeyLock[key]
 	if ok && lockClientId != clientId {
 		return "", fmt.Errorf("%w, client id: %d", ErrKeyIsLocked, lockClientId)
@@ -362,7 +376,7 @@ func (k *KeyValueStateMachine) set(key string, value string, clientId int, lock 
 	return value, nil
 }
 
-func (k *KeyValueStateMachine) GetAll() (data map[any]any, err error) {
+func (k *ClassicStateMachine) GetAll() (data map[any]any, err error) {
 	data = map[any]any{}
 
 	for key, value := range k.current.KeyValue {

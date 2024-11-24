@@ -1,9 +1,9 @@
 package common
 
 type SerializableObject interface {
-	Serialize() []string
+	ToString() []string
 }
 
 type DeserializableObject interface {
-	Deserialize(data []string) error
+	FromString(data []string) error
 }

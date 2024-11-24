@@ -199,18 +199,18 @@ func (r *RaftPersistenceStateImpl) CommitSnapshot(ctx context.Context, sm common
 }
 
 // save the whole snapshot into file at once
-func (r *RaftPersistenceStateImpl) SaveSnapshot(ctx context.Context, snapshot *common.Snapshot) (err error) {
+func (r *RaftPersistenceStateImpl) SaveSnapshot(ctx context.Context, snapshot common.Snapshot) (err error) {
 	ctx, span := tracer.Start(ctx, "SaveSnapshot")
 	defer span.End()
 
-	snapshot.FileName = common.NewSnapshotFileName(snapshot.LastLogTerm, snapshot.LastLogIndex)
+	sm := snapshot.Metadata()
 
-	err = r.storage.SaveObject(snapshot.FileName, snapshot)
+	//snapshot.FileName = common.NewSnapshotFileName(sm.LastLogTerm, sm.LastLogIndex)
+
+	err = r.storage.SaveObject(sm.FileName, snapshot)
 	if err != nil {
 		return err
 	}
-
-	sm := snapshot.Metadata()
 
 	r.lock.Lock()
 	err = r.storage.AppendWal(r.metadata(), "snapshot", sm.ToString())
@@ -230,16 +230,16 @@ func (r *RaftPersistenceStateImpl) SaveSnapshot(ctx context.Context, snapshot *c
 	return nil
 }
 
-func (r *RaftPersistenceStateImpl) ReadLatestSnapshot(ctx context.Context) (snap *common.Snapshot, err error) {
+func (r *RaftPersistenceStateImpl) ReadLatestSnapshot(ctx context.Context) (snap common.Snapshot, err error) {
 	r.lock.RLock()
 	latestSnapshot := r.latestSnapshot
 	r.lock.RUnlock()
 
 	if latestSnapshot.FileName == "" {
-		return common.NewSnapshot(), nil
+		return common.NewClassicSnapshot(), nil
 	}
 
-	snap = common.NewSnapshot()
+	snap = common.NewClassicSnapshot()
 
 	err = r.storage.ReadObject(latestSnapshot.FileName, snap)
 	if err != nil {

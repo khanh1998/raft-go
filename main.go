@@ -178,15 +178,17 @@ func main() {
 			RpcRequestTimeout:    config.RpcRequestTimeout,
 			RpcReconnectDuration: config.RpcReconnectDuration,
 		},
-		HTTPProxy: http_proxy.NewHttpProxyParams{
-			URL:    httpUrl,
-			Logger: logger,
-		},
-		StateMachine: state_machine.NewKeyValueStateMachineParams{
-			ClientSessionDuration: uint64(config.ClientSessionDuration.Nanoseconds()),
-			Logger:                logger,
-			PersistState:          raftPersistState,
-			Snapshot:              snapshot,
+		ClassicSetup: &node.ClassicSetup{
+			HTTPProxy: http_proxy.NewClassicHttpProxyParams{
+				URL:    httpUrl,
+				Logger: logger,
+			},
+			StateMachine: state_machine.NewClassicStateMachineParams{
+				ClientSessionDuration: uint64(config.ClientSessionDuration.Nanoseconds()),
+				Logger:                logger,
+				PersistState:          raftPersistState,
+				Snapshot:              snapshot,
+			},
 		},
 		Logger: logger,
 	}

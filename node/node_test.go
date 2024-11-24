@@ -61,13 +61,15 @@ func TestRpcConnection(t *testing.T) {
 			RpcDialTimeout:       time.Second,
 			RpcReconnectDuration: 30 * time.Second,
 		},
-		HTTPProxy: http_proxy.NewHttpProxyParams{
-			URL:    "localhost:8080",
-			Logger: logger,
-		},
-		StateMachine: state_machine.NewKeyValueStateMachineParams{
-			PersistState: persistState,
-			Logger:       logger,
+		ClassicSetup: &ClassicSetup{
+			HTTPProxy: http_proxy.NewClassicHttpProxyParams{
+				URL:    "localhost:8080",
+				Logger: logger,
+			},
+			StateMachine: state_machine.NewClassicStateMachineParams{
+				PersistState: persistState,
+				Logger:       logger,
+			},
 		},
 		Logger: logger,
 	})

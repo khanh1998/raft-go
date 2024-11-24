@@ -2,6 +2,7 @@ package integration_testing
 
 import (
 	"context"
+	"errors"
 	"fmt"
 	"khanh/raft-go/common"
 	"khanh/raft-go/http_proxy"
@@ -27,7 +28,13 @@ func NewDynamicCluster(filePath string) *Cluster {
 // dynamic cluster
 func (c *Cluster) AddServer(id int) error {
 	params := c.createNodeParams[id]
-	return c.HttpAgent.AddServer(id, params.HTTPProxy.URL, params.RPCProxy.HostURL)
+	if params.ClassicSetup != nil {
+		return c.HttpAgent.AddServer(id, params.ClassicSetup.HTTPProxy.URL, params.RPCProxy.HostURL)
+	}
+	if params.EtcdSetup != nil {
+		return c.HttpAgent.AddServer(id, params.EtcdSetup.HTTPProxy.URL, params.RPCProxy.HostURL)
+	}
+	return errors.New("no setup was found")
 }
 
 // dynamic cluster
@@ -40,13 +47,28 @@ func (c *Cluster) RemoveServerLeader() error {
 	id := status.ID
 
 	params := c.createNodeParams[id]
-	return c.HttpAgent.RemoveServer(id, params.HTTPProxy.URL, params.RPCProxy.HostURL)
+	if params.ClassicSetup != nil {
+		return c.HttpAgent.RemoveServer(id, params.ClassicSetup.HTTPProxy.URL, params.RPCProxy.HostURL)
+	}
+
+	if params.EtcdSetup != nil {
+		return c.HttpAgent.RemoveServer(id, params.EtcdSetup.HTTPProxy.URL, params.RPCProxy.HostURL)
+	}
+
+	return errors.New("no setup was found")
 }
 
 // dynamic cluster
 func (c *Cluster) RemoveServer(id int) error {
 	params := c.createNodeParams[id]
-	return c.HttpAgent.RemoveServer(id, params.HTTPProxy.URL, params.RPCProxy.HostURL)
+	if params.ClassicSetup != nil {
+		return c.HttpAgent.RemoveServer(id, params.ClassicSetup.HTTPProxy.URL, params.RPCProxy.HostURL)
+	}
+
+	if params.EtcdSetup != nil {
+		return c.HttpAgent.RemoveServer(id, params.EtcdSetup.HTTPProxy.URL, params.RPCProxy.HostURL)
+	}
+	return errors.New("no setup was found")
 }
 
 func (c *Cluster) createNewNode(ctx context.Context, id int) error {
@@ -104,15 +126,17 @@ func (c *Cluster) createNewNode(ctx context.Context, id int) error {
 			RpcDialTimeout:       c.config.RpcDialTimeout,
 			RpcReconnectDuration: c.config.RpcReconnectDuration,
 		},
-		HTTPProxy: http_proxy.NewHttpProxyParams{
-			URL:    httpUrl,
-			Logger: c.log,
-		},
-		StateMachine: state_machine.NewKeyValueStateMachineParams{
-			ClientSessionDuration: uint64(c.config.ClientSessionDuration),
-			Logger:                c.log,
-			PersistState:          raftPersistState,
-			Snapshot:              snapshot,
+		ClassicSetup: &node.ClassicSetup{
+			HTTPProxy: http_proxy.NewClassicHttpProxyParams{
+				URL:    httpUrl,
+				Logger: c.log,
+			},
+			StateMachine: state_machine.NewClassicStateMachineParams{
+				ClientSessionDuration: uint64(c.config.ClientSessionDuration),
+				Logger:                c.log,
+				PersistState:          raftPersistState,
+				Snapshot:              snapshot,
+			},
 		},
 		Logger: c.log,
 	}

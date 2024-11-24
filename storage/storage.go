@@ -282,7 +282,7 @@ func (s *StorageImpl) ReadObject(fileName string, result common.DeserializableOb
 		return err
 	}
 
-	result.Deserialize(data)
+	result.FromString(data)
 
 	return nil
 }
@@ -292,7 +292,7 @@ func (s *StorageImpl) SaveObject(fileName string, object common.SerializableObje
 	defer s.objLock.Unlock()
 
 	path := s.dataFolder + fileName
-	data := object.Serialize()
+	data := object.ToString()
 
 	if _, err := s.fileUtils.AppendStrings(path, data); err != nil {
 		return err

@@ -15,6 +15,7 @@ type Log interface {
 // Raft brain module need to create some logs internally,
 // but it don't what implementation of Log to use.
 type LogFactory interface {
+	EmptySnapshot() Snapshot
 	AttachTermAndTime(log Log, term int, time uint64) (Log, error)
 	Empty() Log
 	Deserialize([]byte) (log Log, err error)

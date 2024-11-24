@@ -29,7 +29,7 @@ func Test_nodeImpl_DeleteFrom(t *testing.T) {
 		}, storage.NewFileWrapperMock()),
 		LogFactory: common.ClassicLogFactory{},
 	})
-	sm := state_machine.NewKeyValueStateMachine(state_machine.NewKeyValueStateMachineParams{
+	sm := state_machine.NewClassicStateMachine(state_machine.NewClassicStateMachineParams{
 		PersistState: ps,
 	})
 	n := RaftBrainImpl{
@@ -61,7 +61,7 @@ func Test_nodeImpl_DeleteFrom(t *testing.T) {
 		}, storage.NewFileWrapperMock()),
 		LogFactory: common.ClassicLogFactory{},
 	})
-	sm = state_machine.NewKeyValueStateMachine(state_machine.NewKeyValueStateMachineParams{
+	sm = state_machine.NewClassicStateMachine(state_machine.NewClassicStateMachineParams{
 		PersistState: ps,
 	})
 	n = RaftBrainImpl{
@@ -81,7 +81,7 @@ func Test_nodeImpl_DeleteFrom(t *testing.T) {
 		}, storage.NewFileWrapperMock()),
 		LogFactory: common.ClassicLogFactory{},
 	})
-	sm = state_machine.NewKeyValueStateMachine(state_machine.NewKeyValueStateMachineParams{
+	sm = state_machine.NewClassicStateMachine(state_machine.NewClassicStateMachineParams{
 		PersistState: ps,
 	})
 	n = RaftBrainImpl{
@@ -100,7 +100,7 @@ func Test_nodeImpl_DeleteFrom(t *testing.T) {
 		}, storage.NewFileWrapperMock()),
 		LogFactory: common.ClassicLogFactory{},
 	})
-	sm = state_machine.NewKeyValueStateMachine(state_machine.NewKeyValueStateMachineParams{
+	sm = state_machine.NewClassicStateMachine(state_machine.NewClassicStateMachineParams{
 		PersistState: ps,
 	})
 	n = RaftBrainImpl{
@@ -119,7 +119,7 @@ func Test_nodeImpl_DeleteFrom(t *testing.T) {
 		}, storage.NewFileWrapperMock()),
 		LogFactory: common.ClassicLogFactory{},
 	})
-	sm = state_machine.NewKeyValueStateMachine(state_machine.NewKeyValueStateMachineParams{
+	sm = state_machine.NewClassicStateMachine(state_machine.NewClassicStateMachineParams{
 		PersistState: ps,
 	})
 	n = RaftBrainImpl{

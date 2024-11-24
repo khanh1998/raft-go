@@ -54,165 +54,17 @@ type SnapshotV2 struct {
 	SnapshotMetadata
 }
 
-type Snapshot struct {
-	LastConfig map[int]ClusterMember // cluster members
-	KeyValue   map[string]string
-	KeyLock    map[string]int // allowing a client session to lock a key
-	Sessions   map[int]ClientEntry
-	SnapshotMetadata
+type Snapshot interface {
+	Metadata() SnapshotMetadata
+	GetLastConfig() map[int]ClusterMember
+	Copy() Snapshot
+	Serialize() (data []byte)
+	ToString() (data []string)
+	FromString(data []string) error
+	Deserialize(data []byte) error
 }
 
-func NewSnapshot() *Snapshot {
-	return &Snapshot{
-		LastConfig:       map[int]ClusterMember{},
-		KeyValue:         map[string]string{},
-		KeyLock:          map[string]int{},
-		Sessions:         map[int]ClientEntry{},
-		SnapshotMetadata: SnapshotMetadata{},
-	}
-}
-
-func (s Snapshot) Metadata() SnapshotMetadata {
-	return s.SnapshotMetadata
-}
-
-func (s Snapshot) Copy() *Snapshot {
-	members := map[int]ClusterMember{}
-	sessions := map[int]ClientEntry{}
-	keyValue := map[string]string{}
-	keyLock := map[string]int{}
-
-	for k, v := range s.LastConfig {
-		members[k] = v
-	}
-
-	for k, v := range s.KeyValue {
-		keyValue[k] = v
-	}
-
-	for k, v := range s.KeyLock {
-		keyLock[k] = v
-	}
-
-	for k, v := range s.Sessions {
-		sessions[k] = v
-	}
-
-	return &Snapshot{
-		LastConfig: members,
-		KeyValue:   keyValue,
-		KeyLock:    keyLock,
-		Sessions:   sessions,
-		SnapshotMetadata: SnapshotMetadata{
-			LastLogTerm:  s.LastLogTerm,
-			LastLogIndex: s.LastLogIndex,
-			FileName:     s.FileName,
-		},
-	}
-}
-
-func (s *Snapshot) Deserialize(data []string) (err error) {
-	lastLogIndex, err := strconv.Atoi(strings.Split(data[0], "=")[1])
-	if err != nil {
-		return fmt.Errorf("cannot read last log index: %w", err)
-	}
-
-	lastLogTerm, err := strconv.Atoi(strings.Split(data[1], "=")[1])
-	if err != nil {
-		return fmt.Errorf("cannot read last log term: %w", err)
-	}
-
-	memberCount, err := strconv.Atoi(strings.Split(data[2], "=")[1])
-	if err != nil {
-		return fmt.Errorf("cannot read member count: %w", err)
-	}
-
-	sessionCount, err := strconv.Atoi(strings.Split(data[3], "=")[1])
-	if err != nil {
-		return fmt.Errorf("cannot read session count: %w", err)
-	}
-
-	keyValueCount, err := strconv.Atoi(strings.Split(data[4], "=")[1])
-	if err != nil {
-		return fmt.Errorf("cannot read key-value pair count: %w", err)
-	}
-
-	keyLockCount, err := strconv.Atoi(strings.Split(data[5], "=")[1])
-	if err != nil {
-		return fmt.Errorf("cannot read key-lock count: %w", err)
-	}
-
-	s.LastLogIndex = lastLogIndex
-	s.LastLogTerm = lastLogTerm
-
-	i := 5
-	for j := 0; j < memberCount; j++ {
-		i++
-		cm := ClusterMember{}
-		err := cm.FromString(data[i])
-		if err != nil {
-			return err
-		}
-		s.LastConfig[cm.ID] = cm
-	}
-
-	for j := 0; j < sessionCount; j++ {
-		i++
-		ce := ClientEntry{}
-		clientId, err := ce.FromString(data[i])
-		if err != nil {
-			return err
-		}
-		s.Sessions[clientId] = ce
-	}
-
-	for j := 0; j < keyValueCount; j++ {
-		i++
-		tokens := strings.Split(data[i], "=")
-		key, value := tokens[0], tokens[1]
-		s.KeyValue[key] = value
-	}
-
-	for j := 0; j < keyLockCount; j++ {
-		i++
-		tokens := strings.Split(data[i], "=")
-		key := tokens[0]
-		clientId, err := strconv.Atoi(tokens[1])
-		if err != nil {
-			return err
-		}
-		s.KeyLock[key] = clientId
-	}
-
-	return nil
-}
-
-func (s Snapshot) Serialize() (data []string) {
-	data = append(data, fmt.Sprintf("last_log_index=%d", s.LastLogIndex))
-	data = append(data, fmt.Sprintf("last_log_term=%d", s.LastLogTerm))
-
-	data = append(data, fmt.Sprintf("member_count=%d", len(s.LastConfig)))
-	data = append(data, fmt.Sprintf("session_count=%d", len(s.Sessions)))
-	data = append(data, fmt.Sprintf("key_value_count=%d", len(s.KeyValue)))
-	data = append(data, fmt.Sprintf("key_lock_count=%d", len(s.KeyLock)))
-
-	for _, member := range s.LastConfig {
-		data = append(data, member.ToString())
-	}
-
-	for clientId, session := range s.Sessions {
-		data = append(data, session.ToString(clientId))
-	}
-
-	for key, value := range s.KeyValue {
-		data = append(data, fmt.Sprintf("%s=%s", key, value))
-	}
-
-	for key, clientId := range s.KeyLock {
-		data = append(data, fmt.Sprintf("%s=%d", key, clientId))
-	}
-
-	return data
+type SnapshotFactory interface {
 }
 
 type SnapshotMetadata struct {

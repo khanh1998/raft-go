@@ -71,6 +71,8 @@ func (w *Watcher) Notify(newData KeyValue) {
 	}
 }
 
+// the BTree state machine utilize B-Tree to store key value pairs,
+// therefore not only support search by an exact key, but also search for a key range.
 type BtreeKvStateMachine struct {
 	current          *Snapshot // current snapshot of data
 	lock             sync.RWMutex
@@ -184,7 +186,7 @@ func (b *BtreeKvStateMachine) delPrefix(prefix string) (deleted []KeyValue) {
 	return deleted
 }
 
-func (b *BtreeKvStateMachine) Process(ctx context.Context, logIndex int, logI common.Log) (result KeyValue, err error) {
+func (b *BtreeKvStateMachine) Process(ctx context.Context, logIndex int, logI common.Log) (result common.LogResult, err error) {
 	b.lock.Lock()
 	defer b.lock.Unlock()
 
@@ -244,14 +246,14 @@ func (b *BtreeKvStateMachine) Process(ctx context.Context, logIndex int, logI co
 				Key:            key,
 				Value:          value,
 				ModifiedIndex:  logIndex,
-				CreatedIndex:   result.CreatedIndex,
+				CreatedIndex:   logIndex,
 				ExpirationTime: log.ClusterTime + uint64(ttl.Nanoseconds()),
 			}, log.ClusterTime)
 		} else {
 			key := tokens[1]
 			value := strings.Join(tokens[2:], " ")
 
-			b.set(KeyValue{Key: key, Value: value, ModifiedIndex: logIndex, CreatedIndex: result.CreatedIndex}, log.ClusterTime)
+			b.set(KeyValue{Key: key, Value: value, ModifiedIndex: logIndex, CreatedIndex: logIndex}, log.ClusterTime)
 		}
 
 	case "del":

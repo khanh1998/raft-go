@@ -31,8 +31,8 @@ func findLatestSnapshot(fileNames []string) (fileName string, err error) {
 	return fileName, nil
 }
 
-func Deserialize(ctx context.Context, s WalReader, clusterMode common.ClusterMode, logger observability.Logger, logFactory common.LogFactory) (latestSnapshot *common.Snapshot, raftPersistedState *RaftPersistenceStateImpl, clusterMembers []common.ClusterMember, err error) {
-	latestSnapshot = common.NewSnapshot()
+func Deserialize(ctx context.Context, s WalReader, clusterMode common.ClusterMode, logger observability.Logger, logFactory common.LogFactory) (latestSnapshot common.Snapshot, raftPersistedState *RaftPersistenceStateImpl, clusterMembers []common.ClusterMember, err error) {
+	latestSnapshot = logFactory.EmptySnapshot()
 	raftPersistedState = &RaftPersistenceStateImpl{
 		votedFor:    0,
 		currentTerm: 0,
@@ -83,15 +83,17 @@ func Deserialize(ctx context.Context, s WalReader, clusterMode common.ClusterMod
 		}
 		walLastLogIndex = append(walLastLogIndex, lastLogIndex)
 	}
+	sm := latestSnapshot.Metadata()
 
-	raftPersistedState.latestSnapshot = latestSnapshot.SnapshotMetadata
+	raftPersistedState.latestSnapshot = sm
 
 	// rebuild the cluster member configuration from logs and snapshot for dynamic cluster,
 	// for static cluster, member configurations are read from config file.
 	if clusterMode == common.Dynamic {
 		clusterMemberMap := map[int]common.ClusterMember{}
-		if len(latestSnapshot.LastConfig) > 0 {
-			for peerId, peer := range latestSnapshot.LastConfig {
+		lastConfig := latestSnapshot.GetLastConfig()
+		if len(lastConfig) > 0 {
+			for peerId, peer := range lastConfig {
 				clusterMemberMap[peerId] = peer
 			}
 		}
@@ -124,7 +126,7 @@ func Deserialize(ctx context.Context, s WalReader, clusterMode common.ClusterMod
 	// then delete that WAL and all previous WALs.
 	toBeDeletedWal := ""
 	for i := 0; i < len(walLastLogIndex); i++ {
-		if walLastLogIndex[i] < latestSnapshot.LastLogIndex {
+		if walLastLogIndex[i] < sm.LastLogIndex {
 			toBeDeletedWal = "" // todo
 		} else {
 			break

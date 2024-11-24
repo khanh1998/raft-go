@@ -457,7 +457,7 @@ func Test_nodeImpl_AppendEntries(t *testing.T) {
 				log.Info().Msg("breakpoint")
 			}
 			testCase.n.persistState = testCase.ps
-			testCase.n.stateMachine = state_machine.NewKeyValueStateMachine(state_machine.NewKeyValueStateMachineParams{
+			testCase.n.stateMachine = state_machine.NewClassicStateMachine(state_machine.NewClassicStateMachineParams{
 				PersistState: testCase.ps,
 			})
 			log.Info().Int("index", index).Msg("test case AppendEntriesOutput")
