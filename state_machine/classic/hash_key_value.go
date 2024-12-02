@@ -1,44 +1,24 @@
-package state_machine
+package classic
 
 import (
 	"context"
-	"errors"
 	"fmt"
 	"khanh/raft-go/common"
 	"khanh/raft-go/observability"
+	. "khanh/raft-go/state_machine"
 	"strings"
 	"sync"
-)
-
-var (
-	ErrKeyDoesNotExist            = errors.New("key does not exist")
-	ErrKeyMustBeString            = errors.New("key must be string")
-	ErrValueMustBeString          = errors.New("value must be string")
-	ErrCommandIsEmpty             = errors.New("command is empty")
-	ErrUnsupportedCommand         = errors.New("command is unsupported")
-	ErrNotEnoughParameters        = errors.New("not enough parameters")
-	ErrorSequenceNumProcessed     = errors.New("sequence number already processed")
-	ErrCommandWasSnapshot         = errors.New("the command is included in the snapshot")
-	ErrDataFileNameIsEmpty        = errors.New("data file name is empty")
-	ErrKeyIsLocked                = errors.New("key is locked by another client")
-	ErrInvalidParameters          = errors.New("invalid parameters")
-	ErrInputLogTypeIsNotSupported = errors.New("input log type is not supported by state machine")
 )
 
 // the Classic state machine utilize hashmap to store key value pairs,
 // therefore it only support search by an exact key
 type ClassicStateMachine struct {
-	current               *common.ClassicSnapshot // live snapshot to serve the users
+	current               *ClassicSnapshot // live snapshot to serve the users
 	lock                  sync.RWMutex
 	clientSessionDuration uint64 // duration in nanosecond
 	logger                observability.Logger
 	snapshotLock          sync.Mutex // prevent more than one snapshot at the same time
 	persistenceState      RaftPersistenceState
-}
-
-type RaftPersistenceState interface {
-	SaveSnapshot(ctx context.Context, snapshot common.Snapshot) (err error)
-	ReadLatestSnapshot(ctx context.Context) (snap common.Snapshot, err error)
 }
 
 type NewClassicStateMachineParams struct {
@@ -56,10 +36,10 @@ func NewClassicStateMachine(params NewClassicStateMachineParams) *ClassicStateMa
 	}
 
 	if params.Snapshot == nil {
-		k.current = common.NewClassicSnapshot()
+		k.current = NewClassicSnapshot()
 	} else {
 		var ok bool
-		k.current, ok = params.Snapshot.(*common.ClassicSnapshot)
+		k.current, ok = params.Snapshot.(*ClassicSnapshot)
 		if !ok {
 			k.logger.Fatal("invalid snapshot:",
 				"got", params.Snapshot,
@@ -114,7 +94,7 @@ func (k *ClassicStateMachine) Reset(ctx context.Context) (err error) {
 	if err != nil {
 		return err
 	}
-	k.current = (snap).(*common.ClassicSnapshot)
+	k.current = (snap).(*ClassicSnapshot)
 
 	return nil
 }
@@ -144,9 +124,11 @@ func (k *ClassicStateMachine) InvalidateExpiredSession(clusterTime uint64) {
 }
 
 func (k *ClassicStateMachine) StartSnapshot(ctx context.Context) (err error) {
-	k.lock.RLock()
+	k.lock.Lock()
+	sm := k.current.Metadata()
+	k.current.FileName = common.NewSnapshotFileName(sm.LastLogTerm, sm.LastLogIndex)
 	snapshot := k.current.Copy()
-	k.lock.RUnlock()
+	k.lock.Unlock()
 
 	go func() {
 		k.snapshotLock.Lock()
@@ -212,6 +194,9 @@ func (k *ClassicStateMachine) Process(ctx context.Context, logIndex int, logI co
 	}
 
 	if strings.EqualFold(command, common.NoOperation) {
+		return "", nil
+	}
+	if strings.EqualFold(command, common.TimeCommit) {
 		return "", nil
 	}
 

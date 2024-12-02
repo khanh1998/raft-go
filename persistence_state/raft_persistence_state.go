@@ -236,10 +236,10 @@ func (r *RaftPersistenceStateImpl) ReadLatestSnapshot(ctx context.Context) (snap
 	r.lock.RUnlock()
 
 	if latestSnapshot.FileName == "" {
-		return common.NewClassicSnapshot(), nil
+		return r.logFactory.EmptySnapshot(), nil
 	}
 
-	snap = common.NewClassicSnapshot()
+	snap = r.logFactory.EmptySnapshot()
 
 	err = r.storage.ReadObject(latestSnapshot.FileName, snap)
 	if err != nil {

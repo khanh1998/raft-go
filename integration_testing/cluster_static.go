@@ -11,7 +11,7 @@ import (
 	"khanh/raft-go/observability"
 	"khanh/raft-go/persistence_state"
 	"khanh/raft-go/rpc_proxy"
-	"khanh/raft-go/state_machine"
+	classicSt "khanh/raft-go/state_machine/classic"
 	"khanh/raft-go/storage"
 	"log"
 	"os"
@@ -82,7 +82,9 @@ func (c *Cluster) init(filePath string) {
 				log.Fatal("new storage", "error", err.Error())
 			}
 
-			logFactory := common.ClassicLogFactory{}
+			logFactory := common.ClassicLogFactory{
+				NewSnapshot: classicSt.NewClassicSnapshotI,
+			}
 
 			snapshot, raftPersistState, _, err := persistence_state.Deserialize(ctx, storage, common.Static, log, logFactory)
 			if err != nil {
@@ -122,14 +124,15 @@ func (c *Cluster) init(filePath string) {
 						URL:    mem.HttpUrl,
 						Logger: log,
 					},
-					StateMachine: state_machine.NewClassicStateMachineParams{
-						ClientSessionDuration: uint64(config.ClientSessionDuration),
+					StateMachine: classicSt.NewClassicStateMachineParams{
+						ClientSessionDuration: uint64(config.LogExtensions.Classic.ClientSessionDuration),
 						Logger:                log,
 						PersistState:          raftPersistState,
 						Snapshot:              snapshot,
 					},
 				},
-				Logger: log,
+				LogExtensionEnabled: common.LogExtensionClassic,
+				Logger:              log,
 			}
 
 			n := node.NewNode(ctx, param)

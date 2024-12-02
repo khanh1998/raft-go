@@ -6,7 +6,7 @@ import (
 	"khanh/raft-go/common"
 	"khanh/raft-go/observability"
 	"khanh/raft-go/persistence_state"
-	"khanh/raft-go/state_machine"
+	classicSt "khanh/raft-go/state_machine/classic"
 	"khanh/raft-go/storage"
 	"testing"
 
@@ -131,6 +131,10 @@ func Test_nodeImpl_AppendEntries(t *testing.T) {
 
 	logger := observability.NewZerolog(common.ObservabilityConfig{}, 1)
 
+	classicLogFactory := common.ClassicLogFactory{
+		NewSnapshot: classicSt.NewClassicSnapshotI,
+	}
+
 	testCases := []TestCase{
 		{
 			name: "1. Reply false if term < currentTerm (§5.1)",
@@ -200,7 +204,7 @@ func Test_nodeImpl_AppendEntries(t *testing.T) {
 					storage.NewStorageParams{WalSize: 1024, DataFolder: "data/", Logger: logger},
 					storage.NewFileWrapperMock(),
 				),
-				LogFactory: common.ClassicLogFactory{},
+				LogFactory: classicLogFactory,
 			}),
 			n: RaftBrainImpl{
 				persistState:        nil,
@@ -211,7 +215,7 @@ func Test_nodeImpl_AppendEntries(t *testing.T) {
 				electionTimeOutMax:  500,
 				stateMachine:        nil,
 				clusterClock:        NewClusterClock(),
-				logFactory:          common.ClassicLogFactory{},
+				logFactory:          classicLogFactory,
 			},
 			in: common.AppendEntriesInput{
 				Term:         3,
@@ -233,7 +237,7 @@ func Test_nodeImpl_AppendEntries(t *testing.T) {
 					storage.NewStorageParams{WalSize: 1024, DataFolder: "data/", Logger: logger},
 					storage.NewFileWrapperMock(),
 				),
-				LogFactory: common.ClassicLogFactory{},
+				LogFactory: classicLogFactory,
 			}),
 			n: RaftBrainImpl{
 				persistState:        nil,
@@ -244,7 +248,7 @@ func Test_nodeImpl_AppendEntries(t *testing.T) {
 				electionTimeOutMax:  500,
 				stateMachine:        nil,
 				clusterClock:        NewClusterClock(),
-				logFactory:          common.ClassicLogFactory{},
+				logFactory:          classicLogFactory,
 			},
 			in: common.AppendEntriesInput{
 				Term:         3,
@@ -271,7 +275,7 @@ func Test_nodeImpl_AppendEntries(t *testing.T) {
 					storage.NewStorageParams{WalSize: 1024, DataFolder: "data/", Logger: logger},
 					storage.NewFileWrapperMock(),
 				),
-				LogFactory: common.ClassicLogFactory{},
+				LogFactory: classicLogFactory,
 			}),
 			n: RaftBrainImpl{
 				persistState:        nil,
@@ -282,7 +286,7 @@ func Test_nodeImpl_AppendEntries(t *testing.T) {
 				electionTimeOutMax:  500,
 				stateMachine:        nil,
 				clusterClock:        NewClusterClock(),
-				logFactory:          common.ClassicLogFactory{},
+				logFactory:          classicLogFactory,
 			},
 			in: common.AppendEntriesInput{
 				Term:         3,
@@ -306,7 +310,7 @@ func Test_nodeImpl_AppendEntries(t *testing.T) {
 					storage.NewStorageParams{WalSize: 1024, DataFolder: "data/", Logger: logger},
 					storage.NewFileWrapperMock(),
 				),
-				LogFactory: common.ClassicLogFactory{},
+				LogFactory: classicLogFactory,
 			}),
 			n: RaftBrainImpl{
 				persistState:        nil,
@@ -317,7 +321,7 @@ func Test_nodeImpl_AppendEntries(t *testing.T) {
 				electionTimeOutMax:  500,
 				stateMachine:        nil,
 				clusterClock:        NewClusterClock(),
-				logFactory:          common.ClassicLogFactory{},
+				logFactory:          classicLogFactory,
 			},
 			in: common.AppendEntriesInput{
 				Term:         3,
@@ -347,7 +351,7 @@ func Test_nodeImpl_AppendEntries(t *testing.T) {
 					storage.NewStorageParams{WalSize: 1024, DataFolder: "data/", Logger: logger},
 					storage.NewFileWrapperMock(),
 				),
-				LogFactory: common.ClassicLogFactory{},
+				LogFactory: classicLogFactory,
 			}),
 			n: RaftBrainImpl{
 				persistState:        nil,
@@ -358,7 +362,7 @@ func Test_nodeImpl_AppendEntries(t *testing.T) {
 				electionTimeOutMax:  500,
 				stateMachine:        nil,
 				clusterClock:        NewClusterClock(),
-				logFactory:          common.ClassicLogFactory{},
+				logFactory:          classicLogFactory,
 			},
 			in: common.AppendEntriesInput{
 				Term:         3,
@@ -388,7 +392,7 @@ func Test_nodeImpl_AppendEntries(t *testing.T) {
 					storage.NewStorageParams{WalSize: 1024, DataFolder: "data/", Logger: logger},
 					storage.NewFileWrapperMock(),
 				),
-				LogFactory: common.ClassicLogFactory{},
+				LogFactory: classicLogFactory,
 			}),
 			n: RaftBrainImpl{
 				persistState:        nil,
@@ -399,7 +403,7 @@ func Test_nodeImpl_AppendEntries(t *testing.T) {
 				electionTimeOutMax:  500,
 				stateMachine:        nil,
 				clusterClock:        NewClusterClock(),
-				logFactory:          common.ClassicLogFactory{},
+				logFactory:          classicLogFactory,
 			},
 			in: common.AppendEntriesInput{
 				Term:         3,
@@ -423,7 +427,7 @@ func Test_nodeImpl_AppendEntries(t *testing.T) {
 					storage.NewStorageParams{WalSize: 1024, DataFolder: "data/", Logger: logger},
 					storage.NewFileWrapperMock(),
 				),
-				LogFactory: common.ClassicLogFactory{},
+				LogFactory: classicLogFactory,
 			}),
 			n: RaftBrainImpl{
 				persistState:        nil,
@@ -434,7 +438,7 @@ func Test_nodeImpl_AppendEntries(t *testing.T) {
 				electionTimeOutMax:  500,
 				stateMachine:        nil,
 				clusterClock:        NewClusterClock(),
-				logFactory:          common.ClassicLogFactory{},
+				logFactory:          classicLogFactory,
 			},
 			in: common.AppendEntriesInput{
 				Term:         1,
@@ -457,7 +461,7 @@ func Test_nodeImpl_AppendEntries(t *testing.T) {
 				log.Info().Msg("breakpoint")
 			}
 			testCase.n.persistState = testCase.ps
-			testCase.n.stateMachine = state_machine.NewClassicStateMachine(state_machine.NewClassicStateMachineParams{
+			testCase.n.stateMachine = classicSt.NewClassicStateMachine(classicSt.NewClassicStateMachineParams{
 				PersistState: testCase.ps,
 			})
 			log.Info().Int("index", index).Msg("test case AppendEntriesOutput")

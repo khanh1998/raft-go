@@ -213,10 +213,9 @@ func (h *ClassicHttpProxy) cli(r *gin.Engine) {
 		}
 
 		if err != nil {
-			c.String(http.StatusInternalServerError, err.Error())
-		} else {
-			c.IndentedJSON(http.StatusOK, responseData)
+			h.log().ErrorContext(ctx, "ClassicHttpProxy_cli", err)
 		}
+		c.IndentedJSON(http.StatusOK, responseData)
 	})
 }
 

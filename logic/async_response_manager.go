@@ -3,6 +3,7 @@ package logic
 import (
 	"fmt"
 	"khanh/raft-go/common"
+	"net/http"
 	"sync"
 	"time"
 
@@ -28,7 +29,10 @@ func (a *AsyncResponseManager) Register(logIndex int) error {
 
 	_, ok := a.m[index]
 	if ok {
-		return fmt.Errorf("already registered log index: %d", logIndex)
+		return common.RaftError{
+			Message:  fmt.Sprintf("already registered log index: %d", logIndex),
+			HttpCode: http.StatusBadRequest,
+		}
 	}
 
 	a.m[index] = AsyncResponse{
@@ -53,7 +57,7 @@ func (a *AsyncResponseManager) PutResponse(logIndex int, msg common.LogResult, r
 	if !ok {
 		a.lock.Unlock()
 
-		return fmt.Errorf("register log index: %d first", logIndex)
+		return common.RaftError{Message: fmt.Sprintf("register log index: %d first", logIndex)}
 	}
 
 	a.lock.Unlock()
@@ -62,7 +66,10 @@ func (a *AsyncResponseManager) PutResponse(logIndex int, msg common.LogResult, r
 	case slot.msg <- AsyncResponseItem{Response: msg, Err: resErr}:
 		log.Info().Int("log index", logIndex).Interface("msg", msg).Interface("err", resErr).Msg("PutResponse")
 	case <-time.After(timeout):
-		return fmt.Errorf("channel log index: %d is not empty", logIndex)
+		return common.RaftError{
+			Message:  fmt.Sprintf("channel log index: %d is not empty", logIndex),
+			HttpCode: http.StatusInternalServerError,
+		}
 	}
 
 	return nil
@@ -77,7 +84,10 @@ func (a *AsyncResponseManager) TakeResponse(logIndex int, timeout time.Duration)
 	if !ok {
 		a.lock.RUnlock()
 
-		return "", fmt.Errorf("register log index: %d first", logIndex)
+		return "", common.RaftError{
+			Message:  fmt.Sprintf("register log index: %d first", logIndex),
+			HttpCode: http.StatusBadRequest,
+		}
 	}
 
 	a.lock.RUnlock()
@@ -88,6 +98,9 @@ func (a *AsyncResponseManager) TakeResponse(logIndex int, timeout time.Duration)
 		delete(a.m, index)
 		return res.Response, res.Err
 	case <-time.After(timeout):
-		return "", fmt.Errorf("timeout error: can't get message")
+		return "", common.RaftError{
+			Message:  "timeout error: can't get message",
+			HttpCode: http.StatusInternalServerError,
+		}
 	}
 }

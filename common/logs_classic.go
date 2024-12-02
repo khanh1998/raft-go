@@ -7,16 +7,12 @@ import (
 	"strings"
 )
 
-type ClassicLogFactory struct{}
+type ClassicLogFactory struct {
+	NewSnapshot func() Snapshot
+}
 
 func (c ClassicLogFactory) EmptySnapshot() Snapshot {
-	return &ClassicSnapshot{
-		LastConfig:       map[int]ClusterMember{},
-		KeyValue:         map[string]string{},
-		KeyLock:          map[string]int{},
-		Sessions:         map[int]ClientEntry{},
-		SnapshotMetadata: SnapshotMetadata{},
-	}
+	return c.NewSnapshot()
 }
 
 func (c ClassicLogFactory) Deserialize(data []byte) (Log, error) {
@@ -45,7 +41,7 @@ func (c ClassicLogFactory) Empty() Log {
 }
 
 func (c ClassicLogFactory) NoOperation(term int, time uint64) Log {
-	return ClassicLog{Term: term, Command: "NO-OP", ClusterTime: time}
+	return ClassicLog{Term: term, Command: NoOperation, ClusterTime: time}
 }
 
 func (c ClassicLogFactory) AddNewNode(term int, time uint64, nodeId int, httpUrl string, rpcUrl string) Log {
@@ -65,7 +61,7 @@ func (c ClassicLogFactory) RemoveNode(term int, time uint64, nodeId int, httpUrl
 }
 
 func (c ClassicLogFactory) CreateTimeCommit(term int, nanosecond uint64) Log {
-	return ClassicLog{Term: term, ClusterTime: nanosecond}
+	return ClassicLog{Term: term, ClusterTime: nanosecond, Command: TimeCommit}
 }
 
 type ClassicLog struct {

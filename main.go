@@ -12,7 +12,8 @@ import (
 	"khanh/raft-go/observability"
 	"khanh/raft-go/persistence_state"
 	"khanh/raft-go/rpc_proxy"
-	"khanh/raft-go/state_machine"
+	classicSt "khanh/raft-go/state_machine/classic"
+	etcdSt "khanh/raft-go/state_machine/etcd"
 	"khanh/raft-go/storage"
 	"log"
 	"os"
@@ -37,7 +38,7 @@ func readCmdArgsForDynamic() (id *int, catchingUp *bool, httpPort *int, rpcPort 
 	// if catchingUp is false, the node will be the follower in one-member-cluster. the follower then become the leader after that.
 	// if catchingUP is true, the node will receive logs from leader. once the node is cautch up with the leader,
 	// it will be add to the cluster as a follower.
-	// each cluster can have at most one node start with catching-up = fase, this is the first node of the cluster,
+	// each cluster can have at most one node start with catching-up = false, this is the first node of the cluster,
 	// following nodes have to set catching-up = true.
 	catchingUp = flag.Bool("catching-up", false, "to specify whether the current node need to catch up with the leader or not")
 	rpcPort = flag.Int("rpc-port", -1, "RPC port")
@@ -64,7 +65,7 @@ func readCmdArgsForDynamic() (id *int, catchingUp *bool, httpPort *int, rpcPort 
 
 func main() {
 	ctx := context.Background()
-	tracer := otel.Tracer("raft-brain")
+	tracer := otel.Tracer("main.go")
 	ctx, span := tracer.Start(ctx, "main.go")
 
 	config, err := common.ReadConfigFromFile(nil)
@@ -77,6 +78,7 @@ func main() {
 		id              int
 		httpUrl, rpcUrl string
 		clusterMembers  []common.ClusterMember
+		logFactory      common.LogFactory
 	)
 
 	if config.Cluster.Mode == common.Static {
@@ -139,7 +141,19 @@ func main() {
 		logger.Fatal("new storage", "error", err.Error())
 	}
 
-	logFactory := common.ClassicLogFactory{}
+	switch config.LogExtensions.Enable {
+	case common.LogExtensionClassic:
+		logFactory = common.ClassicLogFactory{
+			NewSnapshot: classicSt.NewClassicSnapshotI,
+		}
+	case common.LogExtensionEtcd:
+		logFactory = common.EtcdLogFactory{
+			NewSnapshot: func() common.Snapshot {
+				degree := config.LogExtensions.Etcd.StateMachineBTreeDegree
+				return etcdSt.NewEtcdSnapshot(degree)
+			},
+		}
+	}
 
 	snapshot, raftPersistState, tmpClusterMembers, err := persistence_state.Deserialize(ctx, storage, config.Cluster.Mode, logger, logFactory)
 	if err != nil {
@@ -183,14 +197,27 @@ func main() {
 				URL:    httpUrl,
 				Logger: logger,
 			},
-			StateMachine: state_machine.NewClassicStateMachineParams{
-				ClientSessionDuration: uint64(config.ClientSessionDuration.Nanoseconds()),
+			StateMachine: classicSt.NewClassicStateMachineParams{
+				ClientSessionDuration: uint64(config.LogExtensions.Classic.ClientSessionDuration.Nanoseconds()),
 				Logger:                logger,
 				PersistState:          raftPersistState,
 				Snapshot:              snapshot,
 			},
 		},
-		Logger: logger,
+		EtcdSetup: &node.EtcdSetup{
+			HTTPProxy: http_proxy.NewEtcdHttpProxyParams{
+				URL:    httpUrl,
+				Logger: logger,
+			},
+			StateMachine: etcdSt.NewBtreeKvStateMachineParams{
+				Logger:                logger,
+				PersistenceState:      raftPersistState,
+				ResponseCacheCapacity: config.LogExtensions.Etcd.StateMachineHistoryCapacity,
+				BtreeDegree:           config.LogExtensions.Etcd.StateMachineBTreeDegree,
+			},
+		},
+		LogExtensionEnabled: config.LogExtensions.Enable,
+		Logger:              logger,
 	}
 
 	// Set up OpenTelemetry.

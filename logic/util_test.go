@@ -5,7 +5,7 @@ import (
 	"khanh/raft-go/common"
 	"khanh/raft-go/observability"
 	"khanh/raft-go/persistence_state"
-	"khanh/raft-go/state_machine"
+	classicSt "khanh/raft-go/state_machine/classic"
 	"khanh/raft-go/storage"
 	"reflect"
 	"sync"
@@ -20,6 +20,10 @@ func Test_nodeImpl_DeleteFrom(t *testing.T) {
 
 	logger := observability.NewSimpleLog()
 
+	logFactory := common.ClassicLogFactory{
+		NewSnapshot: classicSt.NewClassicSnapshotI,
+	}
+
 	ps := persistence_state.NewRaftPersistenceState(persistence_state.NewRaftPersistenceStateParams{
 		Logs: []common.Log{},
 		Storage: storage.NewStorageForTest(storage.NewStorageParams{
@@ -27,9 +31,9 @@ func Test_nodeImpl_DeleteFrom(t *testing.T) {
 			DataFolder: "data/",
 			Logger:     logger,
 		}, storage.NewFileWrapperMock()),
-		LogFactory: common.ClassicLogFactory{},
+		LogFactory: logFactory,
 	})
-	sm := state_machine.NewClassicStateMachine(state_machine.NewClassicStateMachineParams{
+	sm := classicSt.NewClassicStateMachine(classicSt.NewClassicStateMachineParams{
 		PersistState: ps,
 	})
 	n := RaftBrainImpl{
@@ -59,9 +63,9 @@ func Test_nodeImpl_DeleteFrom(t *testing.T) {
 			DataFolder: "data/",
 			Logger:     logger,
 		}, storage.NewFileWrapperMock()),
-		LogFactory: common.ClassicLogFactory{},
+		LogFactory: logFactory,
 	})
-	sm = state_machine.NewClassicStateMachine(state_machine.NewClassicStateMachineParams{
+	sm = classicSt.NewClassicStateMachine(classicSt.NewClassicStateMachineParams{
 		PersistState: ps,
 	})
 	n = RaftBrainImpl{
@@ -79,9 +83,9 @@ func Test_nodeImpl_DeleteFrom(t *testing.T) {
 			DataFolder: "data/",
 			Logger:     logger,
 		}, storage.NewFileWrapperMock()),
-		LogFactory: common.ClassicLogFactory{},
+		LogFactory: logFactory,
 	})
-	sm = state_machine.NewClassicStateMachine(state_machine.NewClassicStateMachineParams{
+	sm = classicSt.NewClassicStateMachine(classicSt.NewClassicStateMachineParams{
 		PersistState: ps,
 	})
 	n = RaftBrainImpl{
@@ -98,9 +102,9 @@ func Test_nodeImpl_DeleteFrom(t *testing.T) {
 			DataFolder: "data/",
 			Logger:     logger,
 		}, storage.NewFileWrapperMock()),
-		LogFactory: common.ClassicLogFactory{},
+		LogFactory: logFactory,
 	})
-	sm = state_machine.NewClassicStateMachine(state_machine.NewClassicStateMachineParams{
+	sm = classicSt.NewClassicStateMachine(classicSt.NewClassicStateMachineParams{
 		PersistState: ps,
 	})
 	n = RaftBrainImpl{
@@ -117,9 +121,9 @@ func Test_nodeImpl_DeleteFrom(t *testing.T) {
 			DataFolder: "data/",
 			Logger:     logger,
 		}, storage.NewFileWrapperMock()),
-		LogFactory: common.ClassicLogFactory{},
+		LogFactory: logFactory,
 	})
-	sm = state_machine.NewClassicStateMachine(state_machine.NewClassicStateMachineParams{
+	sm = classicSt.NewClassicStateMachine(classicSt.NewClassicStateMachineParams{
 		PersistState: ps,
 	})
 	n = RaftBrainImpl{
@@ -296,6 +300,9 @@ func TestRaftBrainImpl_GetLog(t *testing.T) {
 	type args struct {
 		index int
 	}
+	logFactory := common.ClassicLogFactory{
+		NewSnapshot: classicSt.NewClassicSnapshotI,
+	}
 	tests := []struct {
 		name    string
 		fields  fields
@@ -308,7 +315,7 @@ func TestRaftBrainImpl_GetLog(t *testing.T) {
 			fields: fields{
 				snapshots:  common.SnapshotMetadata{},
 				logs:       []common.Log{},
-				logFactory: common.ClassicLogFactory{},
+				logFactory: logFactory,
 			},
 			args: args{
 				index: 1,
@@ -323,7 +330,7 @@ func TestRaftBrainImpl_GetLog(t *testing.T) {
 					LastLogTerm: 4, LastLogIndex: 5,
 				},
 				logs:       []common.Log{},
-				logFactory: common.ClassicLogFactory{},
+				logFactory: logFactory,
 			},
 			args: args{
 				index: 1,
@@ -340,7 +347,7 @@ func TestRaftBrainImpl_GetLog(t *testing.T) {
 					common.ClassicLog{Term: 2, Command: "set counter 2"},
 					common.ClassicLog{Term: 3, Command: "set counter 3"},
 				},
-				logFactory: common.ClassicLogFactory{},
+				logFactory: logFactory,
 			},
 			args: args{
 				index: 1,
@@ -359,7 +366,7 @@ func TestRaftBrainImpl_GetLog(t *testing.T) {
 					common.ClassicLog{Term: 5, Command: "set counter 5"},
 					common.ClassicLog{Term: 6, Command: "set counter 6"},
 				},
-				logFactory: common.ClassicLogFactory{},
+				logFactory: logFactory,
 			},
 			args: args{
 				index: 4,

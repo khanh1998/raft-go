@@ -1,7 +1,8 @@
-package common
+package classic
 
 import (
 	"fmt"
+	"khanh/raft-go/common"
 	"strconv"
 	"strings"
 )
@@ -51,7 +52,7 @@ func (c ClassicSnapshotFactory) FromString(data []string) (*ClassicSnapshot, err
 	i := 5
 	for j := 0; j < memberCount; j++ {
 		i++
-		cm := ClusterMember{}
+		cm := common.ClusterMember{}
 		err := cm.FromString(data[i])
 		if err != nil {
 			return nil, err
@@ -61,7 +62,7 @@ func (c ClassicSnapshotFactory) FromString(data []string) (*ClassicSnapshot, err
 
 	for j := 0; j < sessionCount; j++ {
 		i++
-		ce := ClientEntry{}
+		ce := common.ClientEntry{}
 		clientId, err := ce.FromString(data[i])
 		if err != nil {
 			return nil, err
@@ -91,30 +92,40 @@ func (c ClassicSnapshotFactory) FromString(data []string) (*ClassicSnapshot, err
 }
 
 type ClassicSnapshot struct {
-	LastConfig map[int]ClusterMember // cluster members
+	LastConfig map[int]common.ClusterMember // cluster members
 	KeyValue   map[string]string
 	KeyLock    map[string]int // allowing a client session to lock a key
-	Sessions   map[int]ClientEntry
-	SnapshotMetadata
+	Sessions   map[int]common.ClientEntry
+	common.SnapshotMetadata
 }
 
 func NewClassicSnapshot() *ClassicSnapshot {
 	return &ClassicSnapshot{
-		LastConfig:       map[int]ClusterMember{},
+		LastConfig:       map[int]common.ClusterMember{},
 		KeyValue:         map[string]string{},
 		KeyLock:          map[string]int{},
-		Sessions:         map[int]ClientEntry{},
-		SnapshotMetadata: SnapshotMetadata{},
+		Sessions:         map[int]common.ClientEntry{},
+		SnapshotMetadata: common.SnapshotMetadata{},
 	}
 }
 
-func (s ClassicSnapshot) Metadata() SnapshotMetadata {
+func NewClassicSnapshotI() common.Snapshot {
+	return &ClassicSnapshot{
+		LastConfig:       map[int]common.ClusterMember{},
+		KeyValue:         map[string]string{},
+		KeyLock:          map[string]int{},
+		Sessions:         map[int]common.ClientEntry{},
+		SnapshotMetadata: common.SnapshotMetadata{},
+	}
+}
+
+func (s ClassicSnapshot) Metadata() common.SnapshotMetadata {
 	return s.SnapshotMetadata
 }
 
-func (s ClassicSnapshot) Copy() Snapshot {
-	members := map[int]ClusterMember{}
-	sessions := map[int]ClientEntry{}
+func (s ClassicSnapshot) Copy() common.Snapshot {
+	members := map[int]common.ClusterMember{}
+	sessions := map[int]common.ClientEntry{}
 	keyValue := map[string]string{}
 	keyLock := map[string]int{}
 
@@ -139,7 +150,7 @@ func (s ClassicSnapshot) Copy() Snapshot {
 		KeyValue:   keyValue,
 		KeyLock:    keyLock,
 		Sessions:   sessions,
-		SnapshotMetadata: SnapshotMetadata{
+		SnapshotMetadata: common.SnapshotMetadata{
 			LastLogTerm:  s.LastLogTerm,
 			LastLogIndex: s.LastLogIndex,
 			FileName:     s.FileName,
@@ -147,7 +158,7 @@ func (s ClassicSnapshot) Copy() Snapshot {
 	}
 }
 
-func (s ClassicSnapshot) GetLastConfig() map[int]ClusterMember {
+func (s ClassicSnapshot) GetLastConfig() map[int]common.ClusterMember {
 	return s.LastConfig
 }
 
@@ -224,7 +235,7 @@ func (s *ClassicSnapshot) FromString(data []string) error {
 	i := 5
 	for j := 0; j < memberCount; j++ {
 		i++
-		cm := ClusterMember{}
+		cm := common.ClusterMember{}
 		err := cm.FromString(data[i])
 		if err != nil {
 			return err
@@ -234,7 +245,7 @@ func (s *ClassicSnapshot) FromString(data []string) error {
 
 	for j := 0; j < sessionCount; j++ {
 		i++
-		ce := ClientEntry{}
+		ce := common.ClientEntry{}
 		clientId, err := ce.FromString(data[i])
 		if err != nil {
 			return err

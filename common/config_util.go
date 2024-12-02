@@ -24,7 +24,14 @@ func ReadConfigFromFile(filePath *string) (*Config, error) {
 	}
 
 	var err error
-	config.ClientSessionDuration, err = time.ParseDuration(viper.GetString("client_session_duration"))
+	config.LogExtensions.Classic.ClientSessionDuration, err =
+		time.ParseDuration(viper.GetString("log_extensions.classic.client_session_duration"))
+	if err != nil {
+		return nil, err
+	}
+
+	config.LogExtensions.Etcd.MaxWaitTimeout, err =
+		time.ParseDuration(viper.GetString("log_extensions.etcd.http_client_max_wait_timeout"))
 	if err != nil {
 		return nil, err
 	}

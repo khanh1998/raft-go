@@ -9,24 +9,32 @@ import (
 	"khanh/raft-go/logic"
 	"khanh/raft-go/observability"
 	"khanh/raft-go/rpc_proxy"
-	"khanh/raft-go/state_machine"
+	classicSt "khanh/raft-go/state_machine/classic"
+	etcdSt "khanh/raft-go/state_machine/etcd"
 )
+
+type HttpServer interface {
+	Start()
+	Stop()
+	SetAccessible()
+	SetInaccessible()
+}
 
 type Node struct {
 	ID     int
 	brain  *logic.RaftBrainImpl
 	rpc    *rpc_proxy.RPCProxyImpl
-	http   *http_proxy.ClassicHttpProxy
+	http   HttpServer
 	logger observability.Logger
 }
 
 type ClassicSetup struct {
 	HTTPProxy    http_proxy.NewClassicHttpProxyParams
-	StateMachine state_machine.NewClassicStateMachineParams
+	StateMachine classicSt.NewClassicStateMachineParams
 }
 
 type EtcdSetup struct {
-	StateMachine state_machine.NewBtreeKvStateMachineParams
+	StateMachine etcdSt.NewBtreeKvStateMachineParams
 	HTTPProxy    http_proxy.NewEtcdHttpProxyParams
 }
 
@@ -37,70 +45,75 @@ type NewNodeParams struct {
 	RPCProxy rpc_proxy.NewRPCImplParams
 
 	// you can only choose one of these two setups
-	ClassicSetup *ClassicSetup
-	EtcdSetup    *EtcdSetup
+	LogExtensionEnabled common.LogExtension
+	ClassicSetup        *ClassicSetup
+	EtcdSetup           *EtcdSetup
 
 	Logger observability.Logger
+}
+
+func NewEtcdNode(ctx context.Context, params NewNodeParams) *Node {
+	stateMachine := etcdSt.NewBtreeKvStateMachine(params.EtcdSetup.StateMachine)
+	httpProxy := http_proxy.NewEtcdHttpProxy(params.EtcdSetup.HTTPProxy)
+
+	brain, err := logic.NewRaftBrain(params.Brain)
+	if err != nil {
+		params.Logger.FatalContext(ctx, "NewNode_NewRaftBrain", "error", err.Error())
+	}
+
+	params.RPCProxy.HostID = params.ID
+	rpcProxy, err := rpc_proxy.NewRPCImpl(params.RPCProxy)
+	if err != nil {
+		params.Logger.FatalContext(ctx, "NewNode_NewRPCImpl", "error", err.Error())
+	}
+
+	rpcProxy.SetBrain(brain)
+	httpProxy.SetBrain(brain)
+	brain.SetRpcProxy(rpcProxy)
+
+	brain.SetStateMachine(stateMachine)
+
+	n := &Node{ID: params.ID, brain: brain, rpc: rpcProxy, http: httpProxy, logger: params.Logger}
+
+	return n
+}
+
+func NewClassicNode(ctx context.Context, params NewNodeParams) *Node {
+	stateMachine := classicSt.NewClassicStateMachine(params.ClassicSetup.StateMachine)
+	httpProxy := http_proxy.NewClassicHttpProxy(params.ClassicSetup.HTTPProxy)
+
+	brain, err := logic.NewRaftBrain(params.Brain)
+	if err != nil {
+		params.Logger.FatalContext(ctx, "NewNode_NewRaftBrain", "error", err.Error())
+	}
+
+	params.RPCProxy.HostID = params.ID
+	rpcProxy, err := rpc_proxy.NewRPCImpl(params.RPCProxy)
+	if err != nil {
+		params.Logger.FatalContext(ctx, "NewNode_NewRPCImpl", "error", err.Error())
+	}
+
+	rpcProxy.SetBrain(brain)
+	httpProxy.SetBrain(brain)
+	brain.SetRpcProxy(rpcProxy)
+
+	brain.SetStateMachine(stateMachine)
+
+	n := &Node{ID: params.ID, brain: brain, rpc: rpcProxy, http: httpProxy, logger: params.Logger}
+
+	return n
 }
 
 func NewNode(ctx context.Context, params NewNodeParams) *Node {
 	sampleLog := params.Brain.LogFactory.Empty()
 	gob.Register(sampleLog)
 
-	if params.ClassicSetup != nil && params.EtcdSetup != nil {
-		params.Logger.Fatal("you can only choose one of these two setups: classic or etcd")
+	if params.LogExtensionEnabled == common.LogExtensionClassic {
+		return NewClassicNode(ctx, params)
 	}
 
-	if params.ClassicSetup != nil {
-		stateMachine := state_machine.NewClassicStateMachine(params.ClassicSetup.StateMachine)
-		httpProxy := http_proxy.NewClassicHttpProxy(params.ClassicSetup.HTTPProxy)
-
-		brain, err := logic.NewRaftBrain(params.Brain)
-		if err != nil {
-			params.Logger.FatalContext(ctx, "NewNode_NewRaftBrain", "error", err.Error())
-		}
-
-		params.RPCProxy.HostID = params.ID
-		rpcProxy, err := rpc_proxy.NewRPCImpl(params.RPCProxy)
-		if err != nil {
-			params.Logger.FatalContext(ctx, "NewNode_NewRPCImpl", "error", err.Error())
-		}
-
-		rpcProxy.SetBrain(brain)
-		httpProxy.SetBrain(brain)
-		brain.SetRpcProxy(rpcProxy)
-
-		brain.SetStateMachine(stateMachine)
-
-		n := &Node{ID: params.ID, brain: brain, rpc: rpcProxy, http: httpProxy, logger: params.Logger}
-
-		return n
-	}
-
-	if params.EtcdSetup != nil {
-		stateMachine := state_machine.NewBtreeKvStateMachine(params.EtcdSetup.StateMachine)
-		httpProxy := http_proxy.NewEtcdHttpProxy(params.EtcdSetup.HTTPProxy)
-
-		brain, err := logic.NewRaftBrain(params.Brain)
-		if err != nil {
-			params.Logger.FatalContext(ctx, "NewNode_NewRaftBrain", "error", err.Error())
-		}
-
-		params.RPCProxy.HostID = params.ID
-		rpcProxy, err := rpc_proxy.NewRPCImpl(params.RPCProxy)
-		if err != nil {
-			params.Logger.FatalContext(ctx, "NewNode_NewRPCImpl", "error", err.Error())
-		}
-
-		rpcProxy.SetBrain(brain)
-		httpProxy.SetBrain(brain)
-		brain.SetRpcProxy(rpcProxy)
-
-		brain.SetStateMachine(stateMachine)
-
-		n := &Node{ID: params.ID, brain: brain, rpc: rpcProxy, http: httpProxy, logger: params.Logger}
-
-		return n
+	if params.LogExtensionEnabled == common.LogExtensionEtcd {
+		return NewEtcdNode(ctx, params)
 	}
 
 	return nil

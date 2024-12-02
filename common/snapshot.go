@@ -41,19 +41,6 @@ func (c *ClientEntry) FromString(str string) (clientId int, err error) {
 	return clientId, nil
 }
 
-type KeyValueData struct {
-	Value         string
-	CreatedIndex  int
-	ModifiedIndex int
-}
-
-type SnapshotV2 struct {
-	LastConfig map[int]ClusterMember // cluster members
-	KeyValue   map[string]KeyValueData
-	Sessions   map[int]ClientEntry
-	SnapshotMetadata
-}
-
 type Snapshot interface {
 	Metadata() SnapshotMetadata
 	GetLastConfig() map[int]ClusterMember
@@ -62,9 +49,6 @@ type Snapshot interface {
 	ToString() (data []string)
 	FromString(data []string) error
 	Deserialize(data []byte) error
-}
-
-type SnapshotFactory interface {
 }
 
 type SnapshotMetadata struct {

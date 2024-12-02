@@ -23,11 +23,20 @@ data_folder: data/
 state_machine_snapshot: true
 wal_size_limit: 10240
 log_length_limit: 100
-client_session_duration: 2m
 rpc_dial_timeout: 300ms
 rpc_request_timeout: 150ms
 rpc_reconnect_duration: 300ms
 snapshot_chunk_size: 100
+cluster_time_commit_max_duration: 30s
+http_client_request_max_timeout: 60m
+log_extensions:
+  enable: classic # or 'etcd'
+  classic:
+    client_session_duration: 2m
+  etcd:
+    state_machine_history_capacity: 1000
+    state_machine_btree_degree: 32
+    http_client_max_wait_timeout: 60m
 observability:
   disabled: true
   trace_endpoint: 'localhost:4318'

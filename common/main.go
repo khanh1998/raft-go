@@ -8,13 +8,14 @@ import (
 )
 
 const NoOperation = "NO-OP"
+const TimeCommit = "time-commit"
 
 type AppendEntriesInput struct {
 	Term         int   // leader’s term
 	LeaderID     int   // so follower can redirect clients
 	PrevLogIndex int   // index of log entry immediately preceding new ones
 	PrevLogTerm  int   // term of prevLogIndex entry
-	Entries      []Log // log entries to store (empty for heartbeat; may send more than one for efficiency)
+	Entries      []Log // log entries to store ()
 	LeaderCommit int   // leader’s commitIndex
 
 	Trace *RequestTraceInfo // this will be set at RPC Proxy

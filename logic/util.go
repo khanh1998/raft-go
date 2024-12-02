@@ -146,7 +146,9 @@ func (n *RaftBrainImpl) applyLog(ctx context.Context) {
 			break
 		}
 
-		// n.clusterClock.NewEpoch(log.GetTime())
+		if n.state == common.StateFollower {
+			n.clusterClock.NewEpoch(log.GetTime())
+		}
 
 		res, err := n.stateMachine.Process(ctx, n.lastApplied, log)
 

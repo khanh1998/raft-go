@@ -5,6 +5,7 @@ import (
 	"errors"
 	"fmt"
 	"khanh/raft-go/common"
+	"net/http"
 	"strconv"
 	"time"
 
@@ -29,7 +30,7 @@ func (r *RaftBrainImpl) KeepAlive(ctx context.Context, input common.Log, output 
 	defer span.End()
 	defer func() {
 		if output.Status == common.StatusNotOK {
-			span.SetStatus(codes.Error, err.Error())
+			span.SetStatus(codes.Error, "not ok")
 		} else {
 			span.SetStatus(codes.Ok, "finished client request")
 		}
@@ -118,7 +119,7 @@ func (r *RaftBrainImpl) ClientRequest(ctx context.Context, input common.Log, out
 
 	defer func() {
 		if output.Status == common.StatusNotOK {
-			span.SetStatus(codes.Error, err.Error())
+			span.SetStatus(codes.Error, "not ok")
 		} else {
 			span.SetStatus(codes.Ok, "finished client request")
 		}
@@ -136,7 +137,7 @@ func (r *RaftBrainImpl) ClientRequest(ctx context.Context, input common.Log, out
 
 		r.inOutLock.Unlock()
 
-		return nil
+		return common.RaftError{LeaderHint: leaderUrl, Message: common.NotLeader, HttpCode: http.StatusMovedPermanently}
 	}
 
 	newLog, err := r.logFactory.AttachTermAndTime(input, r.GetCurrentTerm(), r.clusterClock.LeaderStamp())
@@ -146,7 +147,7 @@ func (r *RaftBrainImpl) ClientRequest(ctx context.Context, input common.Log, out
 			Response: err.Error(),
 		}
 
-		return nil
+		return common.RaftError{Message: err.Error(), HttpCode: http.StatusInternalServerError}
 	}
 
 	index, err := r.appendLog(ctx, newLog)
@@ -158,6 +159,8 @@ func (r *RaftBrainImpl) ClientRequest(ctx context.Context, input common.Log, out
 			Response:   "append log err: " + err.Error(),
 			LeaderHint: "",
 		}
+
+		return common.RaftError{Message: "append log err: " + err.Error(), HttpCode: http.StatusInternalServerError}
 	}
 
 	r.inOutLock.Unlock()
@@ -176,7 +179,7 @@ func (r *RaftBrainImpl) ClientRequest(ctx context.Context, input common.Log, out
 			LeaderHint: "",
 		}
 
-		return nil
+		return err
 	}
 
 	response, err = r.arm.TakeResponse(index, 30*time.Second)
@@ -198,7 +201,7 @@ func (r *RaftBrainImpl) ClientRequest(ctx context.Context, input common.Log, out
 		Response: response,
 	}
 
-	return nil
+	return err
 }
 
 func (r *RaftBrainImpl) RegisterClient(ctx context.Context, input common.Log, output *common.RegisterClientOutput) (err error) {
@@ -207,7 +210,7 @@ func (r *RaftBrainImpl) RegisterClient(ctx context.Context, input common.Log, ou
 
 	defer func() {
 		if output.Status == common.StatusNotOK {
-			span.SetStatus(codes.Error, err.Error())
+			span.SetStatus(codes.Error, "not ok")
 		} else {
 			span.SetStatus(codes.Ok, "finished client request")
 		}
@@ -308,18 +311,19 @@ func (r *RaftBrainImpl) ClientQuery(ctx context.Context, input common.Log, outpu
 			LeaderHint: leaderUrl,
 		}
 
-		return nil
+		return common.RaftError{LeaderHint: leaderUrl, Message: common.NotLeader, HttpCode: http.StatusMovedPermanently}
 	}
 
-	log, err := r.logFactory.AttachTermAndTime(input, r.GetCurrentTerm(), r.clusterClock.LeaderStamp())
-	if err != nil {
-		*output = common.ClientQueryOutput{
-			Status:   common.StatusNotOK,
-			Response: err.Error(),
-		}
+	log := input
+	// log, err := r.logFactory.AttachTermAndTime(input, r.GetCurrentTerm(), r.clusterClock.LeaderStamp())
+	// if err != nil {
+	// 	*output = common.ClientQueryOutput{
+	// 		Status:   common.StatusNotOK,
+	// 		Response: err.Error(),
+	// 	}
 
-		return nil
-	}
+	// 	return nil
+	// }
 
 	var ok bool
 	err = errors.New("timeout")
@@ -344,7 +348,10 @@ func (r *RaftBrainImpl) ClientQuery(ctx context.Context, input common.Log, outpu
 			LeaderHint: "",
 		}
 
-		return nil
+		return common.RaftError{
+			Message:  "timeout: leader of current term haven't commit any log yet. " + err.Error(),
+			HttpCode: http.StatusInternalServerError,
+		}
 	}
 
 	realIndex := r.commitIndex
@@ -368,7 +375,10 @@ func (r *RaftBrainImpl) ClientQuery(ctx context.Context, input common.Log, outpu
 			LeaderHint: "",
 		}
 
-		return nil
+		return common.RaftError{
+			Message:  "timeout: wait for log committing",
+			HttpCode: http.StatusInternalServerError,
+		}
 	}
 
 	res, err := r.stateMachine.Process(ctx, 0, log)
@@ -379,7 +389,7 @@ func (r *RaftBrainImpl) ClientQuery(ctx context.Context, input common.Log, outpu
 			LeaderHint: "",
 		}
 
-		return nil
+		return err
 	}
 
 	*output = common.ClientQueryOutput{

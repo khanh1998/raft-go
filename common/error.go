@@ -10,3 +10,13 @@ var (
 	ErrLogIsInSnapshot  = errors.New("log is in snapshot")
 	ErrEmptyData        = errors.New("data is empty")
 )
+
+type RaftError struct {
+	HttpCode   int
+	LeaderHint string
+	Message    string
+}
+
+func (r RaftError) Error() string {
+	return r.Message
+}

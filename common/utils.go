@@ -8,6 +8,10 @@ import (
 	"github.com/rs/zerolog/log"
 )
 
+func GetPointer[T any](input T) *T {
+	return &input
+}
+
 func CopySlice[T any](source []T) []T {
 	if source == nil {
 		return nil

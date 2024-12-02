@@ -8,7 +8,7 @@ import (
 	"khanh/raft-go/observability"
 	"khanh/raft-go/persistence_state"
 	"khanh/raft-go/rpc_proxy"
-	"khanh/raft-go/state_machine"
+	classicSt "khanh/raft-go/state_machine/classic"
 	"khanh/raft-go/storage"
 	"net/rpc"
 	"testing"
@@ -66,12 +66,13 @@ func TestRpcConnection(t *testing.T) {
 				URL:    "localhost:8080",
 				Logger: logger,
 			},
-			StateMachine: state_machine.NewClassicStateMachineParams{
+			StateMachine: classicSt.NewClassicStateMachineParams{
 				PersistState: persistState,
 				Logger:       logger,
 			},
 		},
-		Logger: logger,
+		LogExtensionEnabled: common.LogExtensionClassic,
+		Logger:              logger,
 	})
 
 	n.Start(ctx, false, false)

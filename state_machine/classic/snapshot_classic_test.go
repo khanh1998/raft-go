@@ -1,6 +1,7 @@
-package common
+package classic
 
 import (
+	"khanh/raft-go/common"
 	"reflect"
 	"sort"
 	"testing"
@@ -8,11 +9,11 @@ import (
 
 func TestSnapshot_FromString(t *testing.T) {
 	type fields struct {
-		LastConfig       map[int]ClusterMember
+		LastConfig       map[int]common.ClusterMember
 		KeyValue         map[string]string
 		KeyLock          map[string]int
-		Sessions         map[int]ClientEntry
-		SnapshotMetadata SnapshotMetadata
+		Sessions         map[int]common.ClientEntry
+		SnapshotMetadata common.SnapshotMetadata
 	}
 	type args struct {
 		data []string
@@ -26,7 +27,7 @@ func TestSnapshot_FromString(t *testing.T) {
 		{
 			name: "",
 			fields: fields{
-				LastConfig: map[int]ClusterMember{
+				LastConfig: map[int]common.ClusterMember{
 					1: {
 						ID:      1,
 						RpcUrl:  "localhost:1234",
@@ -47,11 +48,11 @@ func TestSnapshot_FromString(t *testing.T) {
 					"name": 1,
 					"city": 2,
 				},
-				Sessions: map[int]ClientEntry{
+				Sessions: map[int]common.ClientEntry{
 					1: {LastSequenceNum: 2, LastResponse: "abc", ExpiryTime: 100},
 					2: {LastSequenceNum: 3, LastResponse: "", ExpiryTime: 130},
 				},
-				SnapshotMetadata: SnapshotMetadata{
+				SnapshotMetadata: common.SnapshotMetadata{
 					LastLogTerm:  5,
 					LastLogIndex: 6,
 				},
@@ -94,11 +95,11 @@ func TestSnapshot_FromString(t *testing.T) {
 
 func TestSnapshot_ToString(t *testing.T) {
 	type fields struct {
-		LastConfig       map[int]ClusterMember
+		LastConfig       map[int]common.ClusterMember
 		KeyValue         map[string]string
 		KeyLock          map[string]int
-		Sessions         map[int]ClientEntry
-		SnapshotMetadata SnapshotMetadata
+		Sessions         map[int]common.ClientEntry
+		SnapshotMetadata common.SnapshotMetadata
 	}
 	tests := []struct {
 		name     string
@@ -112,7 +113,7 @@ func TestSnapshot_ToString(t *testing.T) {
 					"name": 1,
 					"city": 2,
 				},
-				LastConfig: map[int]ClusterMember{
+				LastConfig: map[int]common.ClusterMember{
 					1: {
 						ID:      1,
 						RpcUrl:  "localhost:1234",
@@ -124,7 +125,7 @@ func TestSnapshot_ToString(t *testing.T) {
 						HttpUrl: "localhost:8081",
 					},
 				},
-				Sessions: map[int]ClientEntry{
+				Sessions: map[int]common.ClientEntry{
 					1: {LastSequenceNum: 2, LastResponse: "abc", ExpiryTime: 100},
 					2: {LastSequenceNum: 3, LastResponse: "", ExpiryTime: 130},
 				},
@@ -133,7 +134,7 @@ func TestSnapshot_ToString(t *testing.T) {
 					"city":        "hcm",
 					"citizenship": "vietnam",
 				},
-				SnapshotMetadata: SnapshotMetadata{
+				SnapshotMetadata: common.SnapshotMetadata{
 					LastLogTerm:  5,
 					LastLogIndex: 6,
 				},
