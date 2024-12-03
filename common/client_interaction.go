@@ -1,15 +1,5 @@
 package common
 
-type ClientRequestStatus string
-
-const (
-	StatusOK    ClientRequestStatus = "OK"
-	StatusNotOK ClientRequestStatus = "Not OK"
-
-	NotLeader      string = "NOT_LEADER"
-	SessionExpired string = "SESSION_EXPIRED"
-)
-
 type ClientRequestInput struct {
 	ClientID    int    `json:"client_id"`
 	SequenceNum int    `json:"sequence_num"`
@@ -48,4 +38,12 @@ type ClientQueryOutput struct {
 	Status     ClientRequestStatus `json:"status"`
 	Response   LogResult           `json:"response"`
 	LeaderHint string              `json:"leader_hint"`
+}
+
+type GetStatusResponse struct {
+	ID          int       `json:"id"`
+	State       RaftState `json:"state"`
+	Term        int       `json:"term"`
+	LeaderId    int       `json:"leader_id"`
+	ClusterTime uint64    `json:"cluster_time"`
 }

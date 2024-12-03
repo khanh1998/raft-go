@@ -12,6 +12,7 @@ This is a simple distributed key-value database, built on top of [Raft](https://
 ## 1.1 Quick
 If you want to quickly test the Raft cluster, you can start the cluster on Docker Compose:
 ```bash
+cd extensions/classic
 docker compose up -d --build
 ```
 This will create a static cluster including three nodes, you can check the docker-compose file to see which port those nodes are operating on.
@@ -46,10 +47,20 @@ max_heartbeat_timeout: 5s
 data_folder: data/
 wal_size_limit: 512
 log_length_limit: 5
-client_session_duration: 2m
 rpc_dial_timeout: 5s
 rpc_request_timeout: 1s
 rpc_reconnect_duration: 30s
+snapshot_chunk_size: 100
+cluster_time_commit_max_duration: 30s
+http_client_request_max_timeout: 60m
+log_extensions:
+  enable: classic # or 'classic'
+  classic:
+    client_session_duration: 2m
+  etcd:
+    state_machine_history_capacity: 1000
+    state_machine_btree_degree: 32
+    http_client_max_wait_timeout: 60m
 observability:
   disabled: true
   trace_endpoint: 'localhost:4318'

@@ -6,15 +6,18 @@ import (
 	"flag"
 	"fmt"
 	"khanh/raft-go/common"
-	"khanh/raft-go/http_proxy"
-	"khanh/raft-go/logic"
+	classicCm "khanh/raft-go/extensions/classic/common"
+	classicHttp "khanh/raft-go/extensions/classic/http_server"
+	classicSt "khanh/raft-go/extensions/classic/state_machine"
+	etcdCm "khanh/raft-go/extensions/etcd/common"
+	etcdHttp "khanh/raft-go/extensions/etcd/http_server"
+	etcdSt "khanh/raft-go/extensions/etcd/state_machine"
 	"khanh/raft-go/node"
 	"khanh/raft-go/observability"
-	"khanh/raft-go/persistence_state"
-	"khanh/raft-go/rpc_proxy"
-	classicSt "khanh/raft-go/state_machine/classic"
-	etcdSt "khanh/raft-go/state_machine/etcd"
-	"khanh/raft-go/storage"
+	"khanh/raft-go/raft_core/logic"
+	"khanh/raft-go/raft_core/persistence_state"
+	"khanh/raft-go/raft_core/rpc_proxy"
+	"khanh/raft-go/raft_core/storage"
 	"log"
 	"os"
 	"os/signal"
@@ -143,11 +146,11 @@ func main() {
 
 	switch config.LogExtensions.Enable {
 	case common.LogExtensionClassic:
-		logFactory = common.ClassicLogFactory{
+		logFactory = classicCm.ClassicLogFactory{
 			NewSnapshot: classicSt.NewClassicSnapshotI,
 		}
 	case common.LogExtensionEtcd:
-		logFactory = common.EtcdLogFactory{
+		logFactory = etcdCm.EtcdLogFactory{
 			NewSnapshot: func() common.Snapshot {
 				degree := config.LogExtensions.Etcd.StateMachineBTreeDegree
 				return etcdSt.NewEtcdSnapshot(degree)
@@ -193,7 +196,7 @@ func main() {
 			RpcReconnectDuration: config.RpcReconnectDuration,
 		},
 		ClassicSetup: &node.ClassicSetup{
-			HTTPProxy: http_proxy.NewClassicHttpProxyParams{
+			HttpServer: classicHttp.NewClassicHttpProxyParams{
 				URL:    httpUrl,
 				Logger: logger,
 			},
@@ -205,7 +208,7 @@ func main() {
 			},
 		},
 		EtcdSetup: &node.EtcdSetup{
-			HTTPProxy: http_proxy.NewEtcdHttpProxyParams{
+			HttpServer: etcdHttp.NewEtcdHttpProxyParams{
 				URL:    httpUrl,
 				Logger: logger,
 			},

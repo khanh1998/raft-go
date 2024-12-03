@@ -5,12 +5,13 @@ import (
 	"encoding/gob"
 	"errors"
 	"khanh/raft-go/common"
-	"khanh/raft-go/http_proxy"
-	"khanh/raft-go/logic"
+	classicHttp "khanh/raft-go/extensions/classic/http_server"
+	classicSt "khanh/raft-go/extensions/classic/state_machine"
+	etcdHttp "khanh/raft-go/extensions/etcd/http_server"
+	etcdSt "khanh/raft-go/extensions/etcd/state_machine"
 	"khanh/raft-go/observability"
-	"khanh/raft-go/rpc_proxy"
-	classicSt "khanh/raft-go/state_machine/classic"
-	etcdSt "khanh/raft-go/state_machine/etcd"
+	"khanh/raft-go/raft_core/logic"
+	"khanh/raft-go/raft_core/rpc_proxy"
 )
 
 type HttpServer interface {
@@ -29,13 +30,13 @@ type Node struct {
 }
 
 type ClassicSetup struct {
-	HTTPProxy    http_proxy.NewClassicHttpProxyParams
+	HttpServer   classicHttp.NewClassicHttpProxyParams
 	StateMachine classicSt.NewClassicStateMachineParams
 }
 
 type EtcdSetup struct {
+	HttpServer   etcdHttp.NewEtcdHttpProxyParams
 	StateMachine etcdSt.NewBtreeKvStateMachineParams
-	HTTPProxy    http_proxy.NewEtcdHttpProxyParams
 }
 
 type NewNodeParams struct {
@@ -54,7 +55,7 @@ type NewNodeParams struct {
 
 func NewEtcdNode(ctx context.Context, params NewNodeParams) *Node {
 	stateMachine := etcdSt.NewBtreeKvStateMachine(params.EtcdSetup.StateMachine)
-	httpProxy := http_proxy.NewEtcdHttpProxy(params.EtcdSetup.HTTPProxy)
+	httpProxy := etcdHttp.NewEtcdHttpProxy(params.EtcdSetup.HttpServer)
 
 	brain, err := logic.NewRaftBrain(params.Brain)
 	if err != nil {
@@ -62,7 +63,7 @@ func NewEtcdNode(ctx context.Context, params NewNodeParams) *Node {
 	}
 
 	params.RPCProxy.HostID = params.ID
-	rpcProxy, err := rpc_proxy.NewRPCImpl(params.RPCProxy)
+	rpcProxy, err := rpc_proxy.NewInternalRPC(params.RPCProxy)
 	if err != nil {
 		params.Logger.FatalContext(ctx, "NewNode_NewRPCImpl", "error", err.Error())
 	}
@@ -80,7 +81,7 @@ func NewEtcdNode(ctx context.Context, params NewNodeParams) *Node {
 
 func NewClassicNode(ctx context.Context, params NewNodeParams) *Node {
 	stateMachine := classicSt.NewClassicStateMachine(params.ClassicSetup.StateMachine)
-	httpProxy := http_proxy.NewClassicHttpProxy(params.ClassicSetup.HTTPProxy)
+	httpProxy := classicHttp.NewClassicHttpProxy(params.ClassicSetup.HttpServer)
 
 	brain, err := logic.NewRaftBrain(params.Brain)
 	if err != nil {
@@ -88,7 +89,7 @@ func NewClassicNode(ctx context.Context, params NewNodeParams) *Node {
 	}
 
 	params.RPCProxy.HostID = params.ID
-	rpcProxy, err := rpc_proxy.NewRPCImpl(params.RPCProxy)
+	rpcProxy, err := rpc_proxy.NewInternalRPC(params.RPCProxy)
 	if err != nil {
 		params.Logger.FatalContext(ctx, "NewNode_NewRPCImpl", "error", err.Error())
 	}

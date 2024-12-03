@@ -1,0 +1,68 @@
+version: "3.9"
+
+services:
+  raft-node-1:
+    build: ../..
+    image: raft-go:latest
+    container_name: raft-node-1
+    hostname: raft-node-1
+    command: ["/app/raft-go", "-id=1"]
+    environment:
+      - NODE_ID=1
+    networks:
+      raft-network:
+        aliases:
+          - raft-node-1.raft-cluster.local
+    ports:
+      - "8080:8080"
+      - "1234:1234"
+    volumes:
+      - raft-node-1-data:/app/data
+      - ./dc-config.yml:/app/config.yml
+
+  raft-node-2:
+    build: ../..
+    image: raft-go:latest
+    container_name: raft-node-2
+    hostname: raft-node-2
+    command: ["/app/raft-go", "-id=2"]
+    environment:
+      - NODE_ID=2
+    networks:
+      raft-network:
+        aliases:
+          - raft-node-2.raft-cluster.local
+    ports:
+      - "8081:8080"
+      - "1235:1234"
+    volumes:
+      - raft-node-2-data:/app/data
+      - ./dc-config.yml:/app/config.yml
+
+  raft-node-3:
+    build: ../..
+    image: raft-go:latest
+    container_name: raft-node-3
+    hostname: raft-node-3
+    command: ["/app/raft-go", "-id=3"]
+    environment:
+      - NODE_ID=3
+    networks:
+      raft-network:
+        aliases:
+          - raft-node-3.raft-cluster.local
+    ports:
+      - "8082:8080"
+      - "1236:1234"
+    volumes:
+      - raft-node-3-data:/app/data
+      - ./dc-config.yml:/app/config.yml
+  
+networks:
+  raft-network:
+    driver: bridge
+
+volumes:
+  raft-node-1-data:
+  raft-node-2-data:
+  raft-node-3-data:

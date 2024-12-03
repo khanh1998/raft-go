@@ -3,13 +3,14 @@ package node
 import (
 	"context"
 	"khanh/raft-go/common"
-	"khanh/raft-go/http_proxy"
-	"khanh/raft-go/logic"
+	classicCommon "khanh/raft-go/extensions/classic/common"
+	classicHttp "khanh/raft-go/extensions/classic/http_server"
+	classicSt "khanh/raft-go/extensions/classic/state_machine"
 	"khanh/raft-go/observability"
-	"khanh/raft-go/persistence_state"
-	"khanh/raft-go/rpc_proxy"
-	classicSt "khanh/raft-go/state_machine/classic"
-	"khanh/raft-go/storage"
+	"khanh/raft-go/raft_core/logic"
+	"khanh/raft-go/raft_core/persistence_state"
+	"khanh/raft-go/raft_core/rpc_proxy"
+	"khanh/raft-go/raft_core/storage"
 	"net/rpc"
 	"testing"
 	"time"
@@ -20,7 +21,7 @@ import (
 func TestRpcConnection(t *testing.T) {
 	logger := observability.NewZerolog(common.ObservabilityConfig{}, 1)
 	ctx := context.Background()
-	logFactory := common.ClassicLogFactory{}
+	logFactory := classicCommon.ClassicLogFactory{}
 	persistState := persistence_state.NewRaftPersistenceState(persistence_state.NewRaftPersistenceStateParams{
 		CurrentTerm: 2,
 		Logs:        []common.Log{},
@@ -62,7 +63,7 @@ func TestRpcConnection(t *testing.T) {
 			RpcReconnectDuration: 30 * time.Second,
 		},
 		ClassicSetup: &ClassicSetup{
-			HTTPProxy: http_proxy.NewClassicHttpProxyParams{
+			HttpServer: classicHttp.NewClassicHttpProxyParams{
 				URL:    "localhost:8080",
 				Logger: logger,
 			},
