@@ -137,7 +137,8 @@ func (n *RaftBrainImpl) logInjector(ctx context.Context) {
 // All servers: If commitIndex > lastApplied: increment lastApplied,
 // apply log[lastApplied] to state machine (§5.3)
 func (n *RaftBrainImpl) applyLog(ctx context.Context) {
-	for n.commitIndex > n.lastApplied {
+	commitIndex := n.commitIndex
+	for commitIndex > n.lastApplied {
 		n.lastApplied += 1
 
 		log, err := n.GetLog(n.lastApplied)
