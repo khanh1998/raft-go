@@ -27,17 +27,33 @@ type NewBtreeKvStateMachineParams struct {
 	PersistenceState      RaftPersistenceState
 	ResponseCacheCapacity int
 	BtreeDegree           int
+	Snapshot              gc.Snapshot
 }
 
 func NewBtreeKvStateMachine(params NewBtreeKvStateMachineParams) *BtreeKvStateMachine {
-	return &BtreeKvStateMachine{
-		current:          NewEtcdSnapshot(params.BtreeDegree),
+
+	b := &BtreeKvStateMachine{
+		current:          nil,
 		lock:             sync.RWMutex{},
 		snapshotLock:     sync.Mutex{},
 		logger:           params.Logger,
 		persistenceState: params.PersistenceState,
 		watcher:          NewWatcher(params.ResponseCacheCapacity),
 	}
+	if params.Snapshot == nil {
+		b.current = NewEtcdSnapshot(params.BtreeDegree)
+	} else {
+		var ok bool
+		b.current, ok = params.Snapshot.(*EtcdSnapshot)
+		if !ok {
+			b.logger.Fatal("invalid snapshot:",
+				"got", params.Snapshot,
+				"want", "*common.EtcdSnapshot{}",
+			)
+		}
+	}
+
+	return b
 }
 
 func (b *BtreeKvStateMachine) Reset(ctx context.Context) error {
@@ -118,8 +134,8 @@ func (b *BtreeKvStateMachine) set(log common.EtcdLog, logIndex int) (result comm
 		newData.ModifiedIndex = logIndex
 		if command.Refresh {
 			// no notification to watchers on the refreshed key
-			if command.Ttl > 0 {
-				newData.ExpirationTime = log.Time + command.Ttl
+			if command.Ttl != nil && *command.Ttl > 0 {
+				newData.ExpirationTime = log.Time + *command.Ttl
 			} else {
 				return common.EtcdResultRes{}, common.EtcdResultErr{
 					Cause:     "refresh",
@@ -129,8 +145,14 @@ func (b *BtreeKvStateMachine) set(log common.EtcdLog, logIndex int) (result comm
 				}
 			}
 		} else {
-			if command.Ttl > 0 {
-				newData.ExpirationTime = log.Time + command.Ttl
+			if command.Ttl != nil {
+				if *command.Ttl > 0 {
+					// new expiration time for the current key
+					newData.ExpirationTime = log.Time + *command.Ttl
+				} else {
+					// unset expiration time, the current key will be never expired
+					newData.ExpirationTime = 0
+				}
 			}
 			newData.Value = *command.Value
 		}
@@ -154,8 +176,8 @@ func (b *BtreeKvStateMachine) set(log common.EtcdLog, logIndex int) (result comm
 
 		// create new key
 		kv := common.KeyValue{Key: command.Key, Value: *command.Value, CreatedIndex: logIndex, ModifiedIndex: logIndex}
-		if command.Ttl > 0 {
-			kv.ExpirationTime = log.Time + command.Ttl
+		if command.Ttl != nil && *command.Ttl > 0 {
+			kv.ExpirationTime = log.Time + *command.Ttl
 		}
 		b.current.Insert(kv)
 

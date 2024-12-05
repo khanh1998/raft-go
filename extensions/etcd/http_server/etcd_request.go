@@ -2,6 +2,7 @@ package http_server
 
 import (
 	"errors"
+	gc "khanh/raft-go/common"
 	"khanh/raft-go/extensions/etcd/common"
 	"net/http"
 	"strings"
@@ -74,7 +75,7 @@ func (e EtcdCommandRequest) ToCommandPut() common.EtcdCommand {
 	}
 
 	if e.Ttl != nil {
-		cmd.Ttl = uint64(*e.Ttl)
+		cmd.Ttl = gc.GetPointer(uint64(*e.Ttl))
 	}
 
 	if e.PrevIndex != nil {
@@ -105,6 +106,12 @@ func (e EtcdCommandRequest) ValidateGet() error {
 
 		if e.Wait == nil || !(*e.Wait) {
 			return common.CreateError("wait", errors.New("`waitIndex` must go together with `wait=true`"))
+		}
+	}
+
+	if e.Prefix != nil && *e.Prefix {
+		if e.Wait != nil && *e.Wait {
+			return common.CreateError("prefix", errors.New("you can't wait on a prefix, wait on key only"))
 		}
 	}
 
@@ -147,8 +154,8 @@ func (e EtcdCommandRequest) ValidatePut() error {
 		}
 	}
 
-	if e.Ttl != nil && *e.Ttl <= 0 {
-		return common.CreateError("ttl", errors.New("`ttl` must be larger than 0"))
+	if e.Ttl != nil && *e.Ttl < 0 {
+		return common.CreateError("ttl", errors.New("`ttl` must be 0 or positive"))
 	}
 
 	return nil
@@ -175,6 +182,18 @@ func (e EtcdCommandRequest) ValidateDelete() error {
 	// index 0 is meaningless in Raft
 	if e.PrevIndex != nil && *e.PrevIndex <= 0 {
 		return common.CreateError("prevIndex", errors.New("`prevIndex` must be larger than 0"))
+	}
+
+	if e.Prefix != nil && *e.Prefix {
+		if e.PrevExist != nil {
+			return common.CreateError("prevExist", errors.New("delete `prefix` must not go with `prevExist`"))
+		}
+		if e.PrevValue != nil {
+			return common.CreateError("prevValue", errors.New("delete `prefix` must not go with `prevValue`"))
+		}
+		if e.PrevIndex != nil {
+			return common.CreateError("prevIndex", errors.New("`delete prefix` must not go with `prevIndex`"))
+		}
 	}
 
 	return nil

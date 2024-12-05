@@ -22,7 +22,7 @@ type EtcdCommand struct {
 	Key      string `json:"key,omitempty"`
 
 	Value     *string `json:"value,omitempty"`     // nil, empty or not-empty
-	Ttl       uint64  `json:"ttl,omitempty"`       // nanoseconds // positive or zero(nil)
+	Ttl       *uint64 `json:"ttl,omitempty"`       // nanoseconds // nil, zero(unset), positive
 	PrevExist *bool   `json:"prevExist,omitempty"` // nil, true or false
 	PrevValue *string `json:"prevValue,omitempty"` // nil, empty or not-empty
 	PrevIndex int     `json:"prevIndex,omitempty"` // positive or zero(nil)
@@ -63,6 +63,7 @@ func (e EtcdLog) GetTime() uint64 {
 }
 
 func (e EtcdLog) DecomposeChangeSeverCommand() (addition bool, serverId int, httpUrl string, rpcUrl string, err error) {
+	err = errors.New("not implemented yet")
 	return
 }
 

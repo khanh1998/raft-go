@@ -7,6 +7,9 @@ import (
 	"khanh/raft-go/extensions/etcd/common"
 	"khanh/raft-go/observability"
 	"net/http"
+	"net/http/httputil"
+	"net/url"
+	"time"
 
 	"github.com/gin-gonic/gin"
 	"github.com/prometheus/client_golang/prometheus/promhttp"
@@ -68,9 +71,35 @@ func NewEtcdHttpProxy(params NewEtcdHttpProxyParams) *EtcdHttpProxy {
 	return &h
 }
 
+func CustomLogger(log observability.Logger) gin.HandlerFunc {
+	return func(c *gin.Context) {
+		// Before the request
+		startTime := time.Now()
+
+		// Process the request
+		c.Next()
+
+		// After the request
+		duration := time.Since(startTime)
+		statusCode := c.Writer.Status()
+
+		dumpReq, _ := httputil.DumpRequest(c.Request, true)
+
+		log.Info(
+			"Gin:",
+			"method", c.Request.Method,
+			"path", c.Request.URL.Path,
+			"status", statusCode,
+			"duration", duration,
+			"request", string(dumpReq),
+		)
+	}
+}
+
 func (h *EtcdHttpProxy) Start() {
 	// gin.SetMode(gin.ReleaseMode)
 	r := gin.New()
+	r.Use(CustomLogger(h.log()))
 
 	r.Use(otelgin.Middleware("gin-server"))
 	r.Use(func(c *gin.Context) {
@@ -89,9 +118,7 @@ func (h *EtcdHttpProxy) Start() {
 
 	h.prometheus(r)
 	h.keyApi(r)
-	r.GET("/", func(ctx *gin.Context) {
-		ctx.String(200, "hello there")
-	})
+	h.info(r)
 
 	httpServer := &http.Server{
 		Addr:    h.host,
@@ -145,11 +172,48 @@ func (h *EtcdHttpProxy) prometheus(r *gin.Engine) {
 	r.GET("/v2/metrics", gin.WrapH(promhttp.Handler()))
 }
 
+func (h *EtcdHttpProxy) info(r *gin.Engine) {
+	r.GET("/v2/info", func(ctx *gin.Context) {
+		data := h.brain.GetInfo()
+		ctx.IndentedJSON(200, data)
+	})
+}
+
+// GenerateRedirectURL creates a full URL for the Location header based on the target host and the current path.
+func GenerateRedirectURL(c *gin.Context, targetHost string) string {
+	// Get the current request's protocol (http/https)
+	protocol := "http"
+	if c.Request.TLS != nil {
+		protocol = "https"
+	}
+	// Capture the original query parameters
+	query := c.Request.URL.RawQuery
+	// Get the current request's path
+	currentPath := c.Request.URL.Path
+
+	// Construct the full URL using the target host and the current path
+	redirectURL := fmt.Sprintf("%s://%s%s", protocol, targetHost, currentPath)
+	if query != "" {
+		redirectURL += "?" + query
+	}
+
+	// Parse the URL to ensure it's valid (optional, for validation purposes)
+	parsedURL, err := url.Parse(redirectURL)
+	if err != nil {
+		// Handle error (you can return a default value or log the error)
+		fmt.Println("Error parsing URL:", err)
+		return ""
+	}
+
+	// Return the valid redirect URL
+	return parsedURL.String()
+}
+
 func handleError(c *gin.Context, err error) {
 	switch e := err.(type) {
 	case gc.RaftError:
-		if e.HttpCode == http.StatusMovedPermanently {
-			c.Header("Location", e.LeaderHint)
+		if e.HttpCode >= 300 && e.HttpCode < 400 {
+			c.Header("Location", GenerateRedirectURL(c, e.LeaderHint))
 		}
 		c.IndentedJSON(e.HttpCode, common.EtcdResultErr{
 			Cause:   "raft",

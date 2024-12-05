@@ -19,6 +19,7 @@ import (
 )
 
 func TestRpcConnection(t *testing.T) {
+	dataDir := t.TempDir() + "/"
 	logger := observability.NewZerolog(common.ObservabilityConfig{}, 1)
 	ctx := context.Background()
 	logFactory := classicCommon.ClassicLogFactory{}
@@ -26,7 +27,7 @@ func TestRpcConnection(t *testing.T) {
 		CurrentTerm: 2,
 		Logs:        []common.Log{},
 		Storage: storage.NewStorageForTest(
-			storage.NewStorageParams{WalSize: 1024, DataFolder: "data/", Logger: logger},
+			storage.NewStorageParams{WalSize: 1024, DataFolder: dataDir, Logger: logger},
 			storage.NewFileWrapperMock(),
 		),
 		LogFactory: logFactory,

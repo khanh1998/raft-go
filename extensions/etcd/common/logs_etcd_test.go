@@ -78,7 +78,7 @@ func TestEtcdLog_ToString(t *testing.T) {
 					Action: "set",
 					Key:    "name",
 					Value:  gc.GetPointer("khanh"),
-					Ttl:    123,
+					Ttl:    gc.GetPointer(uint64(123)),
 				},
 				Time: 12345,
 			},

@@ -217,6 +217,7 @@ func main() {
 				PersistenceState:      raftPersistState,
 				ResponseCacheCapacity: config.LogExtensions.Etcd.StateMachineHistoryCapacity,
 				BtreeDegree:           config.LogExtensions.Etcd.StateMachineBTreeDegree,
+				Snapshot:              snapshot,
 			},
 		},
 		LogExtensionEnabled: config.LogExtensions.Enable,

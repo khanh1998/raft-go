@@ -155,16 +155,12 @@ func (n *RaftBrainImpl) applyLog(ctx context.Context) {
 		res, err := n.stateMachine.Process(ctx, n.lastApplied, log)
 
 		if n.state == gc.StateLeader {
-			err = n.arm.PutResponse(n.lastApplied, res, err, 30*time.Second)
-			if err != nil {
+			err1 := n.arm.PutResponse(n.lastApplied, res, err, 30*time.Second)
+			if err1 != nil {
 				n.log().ErrorContext(ctx, "applyLog_PutResponse", err)
 			} else {
-				n.log().InfoContext(ctx, "applyLog_PutResponse", "log", log)
+				n.log().InfoContext(ctx, "applyLog_PutResponse", "log", log, "err", err)
 			}
-		}
-
-		if err != nil {
-			n.log().ErrorContext(ctx, "applyLog_Process", err)
 		}
 
 		// rethink about the logic here to better prevent consecutive snapshot requests,

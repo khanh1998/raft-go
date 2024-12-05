@@ -138,7 +138,7 @@ func (r *RaftBrainImpl) ClientRequest(ctx context.Context, input gc.Log, output 
 
 		r.inOutLock.Unlock()
 
-		return gc.RaftError{LeaderHint: leaderUrl, Message: gc.NotLeader, HttpCode: http.StatusMovedPermanently}
+		return gc.RaftError{LeaderHint: leaderUrl, Message: gc.NotLeader, HttpCode: http.StatusPermanentRedirect}
 	}
 
 	newLog, err := r.logFactory.AttachTermAndTime(input, r.GetCurrentTerm(), r.clusterClock.LeaderStamp())
@@ -312,7 +312,7 @@ func (r *RaftBrainImpl) ClientQuery(ctx context.Context, input gc.Log, output *g
 			LeaderHint: leaderUrl,
 		}
 
-		return gc.RaftError{LeaderHint: leaderUrl, Message: gc.NotLeader, HttpCode: http.StatusMovedPermanently}
+		return gc.RaftError{LeaderHint: leaderUrl, Message: gc.NotLeader, HttpCode: http.StatusPermanentRedirect}
 	}
 
 	log := input
