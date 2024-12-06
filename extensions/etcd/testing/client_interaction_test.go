@@ -11,6 +11,51 @@ import (
 	"github.com/stretchr/testify/assert"
 )
 
+func TestGetClearedEventHistory(t *testing.T) {
+	c := NewCluster("config/3-nodes.yml")
+	defer c.Clean()
+	AssertHavingOneLeader(t, c)
+
+	// in the test config, event history cache can store max 10 most recent events,
+	// if user wait on an index that get cleared out from the cache, he will receive an error.
+	// but user is allowed to wait on a future index.
+
+	var prevValue string
+	var modifiedIndex int
+	go AssertGet(t, c, go_client.GetRequest{Key: "counter", Wait: true, WaitIndex: 15}, "14", nil, false) // wait on future index
+	for i := 0; i <= 20; i++ {
+		value := strconv.FormatInt(int64(i), 10)
+		if i == 0 {
+			_, modifiedIndex = AssertSet(t, c, go_client.SetRequest{Key: "counter", Value: &value, PrevExist: gc.GetPointer(false)})
+		} else {
+			_, modifiedIndex = AssertSet(t, c, go_client.SetRequest{
+				Key: "counter", Value: &value, PrevExist: gc.GetPointer(true), PrevValue: &prevValue, PrevIndex: modifiedIndex,
+			})
+		}
+		prevValue = value
+	}
+	AssertGet(t, c, go_client.GetRequest{Key: "counter"}, "20", nil, false)
+	AssertGet(t, c, go_client.GetRequest{Key: "counter", Wait: true, WaitIndex: modifiedIndex - 1}, "19", nil, false)
+	AssertGet(t, c, go_client.GetRequest{Key: "counter", Wait: true, WaitIndex: 1}, "", nil, true) // event history size is 10, index 1 is cleared
+	// we can wait on x-etcd-index
+}
+
+func TestNotifyExpiredKey(t *testing.T) {
+	c := NewCluster("config/3-nodes.yml")
+	defer c.Clean()
+	AssertHavingOneLeader(t, c)
+
+	// when user wait on a key, if the key is expired and get removed, the user should receive a notification
+
+	ttl := 60 * time.Second
+	AssertSet(t, c, go_client.SetRequest{Key: "counter", Value: gc.GetPointer("1"), TTL: ttl.String()})
+	go AssertGet(t, c, go_client.GetRequest{Key: "counter", Wait: true}, "", nil, false) // will see the delete expired key
+	ttl = 1 * time.Second
+	AssertSet(t, c, go_client.SetRequest{Key: "counter", Value: nil, TTL: ttl.String(), Refresh: true})
+	time.Sleep(ttl)
+	AssertSet(t, c, go_client.SetRequest{Key: "name", Value: gc.GetPointer("khanh")}) // update time to state machine, trigger deleting expired key
+}
+
 func TestGetAndWait(t *testing.T) {
 	c := NewCluster("config/3-nodes.yml")
 	defer c.Clean()

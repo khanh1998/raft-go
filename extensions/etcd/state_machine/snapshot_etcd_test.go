@@ -13,6 +13,7 @@ func TestEtcdSnapshot_ToString(t *testing.T) {
 		LastConfig       map[int]gc.ClusterMember
 		KeyValue         []common.KeyValue
 		SnapshotMetadata gc.SnapshotMetadata
+		ChangeIndex      int
 	}
 	tests := []struct {
 		name     string
@@ -36,9 +37,10 @@ func TestEtcdSnapshot_ToString(t *testing.T) {
 					LastLogIndex: 456,
 					FileName:     "snapshot.0001.dat",
 				},
+				ChangeIndex: 6,
 			},
 			wantData: []string{
-				"last_log_index=456", "last_log_term=123", "member_count=3", "key_value_count=2",
+				"last_log_index=456", "last_log_term=123", "change_index=6", "member_count=3", "key_value_count=2",
 				"3|localhost:8082|localhost:1236",
 				"1|localhost:8080|localhost:1234",
 				"2|localhost:8081|localhost:1235",
@@ -53,11 +55,12 @@ func TestEtcdSnapshot_ToString(t *testing.T) {
 			s := NewEtcdSnapshot(4)
 			s.LastConfig = tt.fields.LastConfig
 			s.SnapshotMetadata = tt.fields.SnapshotMetadata
+			s.ChangeIndex = tt.fields.ChangeIndex
 			for _, kv := range tt.fields.KeyValue {
 				s.KeyValue.ReplaceOrInsert(kv)
 				if kv.ExpirationTime > 0 {
 					s.KeyExpire.ReplaceOrInsert(common.KeyExpire{
-						Key: kv.Key, ExpirationTime: kv.ExpirationTime, CreatedIndex: kv.CreatedIndex,
+						Key: kv.Key, ExpirationTime: kv.ExpirationTime,
 					})
 				}
 			}
@@ -86,7 +89,7 @@ func TestEtcdSnapshot_FromString(t *testing.T) {
 			name: "first",
 			args: args{
 				data: []string{
-					"last_log_index=456", "last_log_term=123", "member_count=3", "key_value_count=2",
+					"last_log_index=456", "last_log_term=123", "change_index=6", "member_count=3", "key_value_count=2",
 					"3|localhost:8082|localhost:1236",
 					"1|localhost:8080|localhost:1234",
 					"2|localhost:8081|localhost:1235",
@@ -138,13 +141,13 @@ func TestEtcdSnapshot_DeleteExpiredKeys(t *testing.T) {
 					{Key: "street", ModifiedIndex: 10, CreatedIndex: 10, ExpirationTime: 50}, // not expired yet
 				},
 				keyExpires: []common.KeyExpire{
-					{Key: "city", ModifiedIndex: 2, CreatedIndex: 2, ExpirationTime: 10},
-					{Key: "city", ModifiedIndex: 3, CreatedIndex: 2, ExpirationTime: 15},
-					{Key: "word", ModifiedIndex: 4, CreatedIndex: 4, ExpirationTime: 12}, // creation (4) - deletion (5)
-					{Key: "color", ModifiedIndex: 6, CreatedIndex: 6, ExpirationTime: 12},
-					{Key: "color", ModifiedIndex: 8, CreatedIndex: 8, ExpirationTime: 14},
-					{Key: "ward", ModifiedIndex: 9, CreatedIndex: 9, ExpirationTime: 16},
-					{Key: "street", ModifiedIndex: 10, CreatedIndex: 10, ExpirationTime: 50}, // not expired yet
+					{Key: "city", ExpirationTime: 10},
+					{Key: "city", ExpirationTime: 15},
+					{Key: "word", ExpirationTime: 12}, // creation (4) - deletion (5)
+					{Key: "color", ExpirationTime: 12},
+					{Key: "color", ExpirationTime: 14},
+					{Key: "ward", ExpirationTime: 16},
+					{Key: "street", ExpirationTime: 50}, // not expired yet
 				},
 			},
 			want: fields{
@@ -153,7 +156,7 @@ func TestEtcdSnapshot_DeleteExpiredKeys(t *testing.T) {
 					{Key: "street", ModifiedIndex: 10, CreatedIndex: 10, ExpirationTime: 50}, // not expired yet
 				},
 				keyExpires: []common.KeyExpire{
-					{Key: "street", ModifiedIndex: 10, CreatedIndex: 10, ExpirationTime: 50}, // not expired yet
+					{Key: "street", ExpirationTime: 50}, // not expired yet
 				},
 			},
 			args: args{

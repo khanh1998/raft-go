@@ -5,6 +5,7 @@ import (
 	"context"
 	"encoding/json"
 	"errors"
+	"fmt"
 	gc "khanh/raft-go/common"
 	"khanh/raft-go/extensions/etcd/common"
 	"khanh/raft-go/observability"
@@ -21,6 +22,12 @@ import (
 const (
 	KeyApiPath = "/v2/keys/"
 )
+
+type ResponseHeader struct {
+	EtcdIndex int
+	RaftIndex int
+	RaftTerm  int
+}
 
 type HttpClient struct {
 	client      http.Client
@@ -125,7 +132,38 @@ func (gr GetRequest) ToQueryString() string {
 	return values.Encode()
 }
 
-func handleResponse(httpRes *http.Response) (success common.EtcdResultRes, err error) {
+type EtcdResponse struct {
+	Action    string            `json:"action"`
+	Node      common.KeyValue   `json:"node,omitempty"`
+	Nodes     []common.KeyValue `json:"nodes,omitempty"` // to get prefix
+	PrevNode  common.KeyValue   `json:"prevNode,omitempty"`
+	PrevNodes []common.KeyValue `json:"prevNodes,omitempty"`
+	ResponseHeader
+}
+
+func (h *HttpClient) handleResponse(ctx context.Context, httpRes *http.Response) (success EtcdResponse, err error) {
+	value := httpRes.Header.Get("X-Etcd-Index")
+	if value != "" {
+		success.EtcdIndex, err = strconv.Atoi(value)
+		if err != nil {
+			h.logger.ErrorContext(ctx, "handleResponse", fmt.Errorf("invalid value: X-Etcd-Index, %w", err), "value", value)
+		}
+	}
+	value = httpRes.Header.Get("X-Raft-Index")
+	if value != "" {
+		success.RaftIndex, err = strconv.Atoi(value)
+		if err != nil {
+			h.logger.ErrorContext(ctx, "handleResponse", fmt.Errorf("invalid value: X-Raft-Index, %w", err), "value", value)
+		}
+	}
+	value = httpRes.Header.Get("X-Raft-Term")
+	if value != "" {
+		success.RaftTerm, err = strconv.Atoi(value)
+		if err != nil {
+			h.logger.ErrorContext(ctx, "handleResponse", fmt.Errorf("invalid value: X-Raft-Term, %w", err), "value", value)
+		}
+	}
+
 	if httpRes.StatusCode >= 0 && httpRes.StatusCode < 300 {
 		err = json.NewDecoder(httpRes.Body).Decode(&success)
 		if err != nil {
@@ -196,7 +234,7 @@ func (h HttpClient) findAndDo(ctx context.Context, httpReq *http.Request) (httpR
 }
 
 // find leader and send get request to it
-func (h HttpClient) Get(ctx context.Context, req GetRequest) (success common.EtcdResultRes, err error) {
+func (h HttpClient) Get(ctx context.Context, req GetRequest) (success EtcdResponse, err error) {
 	leaderUrl := "http://" + h.leaderUrl() + KeyApiPath + req.Key
 	httpReq, err := http.NewRequestWithContext(ctx, http.MethodGet, leaderUrl, nil)
 	if err != nil {
@@ -210,7 +248,7 @@ func (h HttpClient) Get(ctx context.Context, req GetRequest) (success common.Etc
 	}
 	defer httpRes.Body.Close()
 
-	return handleResponse(httpRes)
+	return h.handleResponse(ctx, httpRes)
 }
 
 type SetRequest struct {
@@ -250,7 +288,7 @@ func (sr SetRequest) ToFormData() string {
 	return values.Encode()
 }
 
-func (h HttpClient) Set(ctx context.Context, req SetRequest) (success common.EtcdResultRes, err error) {
+func (h HttpClient) Set(ctx context.Context, req SetRequest) (success EtcdResponse, err error) {
 	url := "http://" + h.leaderUrl() + KeyApiPath + req.Key
 	formData := req.ToFormData()
 	httpReq, err := http.NewRequestWithContext(ctx, http.MethodPut, url, bytes.NewBufferString(formData))
@@ -265,7 +303,7 @@ func (h HttpClient) Set(ctx context.Context, req SetRequest) (success common.Etc
 	}
 	defer httpRes.Body.Close()
 
-	return handleResponse(httpRes)
+	return h.handleResponse(ctx, httpRes)
 }
 
 type DeleteRequest struct {
@@ -293,7 +331,7 @@ func (sr DeleteRequest) ToQueryString() string {
 	return values.Encode()
 }
 
-func (h HttpClient) Delete(ctx context.Context, req DeleteRequest) (success common.EtcdResultRes, err error) {
+func (h HttpClient) Delete(ctx context.Context, req DeleteRequest) (success EtcdResponse, err error) {
 	url := "http://" + h.leaderUrl() + KeyApiPath + req.Key
 	httpReq, err := http.NewRequestWithContext(ctx, http.MethodDelete, url, nil)
 	if err != nil {
@@ -307,7 +345,7 @@ func (h HttpClient) Delete(ctx context.Context, req DeleteRequest) (success comm
 	}
 	defer httpRes.Body.Close()
 
-	return handleResponse(httpRes)
+	return h.handleResponse(ctx, httpRes)
 }
 
 func (h HttpClient) GetInfo(ctx context.Context, id int) (res gc.GetStatusResponse, err error) {

@@ -44,5 +44,6 @@ func (n *RaftBrainImpl) GetInfo() gc.GetStatusResponse {
 		Term:        n.GetCurrentTerm(),
 		LeaderId:    n.leaderID,
 		ClusterTime: n.clusterClock.clusterTimeAtEpoch,
+		CommitIndex: n.commitIndex,
 	}
 }

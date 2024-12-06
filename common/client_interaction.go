@@ -46,4 +46,5 @@ type GetStatusResponse struct {
 	Term        int       `json:"term"`
 	LeaderId    int       `json:"leader_id"`
 	ClusterTime uint64    `json:"cluster_time"`
+	CommitIndex int       `json:"commit_index"`
 }

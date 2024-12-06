@@ -9,6 +9,7 @@ import (
 	"net/http"
 	"net/http/httputil"
 	"net/url"
+	"strconv"
 	"time"
 
 	"github.com/gin-gonic/gin"
@@ -209,7 +210,31 @@ func GenerateRedirectURL(c *gin.Context, targetHost string) string {
 	return parsedURL.String()
 }
 
-func handleError(c *gin.Context, err error) {
+func (h *EtcdHttpProxy) handleResult(c *gin.Context, res gc.LogResult) {
+	raft := h.brain.GetInfo()
+	c.Header("X-Raft-Index", strconv.Itoa(raft.CommitIndex))
+	c.Header("X-Raft-Term", strconv.Itoa(raft.Term))
+
+	switch e := res.(type) {
+	case common.EtcdResult:
+		if e.Promise == nil {
+			c.Header("X-Etcd-Index", strconv.Itoa(e.Data.ChangeIndex))
+			c.IndentedJSON(200, e.Data)
+		} else {
+			data := <-e.Promise
+			c.Header("X-Etcd-Index", strconv.Itoa(data.ChangeIndex))
+			c.IndentedJSON(200, data)
+		}
+	default:
+		c.IndentedJSON(200, res)
+	}
+}
+
+func (h *EtcdHttpProxy) handleError(c *gin.Context, err error) {
+	raft := h.brain.GetInfo()
+	c.Header("X-Raft-Index", strconv.Itoa(raft.CommitIndex))
+	c.Header("X-Raft-Term", strconv.Itoa(raft.Term))
+
 	switch e := err.(type) {
 	case gc.RaftError:
 		if e.HttpCode >= 300 && e.HttpCode < 400 {
@@ -220,6 +245,7 @@ func handleError(c *gin.Context, err error) {
 			Message: err.Error(),
 		})
 	case common.EtcdResultErr:
+		c.Header("X-Etcd-Index", strconv.Itoa(e.Index))
 		c.IndentedJSON(e.ErrorCode, err)
 	default:
 		panic(fmt.Sprintf("unknown error: %t, value: %v", e, e))
@@ -233,35 +259,26 @@ func (h *EtcdHttpProxy) keyApi(r *gin.Engine) {
 
 		reqArgs, err := parsePutRequest(c)
 		if err != nil {
-			c.IndentedJSON(http.StatusBadRequest, err)
+			h.handleError(c, err)
 			return
 		}
 
 		err = reqArgs.ValidatePut()
 		if err != nil {
-			c.IndentedJSON(http.StatusBadRequest, err)
+			h.handleError(c, err)
 			return
 		}
 
 		log := common.EtcdLog{
 			Command: reqArgs.ToCommandPut(),
 		}
+
 		output := gc.ClientRequestOutput{}
 		err = h.brain.ClientRequest(ctx, log, &output)
 		if err != nil {
-			handleError(c, err)
+			h.handleError(c, err)
 		} else {
-			res, ok := output.Response.(common.EtcdResult)
-			if ok {
-				if res.Promise == nil {
-					c.IndentedJSON(200, res.Data)
-				} else {
-					data := <-res.Promise
-					c.IndentedJSON(200, data)
-				}
-			} else {
-				c.IndentedJSON(200, output)
-			}
+			h.handleResult(c, output.Response)
 		}
 	})
 
@@ -284,22 +301,13 @@ func (h *EtcdHttpProxy) keyApi(r *gin.Engine) {
 		log := common.EtcdLog{
 			Command: reqArgs.ToCommandDelete(),
 		}
+
 		output := gc.ClientRequestOutput{}
 		err = h.brain.ClientRequest(ctx, log, &output)
 		if err != nil {
-			handleError(c, err)
+			h.handleError(c, err)
 		} else {
-			res, ok := output.Response.(common.EtcdResult)
-			if ok {
-				if res.Promise == nil {
-					c.IndentedJSON(200, res.Data)
-				} else {
-					data := <-res.Promise
-					c.IndentedJSON(200, data)
-				}
-			} else {
-				c.IndentedJSON(200, output)
-			}
+			h.handleResult(c, output.Response)
 		}
 	})
 
@@ -309,13 +317,13 @@ func (h *EtcdHttpProxy) keyApi(r *gin.Engine) {
 
 		reqArgs, err := parseGetRequest(c)
 		if err != nil {
-			c.IndentedJSON(http.StatusBadRequest, err)
+			h.handleError(c, err)
 			return
 		}
 
 		err = reqArgs.ValidateGet()
 		if err != nil {
-			c.IndentedJSON(http.StatusBadRequest, err)
+			h.handleError(c, err)
 			return
 		}
 
@@ -326,19 +334,9 @@ func (h *EtcdHttpProxy) keyApi(r *gin.Engine) {
 		output := gc.ClientQueryOutput{}
 		err = h.brain.ClientQuery(ctx, log, &output)
 		if err != nil {
-			handleError(c, err)
+			h.handleError(c, err)
 		} else {
-			res, ok := output.Response.(common.EtcdResult)
-			if ok {
-				if res.Promise == nil {
-					c.IndentedJSON(200, res.Data)
-				} else {
-					data := <-res.Promise
-					c.IndentedJSON(200, data)
-				}
-			} else {
-				c.IndentedJSON(200, output)
-			}
+			h.handleResult(c, output.Response)
 		}
 	})
 }

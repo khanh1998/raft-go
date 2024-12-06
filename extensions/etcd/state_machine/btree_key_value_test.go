@@ -63,7 +63,7 @@ func TestBtreeKvStateMachine_get(t *testing.T) {
 				watcher:          NewWatcher(5),
 			}
 			for _, kv := range tt.fields.keyValues {
-				b.current.Insert(kv)
+				b.current.Create(kv, 1, 1)
 			}
 
 			gotRes, gotErr := b.get(tt.args.log.Command, tt.args.logIndex)
@@ -120,12 +120,13 @@ func TestBtreeKvStateMachine_Process(t *testing.T) {
 						ModifiedIndex: 1,
 						CreatedIndex:  1,
 					},
+					ChangeIndex: 1,
 				},
 			},
 			wantErr: false,
 		},
 		{
-			name: "1",
+			name: "2",
 			fields: fields{
 				current: NewEtcdSnapshot(4),
 			},

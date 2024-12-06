@@ -29,11 +29,12 @@ type EtcdResult struct {
 }
 
 type EtcdResultRes struct {
-	Action    string     `json:"action"`
-	Node      KeyValue   `json:"node,omitempty"`
-	Nodes     []KeyValue `json:"nodes,omitempty"` // to get prefix
-	PrevNode  KeyValue   `json:"prevNode,omitempty"`
-	PrevNodes []KeyValue `json:"prevNodes,omitempty"` // to delete prefix
+	ChangeIndex int        `json:"-"`
+	Action      string     `json:"action"`
+	Node        KeyValue   `json:"node,omitempty"`
+	Nodes       []KeyValue `json:"nodes,omitempty"` // to get prefix
+	PrevNode    KeyValue   `json:"prevNode,omitempty"`
+	PrevNodes   []KeyValue `json:"prevNodes,omitempty"` // to delete prefix
 }
 
 type KeyValue struct {
@@ -47,8 +48,6 @@ type KeyValue struct {
 type KeyExpire struct {
 	Key            string
 	ExpirationTime uint64
-	CreatedIndex   int // this works like an ID, since every createdIndex is unique
-	ModifiedIndex  int
 }
 
 func (k KeyValue) Expired(curr uint64) bool {

@@ -85,8 +85,9 @@ func (b *BtreeKvStateMachine) get(command common.EtcdCommand, logIndex int) (res
 		)
 
 		return common.EtcdResultRes{
-			Action: "get",
-			Nodes:  res,
+			Action:      "get",
+			Nodes:       res,
+			ChangeIndex: b.current.ChangeIndex,
 		}, nil
 	} else {
 		data, found := b.current.KeyValue.Get(common.KeyValue{Key: command.Key})
@@ -94,21 +95,20 @@ func (b *BtreeKvStateMachine) get(command common.EtcdCommand, logIndex int) (res
 			return res, common.EtcdResultErr{
 				Cause:     command.Key,
 				ErrorCode: http.StatusNotFound,
-				Index:     logIndex,
+				Index:     b.current.ChangeIndex,
 				Message:   ErrKeyDoesNotExist.Error(),
 			}
 		}
 
 		return common.EtcdResultRes{
-			Action: "get",
-			Node:   data,
+			Action:      "get",
+			Node:        data,
+			ChangeIndex: b.current.ChangeIndex,
 		}, nil
 	}
 }
 
-func (b *BtreeKvStateMachine) set(log common.EtcdLog, logIndex int) (result common.EtcdResultRes, err error) {
-	b.current.LastLogIndex = logIndex
-	b.current.LastLogTerm = log.GetTerm()
+func (b *BtreeKvStateMachine) set(ctx context.Context, log common.EtcdLog, logIndex int) (result common.EtcdResultRes, err error) {
 	command := log.Command
 
 	prevData, found := b.current.KeyValue.Get(common.KeyValue{Key: command.Key})
@@ -118,29 +118,31 @@ func (b *BtreeKvStateMachine) set(log common.EtcdLog, logIndex int) (result comm
 	}
 
 	if found {
-		if prevData.Expired(log.Time) {
-			if command.Refresh {
-				return result, common.EtcdResultErr{
-					Cause:     command.Key,
-					ErrorCode: http.StatusNotFound,
-					Index:     logIndex,
-					Message:   ErrKeyDoesNotExist.Error(),
-				}
+		if prevData.Expired(log.Time) && command.Refresh {
+			return result, common.EtcdResultErr{
+				Cause:     "refresh " + command.Key,
+				ErrorCode: http.StatusNotFound,
+				Index:     b.current.ChangeIndex,
+				Message:   ErrKeyDoesNotExist.Error(),
 			}
 		}
 
 		newData := prevData
 
-		newData.ModifiedIndex = logIndex
 		if command.Refresh {
 			// no notification to watchers on the refreshed key
 			if command.Ttl != nil && *command.Ttl > 0 {
 				newData.ExpirationTime = log.Time + *command.Ttl
 			} else {
+				b.log().ErrorContext(
+					ctx,
+					"BtreeKvStateMachine_set",
+					errors.New("refresh without ttl, check request validation"),
+				)
 				return common.EtcdResultRes{}, common.EtcdResultErr{
-					Cause:     "refresh",
-					ErrorCode: http.StatusBadRequest,
-					Index:     logIndex,
+					Cause:     "refresh " + command.Key,
+					ErrorCode: http.StatusInternalServerError,
+					Index:     b.current.ChangeIndex,
 					Message:   "refresh without ttl",
 				}
 			}
@@ -157,40 +159,45 @@ func (b *BtreeKvStateMachine) set(log common.EtcdLog, logIndex int) (result comm
 			newData.Value = *command.Value
 		}
 
-		b.current.Insert(newData)
+		_, newData = b.current.Update(newData, logIndex, log.GetTerm())
 
 		return common.EtcdResultRes{
-			Action:   "set",
-			Node:     newData,
-			PrevNode: prevData,
+			Action:      "set",
+			Node:        newData,
+			PrevNode:    prevData,
+			ChangeIndex: b.current.ChangeIndex,
 		}, nil
 	} else {
-		if command.Refresh {
+		// create new key
+		if command.Value == nil {
+			b.log().ErrorContext(
+				ctx,
+				"BtreeKvStateMachine_set",
+				errors.New("set a key without value, check request validation"),
+			)
 			return common.EtcdResultRes{}, common.EtcdResultErr{
-				Cause:     "refresh",
-				ErrorCode: http.StatusNotFound,
-				Index:     logIndex,
-				Message:   ErrKeyDoesNotExist.Error(),
+				Cause:     "set " + command.Key,
+				ErrorCode: http.StatusInternalServerError,
+				Index:     b.current.ChangeIndex,
+				Message:   "value is required",
 			}
 		}
 
-		// create new key
-		kv := common.KeyValue{Key: command.Key, Value: *command.Value, CreatedIndex: logIndex, ModifiedIndex: logIndex}
+		kv := common.KeyValue{Key: command.Key, Value: *command.Value}
 		if command.Ttl != nil && *command.Ttl > 0 {
 			kv.ExpirationTime = log.Time + *command.Ttl
 		}
-		b.current.Insert(kv)
+		_, data := b.current.Create(kv, logIndex, log.GetTerm())
 
 		return common.EtcdResultRes{
-			Action: "set",
-			Node:   kv,
+			Action:      "set",
+			Node:        data,
+			ChangeIndex: b.current.ChangeIndex,
 		}, nil
 	}
 }
 
 func (b *BtreeKvStateMachine) delete(log common.EtcdLog, logIndex int) (common.EtcdResultRes, error) {
-	b.current.LastLogIndex = logIndex
-	b.current.LastLogTerm = log.GetTerm()
 	command := log.Command
 
 	prevData, found := b.current.KeyValue.Get(common.KeyValue{Key: command.Key})
@@ -200,14 +207,12 @@ func (b *BtreeKvStateMachine) delete(log common.EtcdLog, logIndex int) (common.E
 	}
 
 	if !found {
-		return common.EtcdResultRes{
-			Action: "delete",
-			Node: common.KeyValue{
-				Key:           command.Key,
-				ModifiedIndex: logIndex,
-				CreatedIndex:  logIndex,
-			},
-		}, nil
+		return common.EtcdResultRes{}, common.EtcdResultErr{
+			Cause:     "delete " + command.Key,
+			ErrorCode: http.StatusNotFound,
+			Index:     b.current.ChangeIndex,
+			Message:   ErrKeyDoesNotExist.Error(),
+		}
 	}
 
 	deleteKeyVal := []common.KeyValue{}
@@ -229,10 +234,11 @@ func (b *BtreeKvStateMachine) delete(log common.EtcdLog, logIndex int) (common.E
 			Action: "delete",
 			Node: common.KeyValue{
 				Key:           command.Key,
-				CreatedIndex:  logIndex,
-				ModifiedIndex: logIndex,
+				CreatedIndex:  b.current.ChangeIndex,
+				ModifiedIndex: b.current.ChangeIndex,
 			},
-			PrevNodes: deleteKeyVal,
+			PrevNodes:   deleteKeyVal,
+			ChangeIndex: b.current.ChangeIndex,
 		}, nil
 	} else {
 		return common.EtcdResultRes{
@@ -240,9 +246,10 @@ func (b *BtreeKvStateMachine) delete(log common.EtcdLog, logIndex int) (common.E
 			Node: common.KeyValue{
 				Key:           command.Key,
 				CreatedIndex:  prevData.CreatedIndex,
-				ModifiedIndex: logIndex,
+				ModifiedIndex: b.current.ChangeIndex,
 			},
-			PrevNode: prevData,
+			PrevNode:    prevData,
+			ChangeIndex: b.current.ChangeIndex,
 		}, nil
 	}
 }
@@ -324,9 +331,12 @@ func (b *BtreeKvStateMachine) Process(ctx context.Context, logIndex int, logI gc
 		}
 		return common.EtcdResult{Data: res}, nil
 	case "put":
-		b.current.DeleteExpiredKeys(log.Time)
+		resList := b.current.DeleteExpiredKeys(log.Time)
+		for _, r := range resList {
+			b.watcher.Notify(r)
+		}
 
-		res, err := b.set(log, logIndex)
+		res, err := b.set(ctx, log, logIndex)
 		if err != nil {
 			return nil, err
 		}
@@ -337,7 +347,10 @@ func (b *BtreeKvStateMachine) Process(ctx context.Context, logIndex int, logI gc
 
 		return common.EtcdResult{Data: res}, nil
 	case "delete":
-		b.current.DeleteExpiredKeys(log.Time)
+		resList := b.current.DeleteExpiredKeys(log.Time)
+		for _, r := range resList {
+			b.watcher.Notify(r)
+		}
 
 		res, err := b.delete(log, logIndex)
 		if err != nil {
