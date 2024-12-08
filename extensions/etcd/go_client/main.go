@@ -20,7 +20,8 @@ import (
 )
 
 const (
-	KeyApiPath = "/v2/keys/"
+	KeyApiPath    = "/v2/keys/"
+	MemberApiPath = "/v2/members/"
 )
 
 type ResponseHeader struct {
@@ -37,22 +38,22 @@ type HttpClient struct {
 	logger      observability.Logger
 }
 
-func NewHttpClient(nodeUrls []gc.ClusterMember, logger observability.Logger) HttpClient {
+func NewHttpClient(nodeUrls []gc.ClusterMember, logger observability.Logger) *HttpClient {
 	if len(nodeUrls) == 0 {
 		logger.Fatal("NewHttpClient: empty node url list", "nodeUrls", nodeUrls)
-	}
-	nodeUrlsMap := map[int]gc.ClusterMember{}
-	for _, n := range nodeUrls {
-		nodeUrlsMap[n.ID] = n
 	}
 	h := &HttpClient{
 		client: http.Client{
 			Timeout: 0, // timeout is unlimited, we need it for waiting for change on key
 		},
-		nodeUrls:    nodeUrls,
-		nodeUrlsMap: nodeUrlsMap,
+		nodeUrls:    []gc.ClusterMember{},
+		nodeUrlsMap: map[int]gc.ClusterMember{},
 		leaderId:    0, // no leader was known
 		logger:      logger,
+	}
+
+	for _, node := range nodeUrls {
+		h.addMemberInfo(node)
 	}
 
 	h.client.CheckRedirect = func(req *http.Request, via []*http.Request) error {
@@ -86,7 +87,7 @@ func NewHttpClient(nodeUrls []gc.ClusterMember, logger observability.Logger) Htt
 		return nil
 	}
 
-	return *h
+	return h
 }
 
 var (
@@ -141,7 +142,7 @@ type EtcdResponse struct {
 	ResponseHeader
 }
 
-func (h *HttpClient) handleResponse(ctx context.Context, httpRes *http.Response) (success EtcdResponse, err error) {
+func (h *HttpClient) handleKeyApiResponse(ctx context.Context, httpRes *http.Response) (success EtcdResponse, err error) {
 	value := httpRes.Header.Get("X-Etcd-Index")
 	if value != "" {
 		success.EtcdIndex, err = strconv.Atoi(value)
@@ -170,10 +171,10 @@ func (h *HttpClient) handleResponse(ctx context.Context, httpRes *http.Response)
 			return success, err
 		}
 	} else {
-		err = common.EtcdResultErr{}
-		err = json.NewDecoder(httpRes.Body).Decode(&err)
-		if err != nil {
-			return success, err
+		failedRes := common.EtcdResultErr{}
+		err = json.NewDecoder(httpRes.Body).Decode(&failedRes)
+		if err == nil {
+			return success, failedRes
 		}
 	}
 	return success, err
@@ -214,16 +215,22 @@ func (h HttpClient) findAndDo(ctx context.Context, httpReq *http.Request) (httpR
 		httpReq.URL.Host = h.nodeUrls[targetNodeIndex].HttpUrl
 
 		dumpReq, _ := httputil.DumpRequestOut(httpReq, true)
-		h.logger.InfoContext(ctx, "findAndDo", "action", httpReq.Method, "dumpReq", string(dumpReq))
 
 		httpRes, err = h.client.Do(httpReq)
 		if err != nil {
-			h.logger.ErrorContext(ctx, "findAndDo_do", err)
+			h.logger.ErrorContext(
+				ctx, "findAndDo_do", err,
+				"dumpReq", dumpReq,
+			)
 			targetNodeIndex = 0
 			continue
 		} else {
 			dumpRes, _ := httputil.DumpResponse(httpRes, true)
-			h.logger.InfoContext(ctx, "findAndDo", "action", httpReq.Method, "dumpRes", dumpRes)
+			h.logger.InfoContext(
+				ctx, "findAndDo", "action", httpReq.Method,
+				"dumpReq", dumpReq,
+				"dumpRes", dumpRes,
+			)
 
 			return httpRes, nil
 		}
@@ -248,7 +255,7 @@ func (h HttpClient) Get(ctx context.Context, req GetRequest) (success EtcdRespon
 	}
 	defer httpRes.Body.Close()
 
-	return h.handleResponse(ctx, httpRes)
+	return h.handleKeyApiResponse(ctx, httpRes)
 }
 
 type SetRequest struct {
@@ -303,7 +310,7 @@ func (h HttpClient) Set(ctx context.Context, req SetRequest) (success EtcdRespon
 	}
 	defer httpRes.Body.Close()
 
-	return h.handleResponse(ctx, httpRes)
+	return h.handleKeyApiResponse(ctx, httpRes)
 }
 
 type DeleteRequest struct {
@@ -345,7 +352,115 @@ func (h HttpClient) Delete(ctx context.Context, req DeleteRequest) (success Etcd
 	}
 	defer httpRes.Body.Close()
 
-	return h.handleResponse(ctx, httpRes)
+	return h.handleKeyApiResponse(ctx, httpRes)
+}
+
+func handleMemberApiResponse(httpRes *http.Response) (err error) {
+	if httpRes.StatusCode >= 0 && httpRes.StatusCode < 300 {
+		return nil
+	} else {
+		err = common.EtcdResultErr{}
+		err = json.NewDecoder(httpRes.Body).Decode(&err)
+		if err != nil {
+			return err
+		}
+	}
+	return nil
+}
+
+type ClusterMemberRequest struct {
+	gc.ClusterMember
+}
+
+func (c ClusterMemberRequest) ToQueryString() string {
+	values := url.Values{}
+	values.Set("httpUrl", c.HttpUrl)
+	values.Set("rpcUrl", c.RpcUrl)
+	return values.Encode()
+}
+
+func (h HttpClient) GetMembers(ctx context.Context) (members []gc.ClusterMember, err error) {
+	url := "http://" + h.leaderUrl() + KeyApiPath
+	httpReq, err := http.NewRequestWithContext(ctx, http.MethodGet, url, nil)
+	if err != nil {
+		return members, err
+	}
+
+	httpRes, err := h.findAndDo(ctx, httpReq)
+	if err != nil {
+		return members, err
+	}
+	defer httpRes.Body.Close()
+
+	err = json.NewDecoder(httpRes.Body).Decode(&members)
+	if err != nil {
+		return members, err
+	}
+
+	return members, nil
+}
+
+func (h *HttpClient) removeMemberInfo(mem gc.ClusterMember) {
+	removeIndex := -1
+	for index, node := range h.nodeUrls {
+		if node.ID == mem.ID {
+			removeIndex = index
+			break
+		}
+	}
+	h.nodeUrls = append(h.nodeUrls[:removeIndex], h.nodeUrls[removeIndex+1:]...)
+	delete(h.nodeUrlsMap, mem.ID)
+}
+
+func (h *HttpClient) addMemberInfo(mem gc.ClusterMember) {
+	h.nodeUrls = append(h.nodeUrls, mem)
+	h.nodeUrlsMap[mem.ID] = mem
+}
+
+func (h *HttpClient) AddMember(ctx context.Context, req ClusterMemberRequest) (err error) {
+	defer func() {
+		if err == nil {
+			h.addMemberInfo(req.ClusterMember)
+		}
+	}()
+
+	url := fmt.Sprintf("http://%s%s%d", h.leaderUrl(), MemberApiPath, req.ID)
+	httpReq, err := http.NewRequestWithContext(ctx, http.MethodPost, url, nil)
+	if err != nil {
+		return err
+	}
+	httpReq.URL.RawQuery = req.ToQueryString()
+
+	httpRes, err := h.findAndDo(ctx, httpReq)
+	if err != nil {
+		return err
+	}
+	defer httpRes.Body.Close()
+
+	return handleMemberApiResponse(httpRes)
+}
+
+func (h *HttpClient) RemoveMember(ctx context.Context, req ClusterMemberRequest) (err error) {
+	defer func() {
+		if err == nil {
+			h.removeMemberInfo(req.ClusterMember)
+		}
+	}()
+
+	url := fmt.Sprintf("http://%s%s%d", h.leaderUrl(), MemberApiPath, req.ID)
+	httpReq, err := http.NewRequestWithContext(ctx, http.MethodDelete, url, nil)
+	if err != nil {
+		return err
+	}
+	httpReq.URL.RawQuery = req.ToQueryString()
+
+	httpRes, err := h.findAndDo(ctx, httpReq)
+	if err != nil {
+		return err
+	}
+	defer httpRes.Body.Close()
+
+	return handleMemberApiResponse(httpRes)
 }
 
 func (h HttpClient) GetInfo(ctx context.Context, id int) (res gc.GetStatusResponse, err error) {

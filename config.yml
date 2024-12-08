@@ -1,6 +1,6 @@
 # this config file is for local development environment
 cluster: 
-  mode: static # the cluster can be either 'static' or 'dynamic'
+  mode: dynamic # the cluster can be either 'static' or 'dynamic'
   servers: # if the mode is 'dynamic', `servers` will be ignored
     - id: 1
       host: "localhost"
@@ -29,7 +29,7 @@ snapshot_chunk_size: 100
 cluster_time_commit_max_duration: 30s
 http_client_request_max_timeout: 60m
 log_extensions:
-  enable: classic # or 'classic'
+  enable: etcd # or 'classic'
   classic:
     client_session_duration: 2m
   etcd:

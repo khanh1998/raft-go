@@ -47,3 +47,7 @@ func (n *RaftBrainImpl) GetInfo() gc.GetStatusResponse {
 		CommitIndex: n.commitIndex,
 	}
 }
+
+func (n *RaftBrainImpl) GetMembers() []gc.ClusterMember {
+	return n.members
+}

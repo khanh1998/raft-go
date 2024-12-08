@@ -66,7 +66,7 @@ func TestBtreeKvStateMachine_get(t *testing.T) {
 				b.current.Create(kv, 1, 1)
 			}
 
-			gotRes, gotErr := b.get(tt.args.log.Command, tt.args.logIndex)
+			gotRes, gotErr := b.get(tt.args.log.Command)
 			if !reflect.DeepEqual(gotRes, tt.wantRes) {
 				t.Errorf("BtreeKvStateMachine.get() gotRes = %v, want %v", gotRes, tt.wantRes)
 			}

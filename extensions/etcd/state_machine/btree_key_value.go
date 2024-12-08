@@ -71,7 +71,7 @@ func (b *BtreeKvStateMachine) Reset(ctx context.Context) error {
 	return nil
 }
 
-func (b *BtreeKvStateMachine) get(command common.EtcdCommand, logIndex int) (res common.EtcdResultRes, err error) {
+func (b *BtreeKvStateMachine) get(command common.EtcdCommand) (res common.EtcdResultRes, err error) {
 	if command.Prefix {
 		res := []common.KeyValue{}
 
@@ -303,7 +303,8 @@ func (b *BtreeKvStateMachine) Process(ctx context.Context, logIndex int, logI gc
 		b.log().Debug(
 			"Process",
 			"log", log.ToString(),
-			"data", b.current.KeyValue,
+			"result", result,
+			"err", err,
 		)
 	}()
 
@@ -325,7 +326,7 @@ func (b *BtreeKvStateMachine) Process(ctx context.Context, logIndex int, logI gc
 			return common.EtcdResult{Promise: channel}, nil
 		}
 
-		res, err := b.get(command, logIndex)
+		res, err := b.get(command)
 		if err != nil {
 			return nil, err
 		}
@@ -364,8 +365,36 @@ func (b *BtreeKvStateMachine) Process(ctx context.Context, logIndex int, logI gc
 		return nil, nil
 	case gc.TimeCommit:
 		return nil, nil
-	case "addserver":
-	case "removeserver":
+	case common.AddServer:
+		_, serverId, httpUrl, rpcUrl, err := log.DecomposeChangeSeverCommand()
+		if err != nil {
+			return common.EtcdResult{}, common.EtcdResultErr{
+				Cause:     common.AddServer,
+				ErrorCode: http.StatusBadRequest,
+				Index:     b.current.ChangeIndex,
+				Message:   "invalid add server: %w" + err.Error(),
+			}
+		}
+
+		b.current.LastConfig[serverId] = gc.ClusterMember{
+			ID:      serverId,
+			HttpUrl: httpUrl,
+			RpcUrl:  rpcUrl,
+		}
+		return nil, nil
+	case common.RemoveServer:
+		_, serverId, _, _, err := log.DecomposeChangeSeverCommand()
+		if err != nil {
+			return common.EtcdResult{}, common.EtcdResultErr{
+				Cause:     common.AddServer,
+				ErrorCode: http.StatusBadRequest,
+				Index:     b.current.ChangeIndex,
+				Message:   "invalid remove server: %w" + err.Error(),
+			}
+		}
+
+		delete(b.current.LastConfig, serverId)
+		return nil, nil
 	default:
 		return result, common.EtcdResultErr{
 			Cause:     command.Action,
@@ -374,7 +403,7 @@ func (b *BtreeKvStateMachine) Process(ctx context.Context, logIndex int, logI gc
 		}
 	}
 
-	return common.KeyValue{}, nil
+	return nil, nil
 }
 func (b *BtreeKvStateMachine) StartSnapshot(ctx context.Context) error {
 	return nil

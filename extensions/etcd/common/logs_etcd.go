@@ -5,6 +5,7 @@ import (
 	"errors"
 	"fmt"
 	gc "khanh/raft-go/common"
+	"strconv"
 	"strings"
 )
 
@@ -63,12 +64,54 @@ func (e EtcdLog) GetTime() uint64 {
 }
 
 func (e EtcdLog) DecomposeChangeSeverCommand() (addition bool, serverId int, httpUrl string, rpcUrl string, err error) {
-	err = errors.New("not implemented yet")
+	cmd := e.Command
+	if cmd.Internal {
+		switch cmd.Action {
+		case AddServer:
+			addition = true
+		case RemoveServer:
+			addition = false
+		default:
+			err = fmt.Errorf("unknown change server action: %s", cmd.Action)
+			return
+		}
+
+		tokens := strings.Split(cmd.Key, " ")
+		if len(tokens) != 3 {
+			err = fmt.Errorf("missing args: %v", cmd.Key)
+			return
+		}
+
+		serverId, err = strconv.Atoi(tokens[0])
+		if err != nil {
+			err = fmt.Errorf("invalid serverId: %v", tokens[0])
+			return
+		}
+		httpUrl = tokens[1]
+		rpcUrl = tokens[2]
+		err = nil
+		return
+	}
+	err = errors.New("not a change server command")
 	return
 }
 
 type EtcdLogFactory struct {
 	NewSnapshot func() gc.Snapshot
+}
+
+func (c EtcdLogFactory) ComposeChangeServerCommand(addition bool, serverId int, httpUrl string, rpcUrl string) gc.Log {
+	action := RemoveServer
+	if addition {
+		action = AddServer
+	}
+	return EtcdLog{
+		Command: EtcdCommand{
+			Internal: true,
+			Action:   action,
+			Key:      fmt.Sprintf("%d %s %s", serverId, httpUrl, rpcUrl),
+		},
+	}
 }
 
 func (c EtcdLogFactory) EmptySnapshot() gc.Snapshot {
@@ -116,19 +159,11 @@ func (c EtcdLogFactory) NoOperation(term int, time uint64) gc.Log {
 }
 
 func (c EtcdLogFactory) AddNewNode(term int, time uint64, nodeId int, httpUrl string, rpcUrl string) gc.Log {
-	return EtcdLog{
-		Term:    term,
-		Time:    time,
-		Command: EtcdCommand{},
-	}
+	return c.ComposeChangeServerCommand(true, nodeId, httpUrl, rpcUrl)
 }
 
 func (c EtcdLogFactory) RemoveNode(term int, time uint64, nodeId int, httpUrl string, rpcUrl string) gc.Log {
-	return EtcdLog{
-		Term:    term,
-		Time:    time,
-		Command: EtcdCommand{},
-	}
+	return c.ComposeChangeServerCommand(false, nodeId, httpUrl, rpcUrl)
 }
 
 func (c EtcdLogFactory) CreateTimeCommit(term int, nanosecond uint64) gc.Log {

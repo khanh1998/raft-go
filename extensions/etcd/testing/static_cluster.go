@@ -23,7 +23,7 @@ import (
 
 type Cluster struct {
 	Nodes               map[int]*node.Node // nodes or servers in cluster
-	HttpAgent           go_client.HttpClient
+	HttpAgent           *go_client.HttpClient
 	log                 observability.Logger
 	createNodeParams    map[int]node.NewNodeParams
 	MaxElectionTimeout  time.Duration
@@ -68,8 +68,11 @@ func (c *Cluster) init(filePath string) {
 	c.Nodes = make(map[int]*node.Node)
 	c.createNodeParams = make(map[int]node.NewNodeParams)
 
+	lock := sync.Mutex{}
+
 	l := sync.WaitGroup{}
 	for _, mem := range peers {
+		log := log.With("ID", mem.ID)
 		l.Add(1)
 		go func(mem gc.ClusterMember) {
 			dataFolder := fmt.Sprintf("%s%d/", c.config.DataFolder, mem.ID)
@@ -142,8 +145,10 @@ func (c *Cluster) init(filePath string) {
 			n := node.NewNode(ctx, param)
 			n.Start(ctx, false, false)
 
+			lock.Lock()
 			c.createNodeParams[mem.ID] = param
 			c.Nodes[mem.ID] = n
+			lock.Unlock()
 			l.Done()
 		}(mem)
 	}

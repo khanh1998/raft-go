@@ -11,6 +11,16 @@ import (
 	"github.com/stretchr/testify/assert"
 )
 
+func TestWaitOnPrefix(t *testing.T) {
+	c := NewCluster("config/3-nodes.yml")
+	defer c.Clean()
+	AssertHavingOneLeader(t, c)
+	go AssertGet(t, c, go_client.GetRequest{Key: "count", Prefix: true, Wait: true}, "100", nil, false) // this will see an set action
+	AssertSet(t, c, go_client.SetRequest{Key: "name", Value: gc.GetPointer("khanh")})
+	AssertSet(t, c, go_client.SetRequest{Key: "coun", Value: gc.GetPointer("coun")})
+	AssertSet(t, c, go_client.SetRequest{Key: "counter", Value: gc.GetPointer("100")})
+}
+
 func TestGetClearedEventHistory(t *testing.T) {
 	c := NewCluster("config/3-nodes.yml")
 	defer c.Clean()
@@ -22,7 +32,9 @@ func TestGetClearedEventHistory(t *testing.T) {
 
 	var prevValue string
 	var modifiedIndex int
+
 	go AssertGet(t, c, go_client.GetRequest{Key: "counter", Wait: true, WaitIndex: 15}, "14", nil, false) // wait on future index
+
 	for i := 0; i <= 20; i++ {
 		value := strconv.FormatInt(int64(i), 10)
 		if i == 0 {
@@ -216,8 +228,4 @@ func TestDeletePrefix(t *testing.T) {
 	AssertDelete(t, c, go_client.DeleteRequest{Key: "app", Prefix: true}, false)
 	AssertGet(t, c, go_client.GetRequest{Key: "app", Prefix: true}, "", []string{}, false)
 	AssertGet(t, c, go_client.GetRequest{Key: "asia"}, "asia", nil, false)
-}
-
-func TestUploadFile(t *testing.T) {
-
 }

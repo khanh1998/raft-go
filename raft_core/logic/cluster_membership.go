@@ -6,6 +6,7 @@ import (
 	"fmt"
 	gc "khanh/raft-go/common"
 	"khanh/raft-go/raft_core/common"
+	"net/http"
 	"os"
 	"syscall"
 	"time"
@@ -85,39 +86,50 @@ func (r *RaftBrainImpl) RemoveServer(ctx context.Context, input gc.Log, output *
 		}
 
 		r.inOutLock.Unlock()
-		return nil
+		return gc.RaftError{
+			HttpCode:   http.StatusPermanentRedirect,
+			LeaderHint: output.LeaderHint,
+			Message:    gc.NotLeader,
+		}
 	}
 
 	var removedId int
 	if err, removedId = r.isValidRemoveRequest(input); err != nil {
 		*output = gc.RemoveServerOutput{
-			Status:     gc.StatusNotOK,
-			LeaderHint: r.getLeaderHttpUrl(),
-			Response:   err.Error(),
+			Status:   gc.StatusNotOK,
+			Response: err.Error(),
 		}
 
 		r.inOutLock.Unlock()
-		return nil
+		return gc.RaftError{
+			HttpCode: 404,
+			Message:  err.Error(),
+		}
 	}
 
 	r.inOutLock.Unlock()
 
 	if !r.changeMemberLock.TryLock() {
-		err = errors.New("the server requested to be removed from the cluster is not exist")
+		err = errors.New("another node is adding (removing) to the cluster")
 
 		*output = gc.RemoveServerOutput{
-			Status:     gc.StatusNotOK,
-			LeaderHint: r.getLeaderHttpUrl(),
-			Response:   err.Error(),
+			Status:   gc.StatusNotOK,
+			Response: err.Error(),
 		}
 
-		return nil
+		return gc.RaftError{
+			HttpCode: http.StatusBadRequest,
+			Message:  err.Error(),
+		}
 	}
 	defer r.changeMemberLock.Unlock()
 
 	newLog, err := r.logFactory.AttachTermAndTime(input, r.GetCurrentTerm(), r.clusterClock.LeaderStamp())
 	if err != nil {
-		return err
+		return gc.RaftError{
+			HttpCode: http.StatusInternalServerError,
+			Message:  err.Error(),
+		}
 	}
 
 	index, err := r.appendLog(ctx, newLog)
@@ -125,9 +137,13 @@ func (r *RaftBrainImpl) RemoveServer(ctx context.Context, input gc.Log, output *
 		r.log().ErrorContext(ctx, "RemoveServer_appendLog", err)
 
 		*output = gc.RemoveServerOutput{
-			Status:     gc.StatusNotOK,
-			Response:   "append log err: " + err.Error(),
-			LeaderHint: "",
+			Status:   gc.StatusNotOK,
+			Response: "append log err: " + err.Error(),
+		}
+
+		return gc.RaftError{
+			HttpCode: http.StatusInternalServerError,
+			Message:  err.Error(),
 		}
 	}
 
@@ -170,18 +186,24 @@ func (r *RaftBrainImpl) AddServer(ctx context.Context, input gc.Log, output *gc.
 		}
 
 		r.inOutLock.Unlock()
-		return nil
+		return gc.RaftError{
+			HttpCode:   http.StatusPermanentRedirect,
+			Message:    gc.NotLeader,
+			LeaderHint: output.LeaderHint,
+		}
 	}
 
 	if err := r.isValidAddRequest(input); err != nil {
 		*output = gc.AddServerOutput{
-			Status:     gc.StatusNotOK,
-			LeaderHint: r.getLeaderHttpUrl(),
-			Response:   err.Error(),
+			Status:   gc.StatusNotOK,
+			Response: err.Error(),
 		}
 
 		r.inOutLock.Unlock()
-		return nil
+		return gc.RaftError{
+			HttpCode: http.StatusBadRequest,
+			Message:  err.Error(),
+		}
 	}
 
 	newLog, err := r.logFactory.AttachTermAndTime(input, r.GetCurrentTerm(), r.clusterClock.LeaderStamp())
@@ -195,12 +217,14 @@ func (r *RaftBrainImpl) AddServer(ctx context.Context, input gc.Log, output *gc.
 		err = errors.New("another node is adding (removing) to the cluster")
 
 		*output = gc.AddServerOutput{
-			Status:     gc.StatusNotOK,
-			LeaderHint: r.getLeaderHttpUrl(),
-			Response:   err.Error(),
+			Status:   gc.StatusNotOK,
+			Response: err.Error(),
 		}
 
-		return nil
+		return gc.RaftError{
+			HttpCode: http.StatusBadRequest,
+			Message:  err.Error(),
+		}
 	}
 	defer r.changeMemberLock.Unlock()
 	timeout := 5 * time.Second
@@ -209,14 +233,16 @@ func (r *RaftBrainImpl) AddServer(ctx context.Context, input gc.Log, output *gc.
 
 	if err := r.rpcProxy.ConnectToNewPeer(ctx, newServerId, newServerRpcUrl, 5, timeout); err != nil {
 		*output = gc.AddServerOutput{
-			Status:     gc.StatusNotOK,
-			LeaderHint: r.getLeaderHttpUrl(),
-			Response:   err.Error(),
+			Status:   gc.StatusNotOK,
+			Response: err.Error(),
 		}
 
 		log.Err(err).Msg("ConnectToNewPeer")
 
-		return nil
+		return gc.RaftError{
+			HttpCode: http.StatusInternalServerError,
+			Message:  err.Error(),
+		}
 	}
 
 	// catch up new server for fixed number of rounds
@@ -227,12 +253,11 @@ func (r *RaftBrainImpl) AddServer(ctx context.Context, input gc.Log, output *gc.
 		err := r.catchUpWithNewMember(ctx, newServerId)
 		if err != nil {
 			*output = gc.AddServerOutput{
-				Status:     gc.StatusNotOK,
-				LeaderHint: r.getLeaderHttpUrl(),
-				Response:   err.Error(),
+				Status:   gc.StatusNotOK,
+				Response: err.Error(),
 			}
 
-			return nil
+			return gc.RaftError{HttpCode: http.StatusInternalServerError, Message: err.Error()}
 		} else {
 			duration := time.Since(begin)
 			if duration < r.electionTimeOutMin {
@@ -247,9 +272,13 @@ func (r *RaftBrainImpl) AddServer(ctx context.Context, input gc.Log, output *gc.
 		r.log().ErrorContext(ctx, "AddServer_appendLog", err)
 
 		*output = gc.AddServerOutput{
-			Status:     gc.StatusNotOK,
-			Response:   "append log err: " + err.Error(),
-			LeaderHint: "",
+			Status:   gc.StatusNotOK,
+			Response: "append log err: " + err.Error(),
+		}
+
+		return gc.RaftError{
+			HttpCode: http.StatusInternalServerError,
+			Message:  err.Error(),
 		}
 	}
 

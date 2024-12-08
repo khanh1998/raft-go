@@ -2,8 +2,10 @@ package testing
 
 import (
 	"context"
-	"khanh/raft-go/common"
+	gc "khanh/raft-go/common"
+	"khanh/raft-go/extensions/etcd/common"
 	"khanh/raft-go/extensions/etcd/go_client"
+	"net/http"
 	"slices"
 	"sort"
 	"strconv"
@@ -59,7 +61,7 @@ func IncreaseByOne(t *testing.T, c *Cluster, key string) {
 	defer cancel()
 	res, err := c.HttpAgent.Get(ctx, go_client.GetRequest{Key: key})
 	if err != nil {
-		res, err = c.HttpAgent.Set(ctx, go_client.SetRequest{Key: key, Value: common.GetPointer("0"), PrevExist: common.GetPointer(false)})
+		res, err = c.HttpAgent.Set(ctx, go_client.SetRequest{Key: key, Value: gc.GetPointer("0"), PrevExist: gc.GetPointer(false)})
 		assert.NoError(t, err)
 		// value, err = c.HttpAgent.Get(ctx, go_client.GetRequest{Key: key})
 	}
@@ -68,8 +70,46 @@ func IncreaseByOne(t *testing.T, c *Cluster, key string) {
 	intVal, err := strconv.Atoi(prevValue)
 	assert.NoError(t, err)
 	nextVal := strconv.Itoa(intVal + 1)
-	_, err = c.HttpAgent.Set(ctx, go_client.SetRequest{Key: key, Value: &nextVal, PrevExist: common.GetPointer(true), PrevValue: &prevValue})
+	_, err = c.HttpAgent.Set(ctx, go_client.SetRequest{Key: key, Value: &nextVal, PrevExist: gc.GetPointer(true), PrevValue: &prevValue})
 	assert.NoError(t, err)
+}
+
+func AssertIncreaseCounter(t *testing.T, c *Cluster, key string, target int) {
+	ctx, cancel := context.WithTimeout(context.Background(), 3*time.Second)
+	defer cancel()
+	keyExists := true
+	res, err := c.HttpAgent.Get(ctx, go_client.GetRequest{Key: key})
+	if err != nil {
+		e, ok := err.(common.EtcdResultErr)
+		if ok && e.ErrorCode == http.StatusNotFound {
+			keyExists = false
+		} else {
+			t.Fatal(err)
+		}
+	}
+
+	var prevRes go_client.EtcdResponse
+
+	if keyExists {
+		prevRes = res
+	}
+
+	for i := 0; i < target; i++ {
+		if i == 0 && !keyExists {
+			nextValue := "1"
+			prevRes, err = c.HttpAgent.Set(ctx, go_client.SetRequest{Key: key, Value: &nextValue, PrevExist: gc.GetPointer(false)})
+		} else {
+			prevValue, err := strconv.Atoi(prevRes.Node.Value)
+			assert.NoError(t, err)
+			nextValue := strconv.Itoa(prevValue + 1)
+			prevRes, err = c.HttpAgent.Set(ctx, go_client.SetRequest{
+				Key: key, Value: &nextValue, PrevExist: gc.GetPointer(true),
+				PrevValue: &prevRes.Node.Value, PrevIndex: prevRes.Node.ModifiedIndex,
+			})
+			assert.NoError(t, err)
+		}
+		assert.NoError(t, err)
+	}
 }
 
 func AssertSet(t *testing.T, c *Cluster, req go_client.SetRequest) (createdIndex int, modifiedIndex int) {
@@ -132,7 +172,9 @@ func AssertLiveNode(t *testing.T, c *Cluster, expectCount int) {
 // create a new node, and it do nothing and is waiting for leader to send logs to it (catch-up process),
 // new node isn't part of the cluster yet, it won't request vote or response to request vote.
 func AssertCreatingNode(t *testing.T, c *Cluster, id int) {
-
+	ctx := context.Background()
+	_, err := c.createNewNode(ctx, id)
+	assert.NoError(t, err)
 }
 
 // make sure the server is live and can response to requests
@@ -147,11 +189,21 @@ func AssertPing(t *testing.T, c *Cluster, id int) {
 // the leader catch up for the new node,
 // after cautch up with the leader, new node will become a follower in cluster.
 func AssertAddingNodeToCluster(t *testing.T, c *Cluster, id int) {
+	ctx := context.Background()
+	err := c.AddServer(ctx, id)
+	assert.NoError(t, err)
 
+	res, err := c.HttpAgent.GetInfo(ctx, id)
+	assert.NoError(t, err)
+	assert.Equal(t, id, res.ID)
+	assert.Greater(t, res.Term, 0)
+	assert.Greater(t, res.LeaderId, 0)
 }
 
 func AssertRemovingNodeFromCluster(t *testing.T, c *Cluster, id int) {
-
+	ctx := context.Background()
+	err := c.RemoveServer(ctx, id)
+	assert.NoError(t, err)
 }
 
 func AssertHavingNoLeader(t *testing.T, c *Cluster) {
@@ -160,7 +212,7 @@ func AssertHavingNoLeader(t *testing.T, c *Cluster) {
 	assert.Error(t, err, "expect no leader in cluster")
 }
 
-func AssertLeaderChanged(t *testing.T, c *Cluster, prevLeaderId int, prevTerm int) (status common.GetStatusResponse) {
+func AssertLeaderChanged(t *testing.T, c *Cluster, prevLeaderId int, prevTerm int) (status gc.GetStatusResponse) {
 	var err error
 
 	for i := 0; i < 10; i++ {
@@ -178,7 +230,7 @@ func AssertLeaderChanged(t *testing.T, c *Cluster, prevLeaderId int, prevTerm in
 	return status
 }
 
-func AssertHavingOneLeader(t *testing.T, c *Cluster) (status common.GetStatusResponse) {
+func AssertHavingOneLeader(t *testing.T, c *Cluster) (status gc.GetStatusResponse) {
 	var err error
 
 	for i := 0; i < 5; i++ {

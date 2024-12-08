@@ -2,6 +2,11 @@ package common
 
 import "encoding/json"
 
+const (
+	AddServer    = "add-server"
+	RemoveServer = "remove-server"
+)
+
 type EtcdResultPromise chan EtcdResultRes
 
 func CreateError(key string, err error) error {

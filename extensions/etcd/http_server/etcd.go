@@ -28,6 +28,7 @@ type RaftBrain interface {
 	AddServer(ctx context.Context, input gc.Log, output *gc.AddServerOutput) (err error)
 	RemoveServer(ctx context.Context, input gc.Log, output *gc.RemoveServerOutput) (err error)
 	GetInfo() gc.GetStatusResponse
+	GetMembers() []gc.ClusterMember
 }
 
 type EtcdNode struct {
@@ -119,6 +120,7 @@ func (h *EtcdHttpProxy) Start() {
 
 	h.prometheus(r)
 	h.keyApi(r)
+	h.memberApi(r)
 	h.info(r)
 
 	httpServer := &http.Server{
@@ -250,93 +252,4 @@ func (h *EtcdHttpProxy) handleError(c *gin.Context, err error) {
 	default:
 		panic(fmt.Sprintf("unknown error: %t, value: %v", e, e))
 	}
-}
-
-func (h *EtcdHttpProxy) keyApi(r *gin.Engine) {
-	r.PUT("/v2/keys/*key", func(c *gin.Context) {
-		ctx, span := tracer.Start(c.Request.Context(), "etcd key api")
-		defer span.End()
-
-		reqArgs, err := parsePutRequest(c)
-		if err != nil {
-			h.handleError(c, err)
-			return
-		}
-
-		err = reqArgs.ValidatePut()
-		if err != nil {
-			h.handleError(c, err)
-			return
-		}
-
-		log := common.EtcdLog{
-			Command: reqArgs.ToCommandPut(),
-		}
-
-		output := gc.ClientRequestOutput{}
-		err = h.brain.ClientRequest(ctx, log, &output)
-		if err != nil {
-			h.handleError(c, err)
-		} else {
-			h.handleResult(c, output.Response)
-		}
-	})
-
-	r.DELETE("/v2/keys/*key", func(c *gin.Context) {
-		ctx, span := tracer.Start(c.Request.Context(), "etcd key api")
-		defer span.End()
-
-		reqArgs, err := parseDeleteRequest(c)
-		if err != nil {
-			c.IndentedJSON(http.StatusBadRequest, err)
-			return
-		}
-
-		err = reqArgs.ValidateDelete()
-		if err != nil {
-			c.IndentedJSON(http.StatusBadRequest, err)
-			return
-		}
-
-		log := common.EtcdLog{
-			Command: reqArgs.ToCommandDelete(),
-		}
-
-		output := gc.ClientRequestOutput{}
-		err = h.brain.ClientRequest(ctx, log, &output)
-		if err != nil {
-			h.handleError(c, err)
-		} else {
-			h.handleResult(c, output.Response)
-		}
-	})
-
-	r.GET("/v2/keys/*key", func(c *gin.Context) {
-		ctx, span := tracer.Start(c.Request.Context(), "etcd key api")
-		defer span.End()
-
-		reqArgs, err := parseGetRequest(c)
-		if err != nil {
-			h.handleError(c, err)
-			return
-		}
-
-		err = reqArgs.ValidateGet()
-		if err != nil {
-			h.handleError(c, err)
-			return
-		}
-
-		log := common.EtcdLog{
-			Command: reqArgs.ToCommandGet(),
-		}
-
-		output := gc.ClientQueryOutput{}
-		err = h.brain.ClientQuery(ctx, log, &output)
-		if err != nil {
-			h.handleError(c, err)
-		} else {
-			h.handleResult(c, output.Response)
-		}
-	})
 }
