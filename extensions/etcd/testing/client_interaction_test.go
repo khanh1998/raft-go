@@ -89,8 +89,8 @@ func TestGetPrefix(t *testing.T) {
 	defer c.Clean()
 	AssertHavingOneLeader(t, c)
 
-	go AssertGet(t, c, go_client.GetRequest{Key: "app", Prefix: true, Wait: true}, "", nil, true) // can't wait on prefix
-	go AssertGet(t, c, go_client.GetRequest{Key: "apology", Wait: true}, "sorry", nil, false)     // cat wait on key only
+	go AssertGet(t, c, go_client.GetRequest{Key: "app", Prefix: true, Wait: true}, "dev", nil, false)
+	go AssertGet(t, c, go_client.GetRequest{Key: "apology", Wait: true}, "sorry", nil, false)
 
 	AssertSet(t, c, go_client.SetRequest{Key: "asia", Value: gc.GetPointer("asia")})
 	AssertSet(t, c, go_client.SetRequest{Key: "application", Value: gc.GetPointer("vscode")})

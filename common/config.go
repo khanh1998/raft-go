@@ -62,17 +62,34 @@ type ConfigLogExtensions struct {
 	} `mapstructure:"etcd"`
 }
 
+type RaftCoreConfig struct {
+	Cluster                      ClusterConfig       `mapstructure:"cluster"`
+	MinElectionTimeout           time.Duration       `mapstructure:"min_election_timeout" validate:"required,gt=0"`
+	MaxElectionTimeout           time.Duration       `mapstructure:"max_election_timeout" validate:"required,gt=0"`
+	MinHeartbeatTimeout          time.Duration       `mapstructure:"min_heartbeat_timeout" validate:"required,gt=0"`
+	MaxHeartbeatTimeout          time.Duration       `mapstructure:"max_heartbeat_timeout" validate:"required,gt=0"`
+	DataFolder                   string              `mapstructure:"data_folder" default:"data/" validate:"required"`
+	WalSizeLimit                 int64               `mapstructure:"wal_size_limit"`
+	LogLengthLimit               int                 `mapstructure:"log_length_limit"`
+	Observability                ObservabilityConfig `mapstructure:"observability"`
+	RpcDialTimeout               time.Duration       `mapstructure:"rpc_dial_timeout"`
+	RpcRequestTimeout            time.Duration       `mapstructure:"rpc_request_timeout"`
+	RpcReconnectDuration         time.Duration       `mapstructure:"rpc_reconnect_duration"`
+	SnapshotChunkSize            int                 `mapstructure:"snapshot_chunk_size"`
+	ClusterTimeCommitMaxDuration time.Duration       `mapstructure:"cluster_time_commit_max_duration"`
+	HttpClientRequestMaxTimeout  time.Duration       `mapstructure:"http_client_request_max_timeout"`
+}
+
 type Config struct {
-	Cluster             ClusterConfig       `mapstructure:"cluster"`
-	MinElectionTimeout  time.Duration       `mapstructure:"min_election_timeout" validate:"required,gt=0"`
-	MaxElectionTimeout  time.Duration       `mapstructure:"max_election_timeout" validate:"required,gt=0"`
-	MinHeartbeatTimeout time.Duration       `mapstructure:"min_heartbeat_timeout" validate:"required,gt=0"`
-	MaxHeartbeatTimeout time.Duration       `mapstructure:"max_heartbeat_timeout" validate:"required,gt=0"`
-	DataFolder          string              `mapstructure:"data_folder" default:"data/" validate:"required"`
-	WalSizeLimit        int64               `mapstructure:"wal_size_limit"`
-	LogLengthLimit      int                 `mapstructure:"log_length_limit"`
-	Observability       ObservabilityConfig `mapstructure:"observability"`
-	// ClientSessionDuration        time.Duration       `mapstructure:"client_session_duration"`
+	Cluster                      ClusterConfig       `mapstructure:"cluster"`
+	MinElectionTimeout           time.Duration       `mapstructure:"min_election_timeout" validate:"required,gt=0"`
+	MaxElectionTimeout           time.Duration       `mapstructure:"max_election_timeout" validate:"required,gt=0"`
+	MinHeartbeatTimeout          time.Duration       `mapstructure:"min_heartbeat_timeout" validate:"required,gt=0"`
+	MaxHeartbeatTimeout          time.Duration       `mapstructure:"max_heartbeat_timeout" validate:"required,gt=0"`
+	DataFolder                   string              `mapstructure:"data_folder" default:"data/" validate:"required"`
+	WalSizeLimit                 int64               `mapstructure:"wal_size_limit"`
+	LogLengthLimit               int                 `mapstructure:"log_length_limit"`
+	Observability                ObservabilityConfig `mapstructure:"observability"`
 	RpcDialTimeout               time.Duration       `mapstructure:"rpc_dial_timeout"`
 	RpcRequestTimeout            time.Duration       `mapstructure:"rpc_request_timeout"`
 	RpcReconnectDuration         time.Duration       `mapstructure:"rpc_reconnect_duration"`

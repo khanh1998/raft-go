@@ -1,7 +1,7 @@
 # this config file is for local development environment
 raft_core:
   cluster: 
-    mode: static # the cluster can be either 'static' or 'dynamic'
+    mode: dynamic # the cluster can be either 'static' or 'dynamic'
     servers: # if the mode is 'dynamic', `servers` will be ignored
       - id: 1
         host: "localhost"
@@ -16,22 +16,21 @@ raft_core:
         http_port: 8082
         rpc_port: 1236
   # timeout in milliseconds
-  min_election_timeout: 150ms
-  max_election_timeout: 300ms
-  min_heartbeat_timeout: 1ms
-  max_heartbeat_timeout: 20ms
+  min_election_timeout: 12s
+  max_election_timeout: 15s
+  min_heartbeat_timeout: 2s
+  max_heartbeat_timeout: 5s
   data_folder: data/
-  state_machine_snapshot: true
-  wal_size_limit: 10240
-  log_length_limit: 100
-  rpc_dial_timeout: 200ms
-  rpc_request_timeout: 150ms
-  rpc_reconnect_duration: 300ms
+  wal_size_limit: 512
+  log_length_limit: 5
+  rpc_dial_timeout: 5s
+  rpc_request_timeout: 1s
+  rpc_reconnect_duration: 30s
   snapshot_chunk_size: 100
   cluster_time_commit_max_duration: 30s
   http_client_request_max_timeout: 60m
 extension:
-  state_machine_history_capacity: 10
+  state_machine_history_capacity: 1000
   state_machine_btree_degree: 32
   http_client_max_wait_timeout: 60m
 observability:

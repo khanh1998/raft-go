@@ -6,14 +6,8 @@ import (
 	gc "khanh/raft-go/common"
 	"khanh/raft-go/extensions/etcd/common"
 	"khanh/raft-go/extensions/etcd/go_client"
-	"khanh/raft-go/extensions/etcd/http_server"
-	"khanh/raft-go/extensions/etcd/state_machine"
-	"khanh/raft-go/node"
+	"khanh/raft-go/extensions/etcd/node"
 	"khanh/raft-go/observability"
-	"khanh/raft-go/raft_core/logic"
-	"khanh/raft-go/raft_core/persistence_state"
-	"khanh/raft-go/raft_core/rpc_proxy"
-	"khanh/raft-go/raft_core/storage"
 	"log"
 )
 
@@ -54,8 +48,8 @@ func (c *Cluster) RemoveServer(ctx context.Context, id int) error {
 	return c.HttpAgent.RemoveMember(ctx, go_client.ClusterMemberRequest{
 		ClusterMember: gc.ClusterMember{
 			ID:      params.ID,
-			RpcUrl:  params.RPCProxy.HostURL,
-			HttpUrl: params.EtcdSetup.HttpServer.URL,
+			RpcUrl:  params.RaftCore.RPCProxy.HostURL,
+			HttpUrl: params.Extension.HttpServer.URL,
 		},
 	})
 }
@@ -66,80 +60,13 @@ func (c *Cluster) createNewNode(ctx context.Context, id int) (info gc.ClusterMem
 	info = gc.ClusterMember{ID: id, HttpUrl: httpUrl, RpcUrl: rpcUrl}
 	catchingUp := id > 1
 
-	dataFolder := fmt.Sprintf("%s%d/", c.config.DataFolder, id)
-
-	storage, err := storage.NewStorage(storage.NewStorageParams{
-		WalSize:    c.config.WalSizeLimit,
-		DataFolder: dataFolder,
-		Logger:     c.log,
-	}, storage.FileWrapperImpl{})
+	param, err := node.PrepareNewNodeParams(ctx, id, httpUrl, rpcUrl, catchingUp, c.config)
 	if err != nil {
 		return info, err
-	}
-
-	logFactory := common.EtcdLogFactory{
-		NewSnapshot: func() gc.Snapshot {
-			return state_machine.NewEtcdSnapshot(c.config.LogExtensions.Etcd.StateMachineBTreeDegree)
-		},
-	}
-
-	snapshot, raftPersistState, clusterMembers, err := persistence_state.Deserialize(ctx, storage, gc.Dynamic, c.log, logFactory)
-	if err != nil {
-		return info, err
-	}
-
-	raftPersistState.SetStorage(storage)
-
-	param := node.NewNodeParams{
-		ID: id,
-		Brain: logic.NewRaftBrainParams{
-			ID:                  id,
-			Mode:                gc.Dynamic,
-			CachingUp:           catchingUp,
-			HeartBeatTimeOutMin: c.config.MinHeartbeatTimeout,
-			HeartBeatTimeOutMax: c.config.MaxHeartbeatTimeout,
-			ElectionTimeOutMin:  c.config.MinElectionTimeout,
-			ElectionTimeOutMax:  c.config.MaxElectionTimeout,
-			Logger:              c.log,
-			Members: func() []gc.ClusterMember {
-				if id == 1 { // first node of freshly new cluster
-					return []gc.ClusterMember{info}
-				}
-				return clusterMembers
-			}(),
-			RpcRequestTimeout: c.config.RpcRequestTimeout,
-			PersistenceState:  raftPersistState,
-			LogLengthLimit:    c.config.LogLengthLimit,
-			SnapshotChunkSize: c.config.SnapshotChunkSize,
-			LogFactory:        logFactory,
-		},
-		RPCProxy: rpc_proxy.NewRPCImplParams{
-			HostURL:              rpcUrl,
-			Logger:               c.log,
-			HostID:               id,
-			RpcRequestTimeout:    c.config.RpcRequestTimeout,
-			RpcDialTimeout:       c.config.RpcDialTimeout,
-			RpcReconnectDuration: c.config.RpcReconnectDuration,
-		},
-		EtcdSetup: &node.EtcdSetup{
-			HttpServer: http_server.NewEtcdHttpProxyParams{
-				URL:    httpUrl,
-				Logger: c.log,
-			},
-			StateMachine: state_machine.NewBtreeKvStateMachineParams{
-				Logger:                c.log,
-				PersistenceState:      raftPersistState,
-				ResponseCacheCapacity: c.config.LogExtensions.Etcd.StateMachineHistoryCapacity,
-				BtreeDegree:           c.config.LogExtensions.Etcd.StateMachineBTreeDegree,
-				Snapshot:              snapshot,
-			},
-		},
-		LogExtensionEnabled: c.config.LogExtensions.Enable,
-		Logger:              c.log,
 	}
 
 	n := node.NewNode(ctx, param)
-	n.Start(ctx, true, catchingUp)
+	n.Start(ctx)
 
 	c.Nodes[id] = n
 	c.createNodeParams[id] = param
@@ -148,17 +75,17 @@ func (c *Cluster) createNewNode(ctx context.Context, id int) (info gc.ClusterMem
 }
 
 func (c *Cluster) initDynamic(filePath string) {
-	config, err := gc.ReadConfigFromFile(&filePath)
+	config, err := common.ReadConfigFromFile(&filePath)
 	if err != nil {
 		log.Panic(err)
 	}
 	config.Observability.Disabled = true
 
 	c.config = config
-	c.MaxElectionTimeout = config.MaxElectionTimeout
-	c.MaxHeartbeatTimeout = config.MaxHeartbeatTimeout
+	c.MaxElectionTimeout = config.RaftCore.MaxElectionTimeout
+	c.MaxHeartbeatTimeout = config.RaftCore.MaxHeartbeatTimeout
 
-	gc.CreateFolderIfNotExists(config.DataFolder)
+	gc.CreateFolderIfNotExists(config.RaftCore.DataFolder)
 
 	log := observability.NewZerolog(config.Observability, 0)
 	c.log = log
