@@ -1,20 +1,20 @@
-# this config file is for docker compose environment
+# this config file is for local development environment
 raft_core:
   cluster: 
-    mode: static # the cluster can be either 'static' or 'dynamic'
+    mode: dynamic # the cluster can be either 'static' or 'dynamic'
     servers: # if the mode is 'dynamic', `servers` will be ignored
       - id: 1
-        host: "raft-node-1.raft-cluster.local"
+        host: "localhost"
         http_port: 8080
         rpc_port: 1234
       - id: 2
-        host: "raft-node-2.raft-cluster.local"
-        http_port: 8080
-        rpc_port: 1234
+        host: "localhost"
+        http_port: 8081
+        rpc_port: 1235
       - id: 3
-        host: "raft-node-3.raft-cluster.local"
-        http_port: 8080
-        rpc_port: 1234
+        host: "localhost"
+        http_port: 8082
+        rpc_port: 1236
   # timeout in milliseconds
   min_election_timeout: 12s
   max_election_timeout: 15s
@@ -33,6 +33,6 @@ extension:
   client_session_duration: 2m
 observability:
   disabled: true
-  trace_endpoint: 'tempo:4318'
-  log_endpoint: 'loki:3100'
-  loki_push_url: 'http://loki:3100/loki/api/v1/push'
+  trace_endpoint: 'localhost:4318'
+  log_endpoint: 'localhost:3100'
+  loki_push_url: 'http://localhost:3100/loki/api/v1/push'

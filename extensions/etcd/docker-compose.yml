@@ -2,11 +2,14 @@ version: "3.9"
 
 services:
   raft-node-1:
-    build: ../..
+    build:
+      context: ../..
+      args:
+        EXT_NAME: etcd
     image: raft-go:latest
     container_name: raft-node-1
     hostname: raft-node-1
-    command: ["/app/raft-go", "-id=1"]
+    command: ["/app/etcd", "-id=1"]
     environment:
       - NODE_ID=1
     networks:
@@ -21,11 +24,14 @@ services:
       - ./dc-config.yml:/app/config.yml
 
   raft-node-2:
-    build: ../..
+    build:
+      context: ../..
+      args:
+        EXT_NAME: etcd
     image: raft-go:latest
     container_name: raft-node-2
     hostname: raft-node-2
-    command: ["/app/raft-go", "-id=2"]
+    command: ["/app/etcd", "-id=2"]
     environment:
       - NODE_ID=2
     networks:
@@ -40,11 +46,14 @@ services:
       - ./dc-config.yml:/app/config.yml
 
   raft-node-3:
-    build: ../..
+    build:
+      context: ../..
+      args:
+        EXT_NAME: etcd
     image: raft-go:latest
     container_name: raft-node-3
     hostname: raft-node-3
-    command: ["/app/raft-go", "-id=3"]
+    command: ["/app/etcd", "-id=3"]
     environment:
       - NODE_ID=3
     networks:

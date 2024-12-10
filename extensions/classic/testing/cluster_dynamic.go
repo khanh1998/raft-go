@@ -6,14 +6,8 @@ import (
 	"fmt"
 	gc "khanh/raft-go/common"
 	"khanh/raft-go/extensions/classic/common"
-	http_proxy "khanh/raft-go/extensions/classic/http_server"
-	"khanh/raft-go/extensions/classic/state_machine"
-	"khanh/raft-go/node"
+	"khanh/raft-go/extensions/classic/node"
 	"khanh/raft-go/observability"
-	"khanh/raft-go/raft_core/logic"
-	"khanh/raft-go/raft_core/persistence_state"
-	"khanh/raft-go/raft_core/rpc_proxy"
-	"khanh/raft-go/raft_core/storage"
 	"log"
 	"time"
 )
@@ -28,12 +22,9 @@ func NewDynamicCluster(filePath string) *Cluster {
 
 // dynamic cluster
 func (c *Cluster) AddServer(id int) error {
-	params := c.createNodeParams[id]
-	if params.ClassicSetup != nil {
-		return c.HttpAgent.AddServer(id, params.ClassicSetup.HttpServer.URL, params.RPCProxy.HostURL)
-	}
-	if params.EtcdSetup != nil {
-		return c.HttpAgent.AddServer(id, params.EtcdSetup.HttpServer.URL, params.RPCProxy.HostURL)
+	params, ok := c.createNodeParams[id]
+	if ok {
+		return c.HttpAgent.AddServer(id, params.Extension.HttpServer.URL, params.RaftCore.RPCProxy.HostURL)
 	}
 	return errors.New("no setup was found")
 }
@@ -47,13 +38,9 @@ func (c *Cluster) RemoveServerLeader() error {
 
 	id := status.ID
 
-	params := c.createNodeParams[id]
-	if params.ClassicSetup != nil {
-		return c.HttpAgent.RemoveServer(id, params.ClassicSetup.HttpServer.URL, params.RPCProxy.HostURL)
-	}
-
-	if params.EtcdSetup != nil {
-		return c.HttpAgent.RemoveServer(id, params.EtcdSetup.HttpServer.URL, params.RPCProxy.HostURL)
+	params, ok := c.createNodeParams[id]
+	if ok {
+		return c.HttpAgent.RemoveServer(id, params.Extension.HttpServer.URL, params.RaftCore.RPCProxy.HostURL)
 	}
 
 	return errors.New("no setup was found")
@@ -61,14 +48,11 @@ func (c *Cluster) RemoveServerLeader() error {
 
 // dynamic cluster
 func (c *Cluster) RemoveServer(id int) error {
-	params := c.createNodeParams[id]
-	if params.ClassicSetup != nil {
-		return c.HttpAgent.RemoveServer(id, params.ClassicSetup.HttpServer.URL, params.RPCProxy.HostURL)
+	params, ok := c.createNodeParams[id]
+	if ok {
+		return c.HttpAgent.RemoveServer(id, params.Extension.HttpServer.URL, params.RaftCore.RPCProxy.HostURL)
 	}
 
-	if params.EtcdSetup != nil {
-		return c.HttpAgent.RemoveServer(id, params.EtcdSetup.HttpServer.URL, params.RPCProxy.HostURL)
-	}
 	return errors.New("no setup was found")
 }
 
@@ -76,77 +60,13 @@ func (c *Cluster) createNewNode(ctx context.Context, id int) error {
 	rpcUrl, httpUrl := fmt.Sprintf("localhost:%d", 1233+id), fmt.Sprintf("localhost:%d", 8079+id)
 	catchingUp := id > 1
 
-	dataFolder := fmt.Sprintf("%s%d/", c.config.DataFolder, id)
-
-	storage, err := storage.NewStorage(storage.NewStorageParams{
-		WalSize:    c.config.WalSizeLimit,
-		DataFolder: dataFolder,
-		Logger:     c.log,
-	}, storage.FileWrapperImpl{})
+	param, err := node.PrepareNewNodeParams(ctx, id, httpUrl, rpcUrl, catchingUp, c.config, c.log)
 	if err != nil {
 		return err
-	}
-
-	logFactory := common.ClassicLogFactory{
-		NewSnapshot: state_machine.NewClassicSnapshotI,
-	}
-
-	snapshot, raftPersistState, clusterMembers, err := persistence_state.Deserialize(ctx, storage, gc.Dynamic, c.log, logFactory)
-	if err != nil {
-		return err
-	}
-
-	raftPersistState.SetStorage(storage)
-
-	param := node.NewNodeParams{
-		ID: id,
-		Brain: logic.NewRaftBrainParams{
-			ID:                  id,
-			Mode:                gc.Dynamic,
-			CachingUp:           catchingUp,
-			HeartBeatTimeOutMin: c.config.MinHeartbeatTimeout,
-			HeartBeatTimeOutMax: c.config.MaxHeartbeatTimeout,
-			ElectionTimeOutMin:  c.config.MinElectionTimeout,
-			ElectionTimeOutMax:  c.config.MaxElectionTimeout,
-			Logger:              c.log,
-			Members: func() []gc.ClusterMember {
-				if id == 1 { // first node of freshly new cluster
-					return []gc.ClusterMember{{ID: id, RpcUrl: rpcUrl, HttpUrl: httpUrl}}
-				}
-				return clusterMembers
-			}(),
-			RpcRequestTimeout: c.config.RpcRequestTimeout,
-			PersistenceState:  raftPersistState,
-			LogLengthLimit:    c.config.LogLengthLimit,
-			SnapshotChunkSize: c.config.SnapshotChunkSize,
-			LogFactory:        logFactory,
-		},
-		RPCProxy: rpc_proxy.NewRPCImplParams{
-			HostURL:              rpcUrl,
-			Logger:               c.log,
-			HostID:               id,
-			RpcRequestTimeout:    c.config.RpcRequestTimeout,
-			RpcDialTimeout:       c.config.RpcDialTimeout,
-			RpcReconnectDuration: c.config.RpcReconnectDuration,
-		},
-		ClassicSetup: &node.ClassicSetup{
-			HttpServer: http_proxy.NewClassicHttpProxyParams{
-				URL:    httpUrl,
-				Logger: c.log,
-			},
-			StateMachine: state_machine.NewClassicStateMachineParams{
-				ClientSessionDuration: uint64(c.config.LogExtensions.Classic.ClientSessionDuration),
-				Logger:                c.log,
-				PersistState:          raftPersistState,
-				Snapshot:              snapshot,
-			},
-		},
-		LogExtensionEnabled: gc.LogExtensionClassic,
-		Logger:              c.log,
 	}
 
 	n := node.NewNode(ctx, param)
-	n.Start(ctx, true, catchingUp)
+	n.Start(ctx)
 
 	c.createNodeParams[id] = param
 	c.Nodes[id] = n
@@ -159,17 +79,17 @@ func (c *Cluster) createNewNode(ctx context.Context, id int) error {
 }
 
 func (c *Cluster) initDynamic(filePath string) {
-	config, err := gc.ReadConfigFromFile(&filePath)
+	config, err := common.ReadConfigFromFile(&filePath)
 	if err != nil {
 		log.Panic(err)
 	}
 	config.Observability.Disabled = true
 
 	c.config = config
-	c.MaxElectionTimeout = config.MaxElectionTimeout
-	c.MaxHeartbeatTimeout = config.MaxHeartbeatTimeout
+	c.MaxElectionTimeout = config.RaftCore.MaxElectionTimeout
+	c.MaxHeartbeatTimeout = config.RaftCore.MaxHeartbeatTimeout
 
-	gc.CreateFolderIfNotExists(config.DataFolder)
+	gc.CreateFolderIfNotExists(config.RaftCore.DataFolder)
 
 	log := observability.NewZerolog(config.Observability, 0)
 	c.log = log

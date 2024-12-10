@@ -1,7 +1,7 @@
 # this config file is for local development environment
 raft_core:
   cluster: 
-    mode: dynamic # the cluster can be either 'static' or 'dynamic'
+    mode: static # the cluster can be either 'static' or 'dynamic'
     servers: # if the mode is 'dynamic', `servers` will be ignored
       - id: 1
         host: "localhost"

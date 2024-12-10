@@ -60,7 +60,7 @@ func (c *Cluster) createNewNode(ctx context.Context, id int) (info gc.ClusterMem
 	info = gc.ClusterMember{ID: id, HttpUrl: httpUrl, RpcUrl: rpcUrl}
 	catchingUp := id > 1
 
-	param, err := node.PrepareNewNodeParams(ctx, id, httpUrl, rpcUrl, catchingUp, c.config)
+	param, err := node.PrepareNewNodeParams(ctx, id, httpUrl, rpcUrl, catchingUp, c.config, c.log)
 	if err != nil {
 		return info, err
 	}

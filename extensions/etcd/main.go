@@ -33,7 +33,7 @@ func main() {
 	logger := observability.NewZerolog(config.Observability, nId.ID)
 	logger.InfoContext(ctx, "config content", "config", config)
 
-	params, err := node.PrepareNewNodeParams(ctx, nId.ID, nId.HttpUrl, nId.RpcUrl, nId.CatchingUp, config)
+	params, err := node.PrepareNewNodeParams(ctx, nId.ID, nId.HttpUrl, nId.RpcUrl, nId.CatchingUp, config, nil)
 	if err != nil {
 		log.Panic(err)
 	}

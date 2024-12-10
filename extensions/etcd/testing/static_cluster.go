@@ -66,7 +66,7 @@ func (c *Cluster) init(filePath string) {
 			rpcUrl := fmt.Sprintf("%s:%d", mem.Host, mem.RpcPort)
 			httpUrl := fmt.Sprintf("%s:%d", mem.Host, mem.HttpPort)
 
-			param, err := node.PrepareNewNodeParams(ctx, id, httpUrl, rpcUrl, false, c.config)
+			param, err := node.PrepareNewNodeParams(ctx, id, httpUrl, rpcUrl, false, c.config, c.log)
 			if err != nil {
 				log.FatalContext(ctx, "PrepareNewNodeParams", "error", err)
 			}

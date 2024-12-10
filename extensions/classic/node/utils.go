@@ -4,9 +4,9 @@ import (
 	"context"
 	"fmt"
 	gc "khanh/raft-go/common"
-	"khanh/raft-go/extensions/etcd/common"
-	"khanh/raft-go/extensions/etcd/http_server"
-	"khanh/raft-go/extensions/etcd/state_machine"
+	"khanh/raft-go/extensions/classic/common"
+	"khanh/raft-go/extensions/classic/http_server"
+	"khanh/raft-go/extensions/classic/state_machine"
 	"khanh/raft-go/observability"
 	"khanh/raft-go/raft_core"
 	"khanh/raft-go/raft_core/logic"
@@ -61,11 +61,8 @@ func PrepareNewNodeParams(ctx context.Context, id int, httpUrl, rpcUrl string, c
 		return n, fmt.Errorf("PrepareNewNodeParams NewStorage: %w", err)
 	}
 
-	logFactory := common.EtcdLogFactory{
-		NewSnapshot: func() gc.Snapshot {
-			degree := config.Extension.StateMachineBTreeDegree
-			return state_machine.NewEtcdSnapshot(degree)
-		},
+	logFactory := common.ClassicLogFactory{
+		NewSnapshot: state_machine.NewClassicSnapshotI,
 	}
 
 	snapshot, raftPersistState, tmpClusterMembers, err := persistence_state.Deserialize(ctx, storage, config.RaftCore.Cluster.Mode, logger, logFactory)
@@ -108,16 +105,15 @@ func PrepareNewNodeParams(ctx context.Context, id int, httpUrl, rpcUrl string, c
 				RpcReconnectDuration: config.RaftCore.RpcReconnectDuration,
 			},
 		},
-		Extension: &EtcdExtParams{
-			HttpServer: http_server.NewEtcdHttpProxyParams{
+		Extension: &ClassicExtParams{
+			HttpServer: http_server.NewClassicHttpProxyParams{
 				URL:    httpUrl,
 				Logger: logger,
 			},
-			StateMachine: state_machine.NewBtreeKvStateMachineParams{
+			StateMachine: state_machine.NewClassicStateMachineParams{
+				ClientSessionDuration: uint64(config.Extension.ClientSessionDuration.Nanoseconds()),
 				Logger:                logger,
-				PersistenceState:      raftPersistState,
-				ResponseCacheCapacity: config.Extension.StateMachineHistoryCapacity,
-				BtreeDegree:           config.Extension.StateMachineBTreeDegree,
+				PersistState:          raftPersistState,
 				Snapshot:              snapshot,
 			},
 		},

@@ -6,14 +6,8 @@ import (
 	"fmt"
 	gc "khanh/raft-go/common"
 	"khanh/raft-go/extensions/classic/common"
-	http_proxy "khanh/raft-go/extensions/classic/http_server"
-	"khanh/raft-go/extensions/classic/state_machine"
-	"khanh/raft-go/node"
+	"khanh/raft-go/extensions/classic/node"
 	"khanh/raft-go/observability"
-	"khanh/raft-go/raft_core/logic"
-	"khanh/raft-go/raft_core/persistence_state"
-	"khanh/raft-go/raft_core/rpc_proxy"
-	"khanh/raft-go/raft_core/storage"
 	"log"
 	"os"
 	"sync"
@@ -28,7 +22,7 @@ type Cluster struct {
 	createNodeParams    map[int]node.NewNodeParams
 	MaxElectionTimeout  time.Duration
 	MaxHeartbeatTimeout time.Duration
-	config              *gc.Config
+	config              *common.Config
 }
 
 // after a cluster is created, need to wait a moment so a follower can win a election and become leader
@@ -41,7 +35,7 @@ func NewCluster(filePath string) *Cluster {
 
 func (c *Cluster) init(filePath string) {
 	ctx := context.Background()
-	config, err := gc.ReadConfigFromFile(&filePath)
+	config, err := common.ReadConfigFromFile(&filePath)
 	if err != nil {
 		log.Panic(err)
 	}
@@ -49,95 +43,31 @@ func (c *Cluster) init(filePath string) {
 
 	c.config = config
 
-	c.MaxElectionTimeout = config.MaxElectionTimeout
-	c.MaxHeartbeatTimeout = config.MaxHeartbeatTimeout
+	c.MaxElectionTimeout = config.RaftCore.MaxElectionTimeout
+	c.MaxHeartbeatTimeout = config.RaftCore.MaxHeartbeatTimeout
 
-	gc.CreateFolderIfNotExists(config.DataFolder)
+	gc.CreateFolderIfNotExists(config.RaftCore.DataFolder)
 
 	log := observability.NewZerolog(config.Observability, 0)
-
-	peers := []gc.ClusterMember{}
-	for _, mem := range config.Cluster.Servers {
-		peers = append(peers, gc.ClusterMember{
-			ID:      mem.ID,
-			RpcUrl:  fmt.Sprintf("%s:%d", mem.Host, mem.RpcPort),
-			HttpUrl: fmt.Sprintf("%s:%d", mem.Host, mem.HttpPort),
-		})
-	}
 
 	c.Nodes = make(map[int]*node.Node)
 	c.createNodeParams = make(map[int]node.NewNodeParams)
 
 	l := sync.WaitGroup{}
-	for _, mem := range peers {
+	for _, mem := range config.RaftCore.Cluster.Servers {
 		l.Add(1)
-		go func(mem gc.ClusterMember) {
-			dataFolder := fmt.Sprintf("%s%d/", c.config.DataFolder, mem.ID)
+		go func(mem gc.ClusterServerConfig) {
+			id := mem.ID
+			rpcUrl := fmt.Sprintf("%s:%d", mem.Host, mem.RpcPort)
+			httpUrl := fmt.Sprintf("%s:%d", mem.Host, mem.HttpPort)
 
-			storage, err := storage.NewStorage(storage.NewStorageParams{
-				WalSize:    config.WalSizeLimit,
-				DataFolder: dataFolder,
-				Logger:     log,
-			}, storage.FileWrapperImpl{})
+			param, err := node.PrepareNewNodeParams(ctx, id, httpUrl, rpcUrl, false, config, log)
 			if err != nil {
-				log.Fatal("new storage", "error", err.Error())
-			}
-
-			logFactory := common.ClassicLogFactory{
-				NewSnapshot: state_machine.NewClassicSnapshotI,
-			}
-
-			snapshot, raftPersistState, _, err := persistence_state.Deserialize(ctx, storage, gc.Static, log, logFactory)
-			if err != nil {
-				log.Fatal("deserialize system", "error", err.Error())
-			}
-
-			raftPersistState.SetStorage(storage)
-
-			param := node.NewNodeParams{
-				ID: mem.ID,
-				Brain: logic.NewRaftBrainParams{
-					ID:                  mem.ID,
-					Mode:                gc.Static,
-					CachingUp:           false,
-					HeartBeatTimeOutMin: config.MinHeartbeatTimeout,
-					HeartBeatTimeOutMax: config.MaxHeartbeatTimeout,
-					ElectionTimeOutMin:  config.MinElectionTimeout,
-					ElectionTimeOutMax:  config.MaxElectionTimeout,
-					Logger:              log,
-					Members:             peers,
-					RpcRequestTimeout:   config.RpcRequestTimeout,
-					PersistenceState:    raftPersistState,
-					LogLengthLimit:      config.LogLengthLimit,
-					SnapshotChunkSize:   config.SnapshotChunkSize,
-					LogFactory:          logFactory,
-				},
-				RPCProxy: rpc_proxy.NewRPCImplParams{
-					HostURL:              mem.RpcUrl,
-					Logger:               log,
-					HostID:               mem.ID,
-					RpcRequestTimeout:    config.RpcRequestTimeout,
-					RpcDialTimeout:       config.RpcDialTimeout,
-					RpcReconnectDuration: config.RpcReconnectDuration,
-				},
-				ClassicSetup: &node.ClassicSetup{
-					HttpServer: http_proxy.NewClassicHttpProxyParams{
-						URL:    mem.HttpUrl,
-						Logger: log,
-					},
-					StateMachine: state_machine.NewClassicStateMachineParams{
-						ClientSessionDuration: uint64(config.LogExtensions.Classic.ClientSessionDuration),
-						Logger:                log,
-						PersistState:          raftPersistState,
-						Snapshot:              snapshot,
-					},
-				},
-				LogExtensionEnabled: gc.LogExtensionClassic,
-				Logger:              log,
+				log.FatalContext(ctx, "PrepareNewNodeParams", "error", err)
 			}
 
 			n := node.NewNode(ctx, param)
-			n.Start(ctx, false, false)
+			n.Start(ctx)
 
 			c.createNodeParams[mem.ID] = param
 			c.Nodes[mem.ID] = n
@@ -145,18 +75,25 @@ func (c *Cluster) init(filePath string) {
 		}(mem)
 	}
 
-	rpcAgent, err := NewRPCImpl(NewRPCImplParams{Peers: peers, Log: log})
-	if err != nil {
-		panic(err)
-	}
-
 	httpServerUrls := []HttpServerConnectionInfo{}
+	peers := []gc.ClusterMember{}
 
-	for _, server := range config.Cluster.Servers {
+	for _, server := range config.RaftCore.Cluster.Servers {
 		httpServerUrls = append(httpServerUrls, HttpServerConnectionInfo{
 			Id:  server.ID,
 			Url: fmt.Sprintf("%s:%d", server.Host, server.HttpPort),
 		})
+
+		peers = append(peers, gc.ClusterMember{
+			ID:      server.ID,
+			RpcUrl:  fmt.Sprintf("%s:%d", server.Host, server.RpcPort),
+			HttpUrl: fmt.Sprintf("%s:%d", server.Host, server.HttpPort),
+		})
+	}
+
+	rpcAgent, err := NewRPCImpl(NewRPCImplParams{Peers: peers, Log: log})
+	if err != nil {
+		panic(err)
 	}
 
 	httpAgent := NewHttpAgent(HttpAgentArgs{
@@ -242,7 +179,7 @@ func (c *Cluster) StartNode(nodeId int) error {
 			continue
 		}
 		if node.ID == nodeId {
-			node.Start(context.Background(), false, false)
+			node.Start(context.Background())
 			break
 		}
 	}
