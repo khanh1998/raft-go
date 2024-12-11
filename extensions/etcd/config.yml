@@ -30,7 +30,7 @@ raft_core:
   cluster_time_commit_max_duration: 30s
   http_client_request_max_timeout: 60m
 extension:
-  state_machine_history_capacity: 1000
+  state_machine_history_capacity: 10
   state_machine_btree_degree: 32
   http_client_max_wait_timeout: 60m
 observability:

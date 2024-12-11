@@ -98,7 +98,7 @@ func (s *EtcdSnapshot) DeleteExpiredKeys(currTime uint64) []common.EtcdResultRes
 					s.ChangeIndex++
 					deleted = append(deleted, common.EtcdResultRes{
 						ChangeIndex: s.ChangeIndex,
-						Action:      "delete",
+						Action:      ActionExpired,
 						Node:        common.KeyValue{Key: kv.Key, CreatedIndex: kv.CreatedIndex, ModifiedIndex: s.ChangeIndex},
 						PrevNode:    kv,
 					})

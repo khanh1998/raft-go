@@ -66,6 +66,11 @@ services:
     volumes:
       - raft-node-3-data:/app/data
       - ./dc-config.yml:/app/config.yml
+  curl:
+    image: alpine/curl:latest
+    networks:
+      raft-network:
+    command: tail -f /dev/null
   
 networks:
   raft-network:

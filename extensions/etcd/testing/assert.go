@@ -117,7 +117,6 @@ func AssertSet(t *testing.T, c *Cluster, req go_client.SetRequest) (createdIndex
 	defer cancel()
 	res, err := c.HttpAgent.Set(ctx, req)
 	assert.NoError(t, err)
-	assert.Equal(t, res.Action, "set")
 	assert.Equal(t, res.Node.Key, req.Key)
 	assert.Greater(t, res.Node.CreatedIndex, 0)
 	assert.GreaterOrEqual(t, res.Node.ModifiedIndex, res.Node.CreatedIndex)
@@ -132,7 +131,6 @@ func AssertDelete(t *testing.T, c *Cluster, req go_client.DeleteRequest, expectE
 		assert.Error(t, err)
 	} else {
 		assert.NoError(t, err)
-		assert.Equal(t, res.Action, "delete")
 		assert.Equal(t, res.Node.Key, req.Key)
 		assert.GreaterOrEqual(t, res.Node.CreatedIndex, 0)
 		assert.GreaterOrEqual(t, res.Node.ModifiedIndex, 0)
