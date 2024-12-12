@@ -367,9 +367,9 @@ func (b *BtreeKvStateMachine) Process(ctx context.Context, logIndex int, logI gc
 		return result, nil
 	}
 
-	// get doesn't append a log,
+	// action `get` doesn't append a log,
 	// thus doesn't provide cluster time to expire key
-	if log.GetTerm() > 0 {
+	if log.GetTime() > 0 {
 		resList := b.current.DeleteExpiredKeys(log.GetTime())
 		for _, r := range resList {
 			b.watcher.Notify(r)
@@ -414,10 +414,13 @@ func (b *BtreeKvStateMachine) Process(ctx context.Context, logIndex int, logI gc
 
 		return common.EtcdResult{Data: res}, nil
 	case gc.NoOperation:
+		b.current.UpdateMetadata(log.GetTerm(), logIndex)
 		return nil, nil
 	case gc.TimeCommit:
+		b.current.UpdateMetadata(log.GetTerm(), logIndex)
 		return nil, nil
 	case common.AddServer:
+		b.current.UpdateMetadata(log.GetTerm(), logIndex)
 		_, serverId, httpUrl, rpcUrl, err := log.DecomposeChangeSeverCommand()
 		if err != nil {
 			return common.EtcdResult{}, common.EtcdResultErr{
@@ -435,6 +438,7 @@ func (b *BtreeKvStateMachine) Process(ctx context.Context, logIndex int, logI gc
 		}
 		return nil, nil
 	case common.RemoveServer:
+		b.current.UpdateMetadata(log.GetTerm(), logIndex)
 		_, serverId, _, _, err := log.DecomposeChangeSeverCommand()
 		if err != nil {
 			return common.EtcdResult{}, common.EtcdResultErr{
@@ -448,6 +452,7 @@ func (b *BtreeKvStateMachine) Process(ctx context.Context, logIndex int, logI gc
 		delete(b.current.LastConfig, serverId)
 		return nil, nil
 	default:
+		b.current.UpdateMetadata(log.GetTerm(), logIndex)
 		return result, common.EtcdResultErr{
 			Cause:     command.Action,
 			Message:   ErrUnsupportedCommand.Error(),
@@ -457,12 +462,31 @@ func (b *BtreeKvStateMachine) Process(ctx context.Context, logIndex int, logI gc
 
 	return nil, nil
 }
+
 func (b *BtreeKvStateMachine) StartSnapshot(ctx context.Context) error {
+	b.lock.Lock()
+	sm := b.current.Metadata()
+	b.current.FileName = gc.NewSnapshotFileName(sm.LastLogTerm, sm.LastLogIndex)
+	snapshot := b.current.Copy()
+	b.lock.Unlock()
+
+	go func() {
+		b.snapshotLock.Lock()
+		defer b.snapshotLock.Unlock()
+
+		err := b.persistenceState.SaveSnapshot(ctx, snapshot)
+		if err != nil {
+			b.log().ErrorContext(ctx, "StartSnapshot_SaveSnapshot", err)
+		}
+	}()
+
 	return nil
 }
+
 func (b *BtreeKvStateMachine) GetLastConfig() map[int]gc.ClusterMember {
-	return nil
+	return b.current.LastConfig
 }
+
 func (b *BtreeKvStateMachine) log() observability.Logger {
 	sub := b.logger.With(
 		"source", "btree state machine",

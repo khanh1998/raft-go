@@ -59,7 +59,8 @@ cd extensions/etcd
 make noded1
 ```
 ### Configuration
-Each extension uses a config.yml file for configuration, including cluster size, ports, and other options. Ensure the file is properly configured before starting the applications.
+Each extension uses a `config.yml` file for configuration, including cluster size, ports, and other options. Ensure the file is properly configured before starting the applications.
+- [Raft core configuration](raft_core/README.md)
 
 ### Client Communication
 Both extensions use HTTP for client communication.

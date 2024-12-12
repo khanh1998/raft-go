@@ -27,6 +27,11 @@ func NewEtcdSnapshot(btreeDegree int) *EtcdSnapshot {
 	}
 }
 
+func (s *EtcdSnapshot) UpdateMetadata(lastLogTerm, lastLogIndex int) {
+	s.LastLogTerm = lastLogTerm
+	s.LastLogIndex = lastLogIndex
+}
+
 func (s EtcdSnapshot) DeleteKey(key string, logIndex int, term int) (int, common.KeyValue) {
 	s.LastLogIndex = logIndex
 	s.LastLogTerm = term

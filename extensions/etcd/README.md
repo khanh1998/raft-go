@@ -1,5 +1,19 @@
 In this clone, directory-like storage is not supported as in the original Etcd 2.3. However, it supports prefixes to mimic directory storage behavior. For example, you can query or delete all keys with a specific prefix.
 
+# **Configuration**
+The Etcd extension's configuration is located under the `extension` section in `config.yaml`. Below is an explanation of the available options:
+
+- **`state_machine_history_capacity`**  
+  Each time the state machine is modified, it emits an event. Recent events are cached, and this configuration determines the size of that cache.  
+  **Recommended size:** `1000` to `2000`.
+
+- **`state_machine_btree_degree`**  
+  The state machine stores key-value pairs internally using a BTree structure to support efficient key range queries. This setting specifies the degree of the BTree.
+  **Recommended degree:** `32` to `128`.
+
+- **`http_client_max_wait_timeout`**  
+  This extension supports clients waiting for changes to specific keys using long polling. This configuration specifies the maximum duration a client can wait for a key update.
+  **Recommended value:** `60m`.
 # Start the Cluster
 Change the directory to the Etcd extension
 ```
@@ -294,7 +308,7 @@ Response:
 }
 ```
 Notes:
-1. `expirationTime` reflects cluster time, utilizing the [cluster clock](cluster-clock.md) mechanism.
+1. `expirationTime` reflects cluster time, utilizing the [cluster clock](../../raft_core/cluster-clock.md) mechanism.
 2. TTL accuracy is limited; avoid durations < 1 minute.
 3. Expired keys return 404 errors.
 4. When a key expires, clients waiting for key updates receive a expiration notification.
