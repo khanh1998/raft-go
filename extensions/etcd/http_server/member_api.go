@@ -3,10 +3,19 @@ package http_server
 import (
 	gc "khanh/raft-go/common"
 	"khanh/raft-go/extensions/etcd/common"
+	"net"
 	"strconv"
 
 	"github.com/gin-gonic/gin"
 )
+
+func checkUrl(inputUrl string) error {
+	_, _, err := net.SplitHostPort(inputUrl)
+	if err != nil {
+		return err
+	}
+	return nil
+}
 
 func (h *EtcdHttpProxy) memberApi(r *gin.Engine) {
 	r.GET("/v2/members", func(c *gin.Context) {

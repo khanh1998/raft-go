@@ -182,7 +182,7 @@ func (b *BtreeKvStateMachine) put(ctx context.Context, log common.EtcdLog, logIn
 			newData.Value = *command.Value
 		}
 
-		_, newData = b.current.Update(newData, logIndex, log.GetTerm())
+		_, newData = b.current.Update(newData, logIndex, log.GetTerm(), log.GetTime())
 
 		return common.EtcdResultRes{
 			Action:      action,
@@ -210,7 +210,7 @@ func (b *BtreeKvStateMachine) put(ctx context.Context, log common.EtcdLog, logIn
 		if command.Ttl != nil && *command.Ttl > 0 {
 			kv.ExpirationTime = log.Time + *command.Ttl
 		}
-		_, data := b.current.Create(kv, logIndex, log.GetTerm())
+		_, data := b.current.Create(kv, logIndex, log.GetTerm(), log.GetTime())
 
 		return common.EtcdResultRes{
 			Action:      action,
@@ -232,7 +232,7 @@ func (b *BtreeKvStateMachine) delete(log common.EtcdLog, logIndex int) (common.E
 		})
 
 		for _, key := range deleteKeyVal {
-			b.current.DeleteKey(key.Key, logIndex, log.GetTerm())
+			b.current.DeleteKey(key.Key, logIndex, log.GetTerm(), log.GetTime())
 		}
 
 		return common.EtcdResultRes{
@@ -260,7 +260,7 @@ func (b *BtreeKvStateMachine) delete(log common.EtcdLog, logIndex int) (common.E
 			return common.EtcdResultRes{}, err
 		}
 
-		b.current.DeleteKey(command.Key, logIndex, log.GetTerm())
+		b.current.DeleteKey(command.Key, logIndex, log.GetTerm(), log.Time)
 
 		return common.EtcdResultRes{
 			Action: action,
@@ -414,13 +414,13 @@ func (b *BtreeKvStateMachine) Process(ctx context.Context, logIndex int, logI gc
 
 		return common.EtcdResult{Data: res}, nil
 	case gc.NoOperation:
-		b.current.UpdateMetadata(log.GetTerm(), logIndex)
+		b.current.UpdateMetadata(log.GetTerm(), logIndex, log.GetTime())
 		return nil, nil
 	case gc.TimeCommit:
-		b.current.UpdateMetadata(log.GetTerm(), logIndex)
+		b.current.UpdateMetadata(log.GetTerm(), logIndex, log.GetTime())
 		return nil, nil
 	case common.AddServer:
-		b.current.UpdateMetadata(log.GetTerm(), logIndex)
+		b.current.UpdateMetadata(log.GetTerm(), logIndex, log.GetTime())
 		_, serverId, httpUrl, rpcUrl, err := log.DecomposeChangeSeverCommand()
 		if err != nil {
 			return common.EtcdResult{}, common.EtcdResultErr{
@@ -438,7 +438,7 @@ func (b *BtreeKvStateMachine) Process(ctx context.Context, logIndex int, logI gc
 		}
 		return nil, nil
 	case common.RemoveServer:
-		b.current.UpdateMetadata(log.GetTerm(), logIndex)
+		b.current.UpdateMetadata(log.GetTerm(), logIndex, log.GetTime())
 		_, serverId, _, _, err := log.DecomposeChangeSeverCommand()
 		if err != nil {
 			return common.EtcdResult{}, common.EtcdResultErr{
@@ -452,7 +452,7 @@ func (b *BtreeKvStateMachine) Process(ctx context.Context, logIndex int, logI gc
 		delete(b.current.LastConfig, serverId)
 		return nil, nil
 	default:
-		b.current.UpdateMetadata(log.GetTerm(), logIndex)
+		b.current.UpdateMetadata(log.GetTerm(), logIndex, log.GetTime())
 		return result, common.EtcdResultErr{
 			Cause:     command.Action,
 			Message:   ErrUnsupportedCommand.Error(),

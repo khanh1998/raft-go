@@ -110,9 +110,12 @@ func (r *RaftBrainImpl) autoCommitClusterTime(ctx context.Context) {
 func (r *RaftBrainImpl) resetClusterTime() {
 	lastLog, err := r.persistState.GetLastLog()
 	if err == nil {
+		r.log().Info("resetClusterTime", "lastLog", lastLog)
 		r.clusterClock.NewEpoch(lastLog.GetTime())
 	} else {
 		// if there is no log
-		r.clusterClock = NewClusterClock()
+		r.log().Error("resetClusterTime: will get time from snapshot", err)
+		clusterTime := r.persistState.GetLatestSnapshotMetadata().LastLogTime
+		r.clusterClock.NewEpoch(clusterTime)
 	}
 }

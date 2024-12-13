@@ -35,12 +35,13 @@ func TestEtcdSnapshot_ToString(t *testing.T) {
 				SnapshotMetadata: gc.SnapshotMetadata{
 					LastLogTerm:  123,
 					LastLogIndex: 456,
+					LastLogTime:  789,
 					FileName:     "snapshot.0001.dat",
 				},
 				ChangeIndex: 6,
 			},
 			wantData: []string{
-				"last_log_index=456", "last_log_term=123", "change_index=6", "member_count=3", "key_value_count=2",
+				"last_log_index=456", "last_log_term=123", "last_log_time=789", "change_index=6", "member_count=3", "key_value_count=2",
 				"3|localhost:8082|localhost:1236",
 				"1|localhost:8080|localhost:1234",
 				"2|localhost:8081|localhost:1235",
@@ -89,7 +90,7 @@ func TestEtcdSnapshot_FromString(t *testing.T) {
 			name: "first",
 			args: args{
 				data: []string{
-					"last_log_index=456", "last_log_term=123", "change_index=6", "member_count=3", "key_value_count=2",
+					"last_log_index=456", "last_log_term=123", "last_log_time=789", "change_index=6", "member_count=3", "key_value_count=2",
 					"3|localhost:8082|localhost:1236",
 					"1|localhost:8080|localhost:1234",
 					"2|localhost:8081|localhost:1235",

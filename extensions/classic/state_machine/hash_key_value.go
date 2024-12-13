@@ -166,9 +166,6 @@ func (k *ClassicStateMachine) Process(ctx context.Context, logIndex int, logI gc
 	defer func() {
 		k.setSession(log.ClientID, log.SequenceNum, result)
 
-		k.current.LastLogIndex = logIndex
-		k.current.LastLogTerm = log.Term
-
 		k.log().Debug(
 			"Process",
 			"clientId", log.ClientID,
@@ -202,6 +199,14 @@ func (k *ClassicStateMachine) Process(ctx context.Context, logIndex int, logI gc
 
 	tokens := strings.Split(command, " ")
 	cmd := strings.ToLower(tokens[0])
+
+	if cmd != "get" {
+		// `get` doesn't really append new log,
+		// so it doesn't have these info to update
+		k.current.LastLogIndex = logIndex
+		k.current.LastLogTerm = log.GetTerm()
+		k.current.LastLogTime = log.GetTime()
+	}
 
 	switch cmd {
 	case "get":

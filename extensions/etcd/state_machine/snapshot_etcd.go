@@ -27,14 +27,14 @@ func NewEtcdSnapshot(btreeDegree int) *EtcdSnapshot {
 	}
 }
 
-func (s *EtcdSnapshot) UpdateMetadata(lastLogTerm, lastLogIndex int) {
-	s.LastLogTerm = lastLogTerm
-	s.LastLogIndex = lastLogIndex
+func (s *EtcdSnapshot) UpdateMetadata(logTerm, logIndex int, logTime uint64) {
+	s.LastLogTerm = logTerm
+	s.LastLogIndex = logIndex
+	s.LastLogTime = logTime
 }
 
-func (s EtcdSnapshot) DeleteKey(key string, logIndex int, term int) (int, common.KeyValue) {
-	s.LastLogIndex = logIndex
-	s.LastLogTerm = term
+func (s *EtcdSnapshot) DeleteKey(key string, logIndex int, logTerm int, logTime uint64) (int, common.KeyValue) {
+	s.UpdateMetadata(logTerm, logIndex, logTime)
 	kv, found := s.KeyValue.Delete(common.KeyValue{Key: key})
 	if found {
 		s.ChangeIndex++
@@ -44,9 +44,8 @@ func (s EtcdSnapshot) DeleteKey(key string, logIndex int, term int) (int, common
 	return s.ChangeIndex, kv
 }
 
-func (s *EtcdSnapshot) Update(kv common.KeyValue, logIndex int, term int) (int, common.KeyValue) {
-	s.LastLogIndex = logIndex
-	s.LastLogTerm = term
+func (s *EtcdSnapshot) Update(kv common.KeyValue, logIndex int, logTerm int, logTime uint64) (int, common.KeyValue) {
+	s.UpdateMetadata(logTerm, logIndex, logTime)
 	s.ChangeIndex++
 	kv.ModifiedIndex = s.ChangeIndex
 
@@ -60,9 +59,8 @@ func (s *EtcdSnapshot) Update(kv common.KeyValue, logIndex int, term int) (int, 
 	return s.ChangeIndex, kv
 }
 
-func (s *EtcdSnapshot) Create(kv common.KeyValue, logIndex int, term int) (int, common.KeyValue) {
-	s.LastLogIndex = logIndex
-	s.LastLogTerm = term
+func (s *EtcdSnapshot) Create(kv common.KeyValue, logIndex int, logTerm int, logTime uint64) (int, common.KeyValue) {
+	s.UpdateMetadata(logTerm, logIndex, logTime)
 	s.ChangeIndex++
 
 	kv.CreatedIndex = s.ChangeIndex
@@ -131,6 +129,7 @@ func (s EtcdSnapshot) Copy() gc.Snapshot {
 		LastConfig:       config,
 		KeyValue:         s.KeyValue.Clone(),
 		SnapshotMetadata: s.SnapshotMetadata,
+		ChangeIndex:      s.ChangeIndex,
 	}
 }
 
@@ -141,6 +140,7 @@ func (s EtcdSnapshot) Serialize() (data []byte) {
 func (s EtcdSnapshot) ToString() (data []string) {
 	data = append(data, fmt.Sprintf("last_log_index=%d", s.LastLogIndex))
 	data = append(data, fmt.Sprintf("last_log_term=%d", s.LastLogTerm))
+	data = append(data, fmt.Sprintf("last_log_time=%d", s.LastLogTime))
 	data = append(data, fmt.Sprintf("change_index=%d", s.ChangeIndex))
 
 	data = append(data, fmt.Sprintf("member_count=%d", len(s.LastConfig)))
@@ -171,6 +171,12 @@ func (s *EtcdSnapshot) FromString(data []string) error {
 	}
 
 	i += 1
+	lastLogTime, err := strconv.ParseUint(strings.Split(data[i], "=")[1], 10, 64)
+	if err != nil {
+		return fmt.Errorf("cannot read last log term: %w", err)
+	}
+
+	i += 1
 	changeIndex, err := strconv.Atoi(strings.Split(data[i], "=")[1])
 	if err != nil {
 		return fmt.Errorf("cannot read last log term: %w", err)
@@ -190,6 +196,7 @@ func (s *EtcdSnapshot) FromString(data []string) error {
 
 	s.LastLogIndex = lastLogIndex
 	s.LastLogTerm = lastLogTerm
+	s.LastLogTime = lastLogTime
 	s.ChangeIndex = changeIndex
 
 	for j := 0; j < memberCount; j++ {

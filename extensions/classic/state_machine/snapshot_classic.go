@@ -8,12 +8,15 @@ import (
 	"strings"
 )
 
+// unused
 type ClassicSnapshotFactory struct{}
 
+// unused
 func (c ClassicSnapshotFactory) Deserialize(data []byte) (*ClassicSnapshot, error) {
 	return nil, nil
 }
 
+// unused
 func (c ClassicSnapshotFactory) FromString(data []string) (*ClassicSnapshot, error) {
 	lastLogIndex, err := strconv.Atoi(strings.Split(data[0], "=")[1])
 	if err != nil {
@@ -25,22 +28,27 @@ func (c ClassicSnapshotFactory) FromString(data []string) (*ClassicSnapshot, err
 		return nil, fmt.Errorf("cannot read last log term: %w", err)
 	}
 
-	memberCount, err := strconv.Atoi(strings.Split(data[2], "=")[1])
+	lastLogTime, err := strconv.ParseUint(strings.Split(data[2], "=")[1], 10, 64)
+	if err != nil {
+		return nil, fmt.Errorf("cannot read last log term: %w", err)
+	}
+
+	memberCount, err := strconv.Atoi(strings.Split(data[3], "=")[1])
 	if err != nil {
 		return nil, fmt.Errorf("cannot read member count: %w", err)
 	}
 
-	sessionCount, err := strconv.Atoi(strings.Split(data[3], "=")[1])
+	sessionCount, err := strconv.Atoi(strings.Split(data[4], "=")[1])
 	if err != nil {
 		return nil, fmt.Errorf("cannot read session count: %w", err)
 	}
 
-	keyValueCount, err := strconv.Atoi(strings.Split(data[4], "=")[1])
+	keyValueCount, err := strconv.Atoi(strings.Split(data[5], "=")[1])
 	if err != nil {
 		return nil, fmt.Errorf("cannot read key-value pair count: %w", err)
 	}
 
-	keyLockCount, err := strconv.Atoi(strings.Split(data[5], "=")[1])
+	keyLockCount, err := strconv.Atoi(strings.Split(data[6], "=")[1])
 	if err != nil {
 		return nil, fmt.Errorf("cannot read key-lock count: %w", err)
 	}
@@ -49,8 +57,9 @@ func (c ClassicSnapshotFactory) FromString(data []string) (*ClassicSnapshot, err
 
 	s.LastLogIndex = lastLogIndex
 	s.LastLogTerm = lastLogTerm
+	s.LastLogTime = lastLogTime
 
-	i := 5
+	i := 6
 	for j := 0; j < memberCount; j++ {
 		i++
 		cm := gc.ClusterMember{}
@@ -154,6 +163,7 @@ func (s ClassicSnapshot) Copy() gc.Snapshot {
 		SnapshotMetadata: gc.SnapshotMetadata{
 			LastLogTerm:  s.LastLogTerm,
 			LastLogIndex: s.LastLogIndex,
+			LastLogTime:  s.LastLogTime,
 			FileName:     s.FileName,
 		},
 	}
@@ -166,6 +176,7 @@ func (s ClassicSnapshot) GetLastConfig() map[int]gc.ClusterMember {
 func (s ClassicSnapshot) ToString() (data []string) {
 	data = append(data, fmt.Sprintf("last_log_index=%d", s.LastLogIndex))
 	data = append(data, fmt.Sprintf("last_log_term=%d", s.LastLogTerm))
+	data = append(data, fmt.Sprintf("last_log_time=%d", s.LastLogTime))
 
 	data = append(data, fmt.Sprintf("member_count=%d", len(s.LastConfig)))
 	data = append(data, fmt.Sprintf("session_count=%d", len(s.Sessions)))
@@ -210,30 +221,36 @@ func (s *ClassicSnapshot) FromString(data []string) error {
 		return fmt.Errorf("cannot read last log term: %w", err)
 	}
 
-	memberCount, err := strconv.Atoi(strings.Split(data[2], "=")[1])
+	lastLogTime, err := strconv.ParseUint(strings.Split(data[2], "=")[1], 10, 64)
+	if err != nil {
+		return fmt.Errorf("cannot read last log term: %w", err)
+	}
+
+	memberCount, err := strconv.Atoi(strings.Split(data[3], "=")[1])
 	if err != nil {
 		return fmt.Errorf("cannot read member count: %w", err)
 	}
 
-	sessionCount, err := strconv.Atoi(strings.Split(data[3], "=")[1])
+	sessionCount, err := strconv.Atoi(strings.Split(data[4], "=")[1])
 	if err != nil {
 		return fmt.Errorf("cannot read session count: %w", err)
 	}
 
-	keyValueCount, err := strconv.Atoi(strings.Split(data[4], "=")[1])
+	keyValueCount, err := strconv.Atoi(strings.Split(data[5], "=")[1])
 	if err != nil {
 		return fmt.Errorf("cannot read key-value pair count: %w", err)
 	}
 
-	keyLockCount, err := strconv.Atoi(strings.Split(data[5], "=")[1])
+	keyLockCount, err := strconv.Atoi(strings.Split(data[6], "=")[1])
 	if err != nil {
 		return fmt.Errorf("cannot read key-lock count: %w", err)
 	}
 
 	s.LastLogIndex = lastLogIndex
 	s.LastLogTerm = lastLogTerm
+	s.LastLogTime = lastLogTime
 
-	i := 5
+	i := 6
 	for j := 0; j < memberCount; j++ {
 		i++
 		cm := gc.ClusterMember{}

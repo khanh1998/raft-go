@@ -82,16 +82,21 @@ func (c *Cluster) init(filePath string) {
 		}(mem)
 	}
 
-	httpServerUrls := []gc.ClusterMember{}
+	httpServerUrls := []go_client.Member{}
 
 	for _, server := range config.RaftCore.Cluster.Servers {
-		httpServerUrls = append(httpServerUrls, gc.ClusterMember{
-			ID:      server.ID,
-			HttpUrl: fmt.Sprintf("%s:%d", server.Host, server.HttpPort),
+		httpServerUrls = append(httpServerUrls, go_client.Member{
+			ID:     server.ID,
+			Host:   fmt.Sprintf("%s:%d", server.Host, server.HttpPort),
+			Scheme: "http", // http for local testing
 		})
 	}
 
-	httpAgent := go_client.NewHttpClient(httpServerUrls, log)
+	httpAgent, err := go_client.NewHttpClient(httpServerUrls, log)
+	if err != nil {
+		log.FatalContext(ctx, "StaticCluster_NewHttpClient", "error", err)
+	}
+
 	c.HttpAgent = httpAgent
 	c.log = log
 

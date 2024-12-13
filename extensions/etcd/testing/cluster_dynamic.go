@@ -100,5 +100,8 @@ func (c *Cluster) initDynamic(filePath string) {
 		panic(err)
 	}
 
-	c.HttpAgent = go_client.NewHttpClient([]gc.ClusterMember{{ID: info.ID, HttpUrl: info.HttpUrl, RpcUrl: info.RpcUrl}}, c.log)
+	c.HttpAgent, err = go_client.NewHttpClient([]go_client.Member{{ID: info.ID, Host: info.HttpUrl, Scheme: "http"}}, c.log)
+	if err != nil {
+		c.log.Fatal("DynamicCluster_NewHttpClient", "error", err)
+	}
 }

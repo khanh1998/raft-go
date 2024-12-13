@@ -45,9 +45,12 @@ func TestBtreeKvStateMachine_get(t *testing.T) {
 				},
 				logIndex: 0,
 			},
-			wantRes: common.EtcdResultRes{Action: "get", Node: common.KeyValue{
-				Key: "name", Value: "khanh", CreatedIndex: 1, ModifiedIndex: 1,
-			},
+			wantRes: common.EtcdResultRes{
+				ChangeIndex: 1,
+				Action:      "get",
+				Node: common.KeyValue{
+					Key: "name", Value: "khanh", CreatedIndex: 1, ModifiedIndex: 1,
+				},
 			},
 			wantErr: false,
 		},
@@ -63,7 +66,7 @@ func TestBtreeKvStateMachine_get(t *testing.T) {
 				watcher:          NewWatcher(5),
 			}
 			for _, kv := range tt.fields.keyValues {
-				b.current.Create(kv, 1, 1)
+				b.current.Create(kv, 1, 1, 1)
 			}
 
 			gotRes, gotErr := b.get(tt.args.log.Command)

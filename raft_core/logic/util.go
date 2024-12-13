@@ -148,7 +148,7 @@ func (n *RaftBrainImpl) applyLog(ctx context.Context) {
 			break
 		}
 
-		if n.state == gc.StateFollower {
+		if n.state != gc.StateLeader {
 			n.clusterClock.NewEpoch(log.GetTime())
 		}
 

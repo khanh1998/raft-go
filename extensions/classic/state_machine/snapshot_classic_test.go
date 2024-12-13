@@ -56,12 +56,14 @@ func TestSnapshot_FromString(t *testing.T) {
 				SnapshotMetadata: gc.SnapshotMetadata{
 					LastLogTerm:  5,
 					LastLogIndex: 6,
+					LastLogTime:  7,
 				},
 			},
 			args: args{
 				data: []string{
 					"last_log_index=6",
 					"last_log_term=5",
+					"last_log_term=7",
 					"member_count=2",
 					"session_count=2",
 					"key_value_count=3",
@@ -138,11 +140,13 @@ func TestSnapshot_ToString(t *testing.T) {
 				SnapshotMetadata: gc.SnapshotMetadata{
 					LastLogTerm:  5,
 					LastLogIndex: 6,
+					LastLogTime:  7,
 				},
 			},
 			wantData: []string{
 				"last_log_index=6",
 				"last_log_term=5",
+				"last_log_time=7",
 				"member_count=2",
 				"session_count=2",
 				"key_value_count=3",

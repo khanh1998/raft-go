@@ -9,8 +9,8 @@ import (
 
 type ClusterMember struct {
 	ID      int    `mapstructure:"id"`
-	RpcUrl  string `mapstructure:"rpc_url"`
-	HttpUrl string `mapstructure:"http_url"`
+	RpcUrl  string `mapstructure:"rpc_url"`  // ex: localhost:1234
+	HttpUrl string `mapstructure:"http_url"` // ex: localhost:8080
 }
 
 func (c ClusterMember) ToString() string {

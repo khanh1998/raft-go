@@ -9,6 +9,7 @@ import (
 	gc "khanh/raft-go/common"
 	"khanh/raft-go/extensions/etcd/common"
 	"khanh/raft-go/observability"
+	"net"
 	"net/http"
 	"net/http/httputil"
 	"net/url"
@@ -30,15 +31,22 @@ type ResponseHeader struct {
 	RaftTerm  int
 }
 
+type Member struct {
+	ID     int
+	Host   string // localhost:8080
+	Scheme string // http or https
+}
+
 type HttpClient struct {
 	client      http.Client
-	nodeUrls    []gc.ClusterMember
-	nodeUrlsMap map[int]gc.ClusterMember
+	nodeUrls    []Member
+	nodeUrlsMap map[int]Member
 	leaderId    int
 	logger      observability.Logger
 }
 
-func NewHttpClient(nodeUrls []gc.ClusterMember, logger observability.Logger) *HttpClient {
+// NewHttpClient creates a new client for interacting with the cluster.
+func NewHttpClient(nodeUrls []Member, logger observability.Logger) (*HttpClient, error) {
 	if len(nodeUrls) == 0 {
 		logger.Fatal("NewHttpClient: empty node url list", "nodeUrls", nodeUrls)
 	}
@@ -46,14 +54,17 @@ func NewHttpClient(nodeUrls []gc.ClusterMember, logger observability.Logger) *Ht
 		client: http.Client{
 			Timeout: 0, // timeout is unlimited, we need it for waiting for change on key
 		},
-		nodeUrls:    []gc.ClusterMember{},
-		nodeUrlsMap: map[int]gc.ClusterMember{},
+		nodeUrls:    []Member{},
+		nodeUrlsMap: map[int]Member{},
 		leaderId:    0, // no leader was known
 		logger:      logger,
 	}
 
 	for _, node := range nodeUrls {
-		h.addMemberInfo(node)
+		err := h.addMemberInfo(node.ID, node.Host, node.Scheme)
+		if err != nil {
+			return nil, err
+		}
 	}
 
 	h.client.CheckRedirect = func(req *http.Request, via []*http.Request) error {
@@ -79,7 +90,7 @@ func NewHttpClient(nodeUrls []gc.ClusterMember, logger observability.Logger) *Ht
 			)
 
 			for _, node := range h.nodeUrls {
-				if strings.Contains(locationHeader, node.HttpUrl) {
+				if strings.Contains(locationHeader, node.Host) {
 					h.leaderId = node.ID
 				}
 			}
@@ -87,7 +98,7 @@ func NewHttpClient(nodeUrls []gc.ClusterMember, logger observability.Logger) *Ht
 		return nil
 	}
 
-	return h
+	return h, nil
 }
 
 var (
@@ -96,17 +107,19 @@ var (
 	ErrNoLeaderCanBeFound = errors.New("no leader can be found")
 )
 
+// getUrl returns url of an node, like http://localhost:8080
 func (h HttpClient) getUrl(id int) (string, error) {
 	if node, ok := h.nodeUrlsMap[id]; ok {
-		return node.HttpUrl, nil
+		return fmt.Sprintf("%s://%s", node.Scheme, node.Host), nil
 	}
 	return "", ErrNodeIdDoesNotExist
 }
 
+// leaderUrl returns url of the current leader, like http://localhost:8080
 func (h HttpClient) leaderUrl() string {
 	if h.leaderId != 0 {
 		if node, ok := h.nodeUrlsMap[h.leaderId]; ok {
-			return node.HttpUrl
+			return fmt.Sprintf("%s://%s", node.Scheme, node.Host)
 		}
 	}
 	return ""
@@ -212,7 +225,9 @@ func (h HttpClient) findAndDo(ctx context.Context, httpReq *http.Request) (httpR
 
 		tried[targetNodeIndex] = struct{}{}
 
-		httpReq.URL.Host = h.nodeUrls[targetNodeIndex].HttpUrl
+		target := h.nodeUrls[targetNodeIndex]
+		httpReq.URL.Host = target.Host
+		httpReq.URL.Scheme = target.Scheme
 
 		dumpReq, _ := httputil.DumpRequestOut(httpReq, true)
 
@@ -242,7 +257,7 @@ func (h HttpClient) findAndDo(ctx context.Context, httpReq *http.Request) (httpR
 
 // find leader and send get request to it
 func (h HttpClient) Get(ctx context.Context, req GetRequest) (success EtcdResponse, err error) {
-	leaderUrl := "http://" + h.leaderUrl() + KeyApiPath + req.Key
+	leaderUrl := h.leaderUrl() + KeyApiPath + req.Key
 	httpReq, err := http.NewRequestWithContext(ctx, http.MethodGet, leaderUrl, nil)
 	if err != nil {
 		return success, err
@@ -296,7 +311,7 @@ func (sr SetRequest) ToFormData() string {
 }
 
 func (h HttpClient) Set(ctx context.Context, req SetRequest) (success EtcdResponse, err error) {
-	url := "http://" + h.leaderUrl() + KeyApiPath + req.Key
+	url := h.leaderUrl() + KeyApiPath + req.Key
 	formData := req.ToFormData()
 	httpReq, err := http.NewRequestWithContext(ctx, http.MethodPut, url, bytes.NewBufferString(formData))
 	if err != nil {
@@ -339,7 +354,7 @@ func (sr DeleteRequest) ToQueryString() string {
 }
 
 func (h HttpClient) Delete(ctx context.Context, req DeleteRequest) (success EtcdResponse, err error) {
-	url := "http://" + h.leaderUrl() + KeyApiPath + req.Key
+	url := h.leaderUrl() + KeyApiPath + req.Key
 	httpReq, err := http.NewRequestWithContext(ctx, http.MethodDelete, url, nil)
 	if err != nil {
 		return success, err
@@ -370,17 +385,32 @@ func handleMemberApiResponse(httpRes *http.Response) (err error) {
 
 type ClusterMemberRequest struct {
 	gc.ClusterMember
+	Https bool
 }
 
-func (c ClusterMemberRequest) ToQueryString() string {
+func (c ClusterMemberRequest) ToQueryString() (string, error) {
+	host, port, err := net.SplitHostPort(c.RpcUrl)
+	if err != nil {
+		return "", err
+	}
+	rpcUrl := fmt.Sprintf("%s:%s", host, port)
+
+	host, port, err = net.SplitHostPort(c.HttpUrl)
+	if err != nil {
+		return "", err
+	}
+
+	httpUrl := fmt.Sprintf("%s:%s", host, port)
+
+	ParseRpcUrl(c.RpcUrl)
 	values := url.Values{}
-	values.Set("httpUrl", c.HttpUrl)
-	values.Set("rpcUrl", c.RpcUrl)
-	return values.Encode()
+	values.Set("httpUrl", httpUrl)
+	values.Set("rpcUrl", rpcUrl)
+	return values.Encode(), nil
 }
 
 func (h HttpClient) GetMembers(ctx context.Context) (members []gc.ClusterMember, err error) {
-	url := "http://" + h.leaderUrl() + KeyApiPath
+	url := h.leaderUrl() + KeyApiPath
 	httpReq, err := http.NewRequestWithContext(ctx, http.MethodGet, url, nil)
 	if err != nil {
 		return members, err
@@ -400,36 +430,62 @@ func (h HttpClient) GetMembers(ctx context.Context) (members []gc.ClusterMember,
 	return members, nil
 }
 
-func (h *HttpClient) removeMemberInfo(mem gc.ClusterMember) {
+func (h *HttpClient) removeMemberInfo(id int) {
 	removeIndex := -1
 	for index, node := range h.nodeUrls {
-		if node.ID == mem.ID {
+		if node.ID == id {
 			removeIndex = index
 			break
 		}
 	}
 	h.nodeUrls = append(h.nodeUrls[:removeIndex], h.nodeUrls[removeIndex+1:]...)
-	delete(h.nodeUrlsMap, mem.ID)
+	delete(h.nodeUrlsMap, id)
 }
 
-func (h *HttpClient) addMemberInfo(mem gc.ClusterMember) {
-	h.nodeUrls = append(h.nodeUrls, mem)
-	h.nodeUrlsMap[mem.ID] = mem
+// addMemberInfo adds node's http url to client
+// The HttpUrl should follow the format "host:port", e.g., "localhost:8080".
+// the scheme is http or https
+func (h *HttpClient) addMemberInfo(id int, httpUrl string, scheme string) error {
+	if _, ok := h.nodeUrlsMap[id]; ok {
+		return fmt.Errorf("member id %d is already added", id)
+	}
+
+	host, port, err := net.SplitHostPort(httpUrl)
+	if err != nil {
+		return err
+	}
+
+	m := Member{ID: id, Host: host + ":" + port, Scheme: scheme}
+
+	h.nodeUrls = append(h.nodeUrls, m)
+	h.nodeUrlsMap[id] = m
+
+	return nil
 }
 
+// AddMember send request to cluster's leader to join a new node
 func (h *HttpClient) AddMember(ctx context.Context, req ClusterMemberRequest) (err error) {
 	defer func() {
 		if err == nil {
-			h.addMemberInfo(req.ClusterMember)
+			id := req.ID
+			if req.Https {
+				h.addMemberInfo(id, req.HttpUrl, "https")
+			} else {
+				h.addMemberInfo(id, req.HttpUrl, "http")
+			}
 		}
 	}()
 
-	url := fmt.Sprintf("http://%s%s%d", h.leaderUrl(), MemberApiPath, req.ID)
+	url := fmt.Sprintf("%s%s%d", h.leaderUrl(), MemberApiPath, req.ID)
 	httpReq, err := http.NewRequestWithContext(ctx, http.MethodPost, url, nil)
 	if err != nil {
 		return err
 	}
-	httpReq.URL.RawQuery = req.ToQueryString()
+
+	httpReq.URL.RawQuery, err = req.ToQueryString()
+	if err != nil {
+		return err
+	}
 
 	httpRes, err := h.findAndDo(ctx, httpReq)
 	if err != nil {
@@ -443,16 +499,19 @@ func (h *HttpClient) AddMember(ctx context.Context, req ClusterMemberRequest) (e
 func (h *HttpClient) RemoveMember(ctx context.Context, req ClusterMemberRequest) (err error) {
 	defer func() {
 		if err == nil {
-			h.removeMemberInfo(req.ClusterMember)
+			h.removeMemberInfo(req.ID)
 		}
 	}()
 
-	url := fmt.Sprintf("http://%s%s%d", h.leaderUrl(), MemberApiPath, req.ID)
+	url := fmt.Sprintf("%s%s%d", h.leaderUrl(), MemberApiPath, req.ID)
 	httpReq, err := http.NewRequestWithContext(ctx, http.MethodDelete, url, nil)
 	if err != nil {
 		return err
 	}
-	httpReq.URL.RawQuery = req.ToQueryString()
+	httpReq.URL.RawQuery, err = req.ToQueryString()
+	if err != nil {
+		return err
+	}
 
 	httpRes, err := h.findAndDo(ctx, httpReq)
 	if err != nil {
@@ -469,7 +528,7 @@ func (h HttpClient) GetInfo(ctx context.Context, id int) (res gc.GetStatusRespon
 		return res, err
 	}
 
-	url = "http://" + url + "/v2/info"
+	url = url + "/v2/info"
 
 	httpReq, err := http.NewRequestWithContext(ctx, http.MethodGet, url, nil)
 	if err != nil {
