@@ -107,10 +107,6 @@ func (e EtcdCommandRequest) ValidateGet() error {
 		if e.Wait == nil || !(*e.Wait) {
 			return common.CreateError("wait", errors.New("`waitIndex` must go together with `wait=true`"))
 		}
-
-		if e.Prefix != nil && *e.Prefix {
-			return common.CreateError("prefix", errors.New("`waitIndex` must not go together with `prefix=true`"))
-		}
 	}
 
 	return nil

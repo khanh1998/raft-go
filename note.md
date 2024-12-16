@@ -27,15 +27,10 @@ todos:
     stop channel
 
 - write a db engine
-- compare and set
 - upgrade rpc to gRPC
-- make a Go client
-- support transaction
-- set key-value with timeout, setnx
 - get data from follower (not up-to-date data)
 - do benchmark
 - need a new method that let a new node can join the cluster easier
-- test key delete again
 - concurrency testing
 - async set, don't wait for log commit
 - allow node with some data to catch up, currently only completely new node (no data) can.

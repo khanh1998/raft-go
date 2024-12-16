@@ -19,6 +19,8 @@ func TestWaitOnPrefix(t *testing.T) {
 	AssertSet(t, c, go_client.SetRequest{Key: "name", Value: gc.GetPointer("khanh")})
 	AssertSet(t, c, go_client.SetRequest{Key: "coun", Value: gc.GetPointer("coun")})
 	AssertSet(t, c, go_client.SetRequest{Key: "counter", Value: gc.GetPointer("100")})
+	go AssertGet(t, c, go_client.GetRequest{Key: "count", Prefix: true, Wait: true, WaitIndex: 4}, "200", nil, false)
+	AssertSet(t, c, go_client.SetRequest{Key: "counting", Value: gc.GetPointer("200")})
 }
 
 func TestGetClearedEventHistory(t *testing.T) {
