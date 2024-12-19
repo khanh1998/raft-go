@@ -39,7 +39,7 @@ type RPCProxyImpl struct {
 	rpcServer            *rpc.Server
 	logger               observability.Logger
 	stop                 context.CancelFunc // stop background goroutines
-	accessible           bool
+	accessible           bool               // to isolate the node, all in and out requests will be blocked
 	listener             net.Listener
 	lock                 sync.RWMutex
 	rpcDialTimeout       time.Duration
@@ -211,6 +211,7 @@ func (r *RPCProxyImpl) disconnectToPeer(ctx context.Context, peerID int) error {
 
 	r.log().DebugContext(ctx, "disconnectToPeer", "peerId", peerID)
 
+	// TODO:
 	if err := peer.Conn.Close(); err != nil {
 		r.log().ErrorContext(ctx, "disconnectToPeer_close", err)
 	}
@@ -466,6 +467,7 @@ func (r *RPCProxyImpl) SetAccessible() {
 
 func (r *RPCProxyImpl) SetInaccessible() {
 	r.accessible = false
+	r.log().Info("SetInaccessible", "accessible", r.accessible)
 }
 
 func (r *RPCProxyImpl) Stop() {

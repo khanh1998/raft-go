@@ -79,17 +79,20 @@ func (r *RaftBrainImpl) RemoveServer(ctx context.Context, input gc.Log, output *
 
 	isLeader := r.state == gc.StateLeader
 	if !isLeader {
+		leaderUrl := r.getLeaderHttpUrl()
+		r.inOutLock.Unlock()
+
 		*output = gc.RemoveServerOutput{
 			Status:     gc.StatusNotOK,
-			LeaderHint: r.getLeaderHttpUrl(),
 			Response:   gc.NotLeader,
+			LeaderHint: leaderUrl,
 		}
 
-		r.inOutLock.Unlock()
-		return gc.RaftError{
-			HttpCode:   http.StatusPermanentRedirect,
-			LeaderHint: output.LeaderHint,
-			Message:    gc.NotLeader,
+		if leaderUrl != "" {
+			return gc.RaftError{LeaderHint: leaderUrl, Message: gc.NotLeader, HttpCode: http.StatusPermanentRedirect}
+		} else {
+			message := fmt.Sprintf("%s:no known leader", gc.NotLeader)
+			return gc.RaftError{Message: message, HttpCode: http.StatusServiceUnavailable}
 		}
 	}
 
@@ -179,17 +182,20 @@ func (r *RaftBrainImpl) AddServer(ctx context.Context, input gc.Log, output *gc.
 
 	r.inOutLock.Lock()
 	if r.state != gc.StateLeader {
+		leaderUrl := r.getLeaderHttpUrl()
+		r.inOutLock.Unlock()
+
 		*output = gc.AddServerOutput{
 			Status:     gc.StatusNotOK,
-			LeaderHint: r.getLeaderHttpUrl(),
 			Response:   gc.NotLeader,
+			LeaderHint: leaderUrl,
 		}
 
-		r.inOutLock.Unlock()
-		return gc.RaftError{
-			HttpCode:   http.StatusPermanentRedirect,
-			Message:    gc.NotLeader,
-			LeaderHint: output.LeaderHint,
+		if leaderUrl != "" {
+			return gc.RaftError{LeaderHint: leaderUrl, Message: gc.NotLeader, HttpCode: http.StatusPermanentRedirect}
+		} else {
+			message := fmt.Sprintf("%s:no known leader", gc.NotLeader)
+			return gc.RaftError{Message: message, HttpCode: http.StatusServiceUnavailable}
 		}
 	}
 

@@ -26,6 +26,7 @@ func (r *RaftBrainImpl) getLeaderHttpUrl() string {
 	return leaderUrl
 }
 
+// this method is specific to Classic Extension
 func (r *RaftBrainImpl) KeepAlive(ctx context.Context, input gc.Log, output *gc.KeepAliveClientOutput) (err error) {
 	ctx, span := tracer.Start(ctx, "ClientRequest")
 	defer span.End()
@@ -129,6 +130,7 @@ func (r *RaftBrainImpl) ClientRequest(ctx context.Context, input gc.Log, output 
 	r.inOutLock.Lock()
 	if r.state != gc.StateLeader {
 		leaderUrl := r.getLeaderHttpUrl()
+		r.inOutLock.Unlock()
 
 		*output = gc.ClientRequestOutput{
 			Status:     gc.StatusNotOK,
@@ -136,9 +138,12 @@ func (r *RaftBrainImpl) ClientRequest(ctx context.Context, input gc.Log, output 
 			LeaderHint: leaderUrl,
 		}
 
-		r.inOutLock.Unlock()
-
-		return gc.RaftError{LeaderHint: leaderUrl, Message: gc.NotLeader, HttpCode: http.StatusPermanentRedirect}
+		if leaderUrl != "" {
+			return gc.RaftError{LeaderHint: leaderUrl, Message: gc.NotLeader, HttpCode: http.StatusPermanentRedirect}
+		} else {
+			message := fmt.Sprintf("%s:no known leader", gc.NotLeader)
+			return gc.RaftError{Message: message, HttpCode: http.StatusServiceUnavailable}
+		}
 	}
 
 	newLog, err := r.logFactory.AttachTermAndTime(input, r.GetCurrentTerm(), r.clusterClock.LeaderStamp())
@@ -205,6 +210,7 @@ func (r *RaftBrainImpl) ClientRequest(ctx context.Context, input gc.Log, output 
 	return err
 }
 
+// this method is specific to Classic Extension
 func (r *RaftBrainImpl) RegisterClient(ctx context.Context, input gc.Log, output *gc.RegisterClientOutput) (err error) {
 	ctx, span := tracer.Start(ctx, "RegisterClient")
 	defer span.End()
@@ -312,7 +318,12 @@ func (r *RaftBrainImpl) ClientQuery(ctx context.Context, input gc.Log, output *g
 			LeaderHint: leaderUrl,
 		}
 
-		return gc.RaftError{LeaderHint: leaderUrl, Message: gc.NotLeader, HttpCode: http.StatusPermanentRedirect}
+		if leaderUrl != "" {
+			return gc.RaftError{LeaderHint: leaderUrl, Message: gc.NotLeader, HttpCode: http.StatusPermanentRedirect}
+		} else {
+			message := fmt.Sprintf("%s:no known leader", gc.NotLeader)
+			return gc.RaftError{Message: message, HttpCode: http.StatusServiceUnavailable}
+		}
 	}
 
 	log := input
@@ -357,7 +368,19 @@ func (r *RaftBrainImpl) ClientQuery(ctx context.Context, input gc.Log, output *g
 
 	realIndex := r.commitIndex
 
-	r.BroadcastAppendEntries(ctx) // TODO: heartbeat only
+	majorityOk := r.BroadcastAppendEntries(ctx) // TODO: heartbeat only
+	if !majorityOk {
+		*output = gc.ClientQueryOutput{
+			Status:     gc.StatusNotOK,
+			Response:   "leader is outdated",
+			LeaderHint: "",
+		}
+
+		return gc.RaftError{
+			Message:  "leader is outdated",
+			HttpCode: http.StatusInternalServerError,
+		}
+	}
 
 	ok = false
 	for i := 0; i < 100; i++ {

@@ -131,6 +131,10 @@ func (r *RPCProxyImpl) GetInfo(_ *struct{}, info *gc.GetStatusResponse) (err err
 
 // TODO: add span_id and trace_id into request
 func (r *RPCProxyImpl) ToVotingMember(_ *struct{}, _ *struct{}) (err error) {
+	if !r.accessible {
+		return ErrInaccessible
+	}
+
 	ctx, span := tracer.Start(context.Background(), "ToVotingMember")
 	defer span.End()
 
