@@ -112,10 +112,12 @@ func (r *RpcAgentImpl) disconnect(peerId int) error {
 	}
 	r.log().Info("Disconnect: rpc local agent", "serverUrl", peer.URL)
 
-	r.peers[peerId] = common.PeerRPCProxy{URL: peer.URL, Conn: nil}
+	if peer.Conn != nil {
+		if err := peer.Conn.Close(); err != nil {
+			return err
+		}
 
-	if err := peer.Conn.Close(); err != nil {
-		return err
+		r.peers[peerId] = common.PeerRPCProxy{URL: peer.URL, Conn: nil}
 	}
 
 	return nil

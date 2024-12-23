@@ -12,7 +12,7 @@ import (
 func TestLogCompactionForStaticCluster1(t *testing.T) {
 	os.RemoveAll("data/")
 	c := NewCluster("config/3-nodes-snap.yml")
-	defer c.Clean()
+	//defer c.Clean()
 
 	// init 3 nodes cluster and push some data
 	AssertHavingOneLeader(t, c)
@@ -27,7 +27,7 @@ func TestLogCompactionForStaticCluster1(t *testing.T) {
 	err = c.StartNode(fId)
 	assert.NoError(t, err)
 
-	time.Sleep(c.MaxElectionTimeout * 5)
+	time.Sleep(c.MaxElectionTimeout * 3) // wait for the follower syncing data
 
 	_, err = c.StopLeader()
 	assert.NoError(t, err)
@@ -64,6 +64,28 @@ func TestLogCompactionForStaticCluster2(t *testing.T) {
 
 	AssertHavingOneLeader(t, c)
 	AssertGet(t, c, "count", "15")
+}
+func TestLogCompactionForStaticCluster3(t *testing.T) {
+	os.RemoveAll("data/")
+	c := NewCluster("config/3-nodes-snap.yml")
+	//defer c.Clean()
+
+	// init 3 nodes cluster and push some data
+	AssertHavingOneLeader(t, c)
+	IncreaseBy(t, c, "count", 10)
+	_, err := c.StopFollower()
+	assert.NoError(t, err)
+
+	IncreaseBy(t, c, "count", 15)
+
+	// purpose of these stop and start are to make nodes restore data back from file,
+	// make sure data serialize and deserialize work well.
+	c.StopAll()
+	c.StartAll()
+
+	time.Sleep(3 * c.MaxElectionTimeout) // wait a little more for log conflict resolving
+	AssertHavingOneLeader(t, c)
+	AssertGet(t, c, "count", "25")
 }
 
 func TestLogCompactionForDynamicCluster(t *testing.T) {

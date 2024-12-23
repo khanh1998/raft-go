@@ -92,11 +92,14 @@ func (n *RaftBrainImpl) AppendEntries(ctx context.Context, input *common.AppendE
 				return nil
 			}
 		}
+	}
 
-		// 3. If an existing entry conflicts with a new one (same index but different terms), delete the existing entry and all that follow it (§5.3)
-		logItem, err = n.GetLog(input.PrevLogIndex + 1)
+	// currently only supports one log entry per request
+	if len(input.Entries) > 0 {
+		logItem, err := n.GetLog(input.PrevLogIndex + 1)
 		if err == nil {
-			if logItem.GetTerm() != input.Term {
+			// 3. If an existing entry conflicts with a new one (same index but different terms), delete the existing entry and all that follow it (§5.3)
+			if logItem.GetTerm() != input.Entries[0].GetTerm() {
 				err := n.deleteLogFrom(ctx, input.PrevLogIndex+1)
 				if err != nil {
 					*output = common.AppendEntriesOutput{Term: currentTerm, Success: false, Message: MsgCannotDeleteLog, NodeID: n.id}
@@ -106,22 +109,15 @@ func (n *RaftBrainImpl) AppendEntries(ctx context.Context, input *common.AppendE
 				*output = common.AppendEntriesOutput{Term: currentTerm, Success: false, Message: MsgCurrentLogTermsAreNotMatched, NodeID: n.id}
 
 				return nil
+			} else {
+				// not conflict, proceed next step
 			}
-		}
-
-		if err != nil && errors.Is(err, common.ErrLogIsInSnapshot) {
-			if logItem.GetTerm() != input.Term {
-				// delete latest snapshot
+		} else if errors.Is(err, common.ErrLogIsInSnapshot) {
+			if logItem.GetTerm() != input.Entries[0].GetTerm() {
 				*output = common.AppendEntriesOutput{Term: currentTerm, Success: false, Message: MsgTheResponderSnapshotIsOutdated, NodeID: n.id}
-
 			}
-		}
-	}
-
-	// 4. Append any new entries not already in the log
-	if len(input.Entries) > 0 {
-		_, err = n.GetLog(input.PrevLogIndex + 1)
-		if err != nil { // entries are not already in the log
+		} else {
+			// 4. Append any new entries not already in the log
 			err := n.appendLogs(ctx, input.Entries)
 			if err != nil {
 				*output = common.AppendEntriesOutput{Term: currentTerm, Success: false, Message: MsgCannotAppendLog, NodeID: n.id}

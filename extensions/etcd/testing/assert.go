@@ -56,6 +56,31 @@ func IncreaseBy(t *testing.T, c *Cluster, key string, count int) {
 	}
 }
 
+func IncreaseByOneC(t *testing.T, c *Cluster, key string) error {
+	ctx, cancel := context.WithTimeout(context.Background(), 500*time.Millisecond)
+	defer cancel()
+	res, err := c.HttpAgent.Get(ctx, go_client.GetRequest{Key: key})
+	if err != nil {
+		res, err = c.HttpAgent.Set(ctx, go_client.SetRequest{Key: key, Value: gc.GetPointer("0"), PrevExist: gc.GetPointer(false)})
+		if err == nil {
+			return nil
+		}
+
+		res, err = c.HttpAgent.Get(ctx, go_client.GetRequest{Key: key})
+		if err != nil {
+			return err
+		}
+	}
+
+	prevValue := res.Node.Value
+	intVal, err := strconv.Atoi(prevValue)
+	assert.NoError(t, err)
+	nextVal := strconv.Itoa(intVal + 1)
+
+	_, err = c.HttpAgent.Set(ctx, go_client.SetRequest{Key: key, Value: &nextVal, PrevExist: gc.GetPointer(true), PrevValue: &prevValue})
+	return err
+}
+
 func IncreaseByOne(t *testing.T, c *Cluster, key string) {
 	ctx, cancel := context.WithTimeout(context.Background(), 500*time.Millisecond)
 	defer cancel()
@@ -228,6 +253,7 @@ func AssertLeaderChanged(t *testing.T, c *Cluster, prevLeaderId int, prevTerm in
 	return status
 }
 
+// checks status of nodes in cluster util find a leader
 func AssertHavingOneLeader(t *testing.T, c *Cluster) (status gc.GetStatusResponse) {
 	var err error
 

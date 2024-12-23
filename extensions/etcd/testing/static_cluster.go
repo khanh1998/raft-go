@@ -9,6 +9,7 @@ import (
 	"khanh/raft-go/extensions/etcd/go_client"
 	"khanh/raft-go/extensions/etcd/node"
 	"khanh/raft-go/observability"
+	"khanh/raft-go/raft_core/rpc_proxy"
 	"log"
 	"os"
 	"sync"
@@ -23,6 +24,9 @@ type Cluster struct {
 	MaxElectionTimeout  time.Duration
 	MaxHeartbeatTimeout time.Duration
 	config              *common.Config
+
+	httpServerUrls []go_client.Member
+	HttpAgents     []*go_client.HttpClient // for concurrency test
 }
 
 // after a cluster is created, need to wait a moment so a follower can win a election and become leader
@@ -31,6 +35,30 @@ func NewCluster(filePath string) *Cluster {
 	c.init(filePath)
 
 	return &c
+}
+
+func (c *Cluster) IsolateNode(nodeId int) error {
+	n := c.Nodes[nodeId]
+	n.SetInaccessible(context.Background())
+	return nil
+}
+
+func (c *Cluster) RevertIsolateNode(nodeId int) error {
+	n := c.Nodes[nodeId]
+	n.SetAccessible(context.Background())
+	return nil
+}
+
+func (c *Cluster) InitConcurrencyTest(client int) error {
+	for i := 0; i < client; i++ {
+		httpAgent, err := go_client.NewHttpClient(c.httpServerUrls, c.log)
+		if err != nil {
+			return err
+		}
+		c.HttpAgents = append(c.HttpAgents, httpAgent)
+	}
+
+	return nil
 }
 
 func (c *Cluster) init(filePath string) {
@@ -74,6 +102,16 @@ func (c *Cluster) init(filePath string) {
 			n := node.NewNode(ctx, param)
 			n.Start(ctx)
 
+			nsCfg := c.config.NetworkSimulation
+			if nsCfg.Enable {
+				n.SetNetworkSimulation(rpc_proxy.NetworkSimulation{
+					MinDelay:    nsCfg.MinDelay,
+					MaxDelay:    nsCfg.MaxDelay,
+					MsgDropRate: nsCfg.MsgDropRate,
+					Logger:      log,
+				})
+			}
+
 			lock.Lock()
 			c.createNodeParams[mem.ID] = param
 			c.Nodes[mem.ID] = n
@@ -97,6 +135,7 @@ func (c *Cluster) init(filePath string) {
 		log.FatalContext(ctx, "StaticCluster_NewHttpClient", "error", err)
 	}
 
+	c.httpServerUrls = httpServerUrls
 	c.HttpAgent = httpAgent
 	c.log = log
 

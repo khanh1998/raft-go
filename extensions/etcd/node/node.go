@@ -129,3 +129,15 @@ func (n *Node) log() observability.Logger {
 	)
 	return sub
 }
+
+func (r *Node) SetNetworkSimulation(network rpc_proxy.NetworkSimulation) {
+	r.rpc.SetNetworkSimulation(network)
+}
+
+func (r *Node) GetNetworkSimulation() *rpc_proxy.NetworkSimulation {
+	return r.rpc.GetNetworkSimulation()
+}
+
+func (r *Node) UnsetNetworkSimulation() {
+	r.rpc.UnsetNetworkSimulation()
+}

@@ -20,6 +20,16 @@ func (n *RaftBrainImpl) InstallSnapshot(ctx context.Context, input *common.Insta
 		)
 	}()
 
+	curr := n.persistState.GetLatestSnapshotMetadata()
+	if input.LastTerm < curr.LastLogTerm || input.LastIndex <= curr.LastLogTerm {
+		n.log().FatalContext(
+			ctx, "InstallSnapshot: installing outdated snapshot",
+			"curr", curr,
+			"input last term", input.LastTerm,
+			"input last index", input.LastIndex,
+		)
+	}
+
 	// 1. reply immediately if term < currentTerm
 	if input.Term < n.GetCurrentTerm() {
 		output = &common.InstallSnapshotOutput{

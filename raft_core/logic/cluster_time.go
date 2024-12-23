@@ -2,7 +2,6 @@ package logic
 
 import (
 	"context"
-	"fmt"
 	"khanh/raft-go/common"
 	"sync"
 	"time"
@@ -21,20 +20,20 @@ func NewClusterClock() *ClusterClock {
 	}
 }
 
-func (c *ClusterClock) NewEpoch(clusterTime uint64) {
+func (c *ClusterClock) NewEpoch(clusterTime uint64) error {
 	c.mu.Lock()
 	defer c.mu.Unlock()
 
-	if clusterTime < c.clusterTimeAtEpoch {
-		panic(
-			fmt.Sprintf(
-				"clusterTime < c.clusterTimeAtEpoch, %v, %v",
-				clusterTime, c.clusterTimeAtEpoch),
-		)
-	}
+	// if clusterTime < c.clusterTimeAtEpoch {
+	// 	return fmt.Errorf(
+	// 		"clusterTime < c.clusterTimeAtEpoch, %v, %v",
+	// 		clusterTime, c.clusterTimeAtEpoch,
+	// 	)
+	// }
 
 	c.clusterTimeAtEpoch = clusterTime
 	c.localTimeAtEpoch = time.Now()
+	return nil
 }
 
 func (c *ClusterClock) LeaderStamp() uint64 {
@@ -110,12 +109,13 @@ func (r *RaftBrainImpl) autoCommitClusterTime(ctx context.Context) {
 func (r *RaftBrainImpl) resetClusterTime() {
 	lastLog, err := r.persistState.GetLastLog()
 	if err == nil {
-		r.log().Info("resetClusterTime", "lastLog", lastLog)
+		r.log().Info("resetClusterTime", "lastLog", "time", lastLog.GetTime(), lastLog, "clusterTimeAtEpoch before", r.clusterClock.clusterTimeAtEpoch)
 		r.clusterClock.NewEpoch(lastLog.GetTime())
+		r.log().Info("resetClusterTime", "clusterTimeAtEpoch after", r.clusterClock.clusterTimeAtEpoch)
 	} else {
 		// if there is no log
 		r.log().Error("resetClusterTime: will get time from snapshot", err)
-		clusterTime := r.persistState.GetLatestSnapshotMetadata().LastLogTime
+		clusterTime := r.persistState.GetLatestSnapshotMetadata().LastLogTime // in case there is no snapshot, this will be zero
 		r.clusterClock.NewEpoch(clusterTime)
 	}
 }

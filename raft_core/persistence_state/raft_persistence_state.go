@@ -158,6 +158,10 @@ func (r *RaftPersistenceStateImpl) InstallSnapshot(ctx context.Context, fileName
 
 // snapshot will be write as a sequence of small chunks into a temporary file,
 // this function will rename the temporary into a standard snapshot file name.
+// this function is called by a slow follower, which is far behind the latest log,
+// it need to receive the snapshot from leader.
+// after successful receiving snapshot, the snapshot will overwrite all of it's previous state,
+// in other words, the slow follower discards all previous data, and take the received snapshot as beginning point of it's state.
 func (r *RaftPersistenceStateImpl) CommitSnapshot(ctx context.Context, sm gc.SnapshotMetadata) (err error) {
 	ctx, span := tracer.Start(ctx, "CommitSnapshot")
 	defer span.End()
@@ -186,7 +190,16 @@ func (r *RaftPersistenceStateImpl) CommitSnapshot(ctx context.Context, sm gc.Sna
 		r.latestSnapshot = gc.SnapshotMetadata{LastLogTerm: sm.LastLogTerm, LastLogIndex: sm.LastLogIndex}
 	}
 
-	r.trimPrefixLog(sm)
+	// this line in WAL marks that from this point,
+	// all previous data (logs, snapshots) are discarded.
+	// the snapshot will become beginning point of data.
+	err = r.storage.AppendWal(r.metadata(), "install_snapshot", sm.ToString())
+	if err != nil {
+		return err
+	}
+
+	// should delete all previous logs in memory
+
 	r.latestSnapshot = sm
 
 	r.lock.Unlock()
@@ -199,12 +212,19 @@ func (r *RaftPersistenceStateImpl) CommitSnapshot(ctx context.Context, sm gc.Sna
 	return nil
 }
 
-// save the whole snapshot into file at once
+// save the whole snapshot into file at once,
+// this function is called by followers or leader.
 func (r *RaftPersistenceStateImpl) SaveSnapshot(ctx context.Context, snapshot gc.Snapshot) (err error) {
 	ctx, span := tracer.Start(ctx, "SaveSnapshot")
 	defer span.End()
 
+	r.lock.Lock()
 	sm := snapshot.Metadata()
+	prev := r.latestSnapshot
+	if sm.LastLogTerm < prev.LastLogTerm || sm.LastLogIndex <= prev.LastLogIndex {
+		return fmt.Errorf("SaveSnapshot: not a new snapshot: %v, curr: %v", sm, prev)
+	}
+	r.lock.Unlock()
 
 	//snapshot.FileName = common.NewSnapshotFileName(sm.LastLogTerm, sm.LastLogIndex)
 
@@ -345,10 +365,12 @@ func (r *RaftPersistenceStateImpl) DeleteLogFrom(ctx context.Context, index int)
 		return nil, common.ErrIndexOutOfRange
 	}
 
-	physicalIndex := index - 1 // because Raft index start from 1
+	adjustedIndex := index - base
+
+	physicalIndex := adjustedIndex - 1 // Raft log index start from 1
 
 	// append changes to WAL
-	deletedLogCount := maxIndex - physicalIndex
+	deletedLogCount := maxIndex - index
 	if err := r.storage.AppendWal(r.metadata(), "delete_log", strconv.Itoa(deletedLogCount)); err != nil {
 		return nil, err
 	}
@@ -532,6 +554,25 @@ func (r *RaftPersistenceStateImpl) Deserialize(keyValuePairs []string, snapshot 
 					logCount -= 1
 				}
 			}
+		case "install_snapshot":
+			sm := gc.SnapshotMetadata{}
+			err := sm.FromString(value)
+			if err != nil {
+				return 0, err
+			}
+			// the snapshot `sm` here should be more latest compare to the input `snapshot`
+			if snapshot.LastLogTerm < sm.LastLogTerm || snapshot.LastLogIndex < sm.LastLogIndex {
+				err := fmt.Errorf("Deserialize: install snapshot: invalid state. latest = %v, installing = %v", snapshot, sm)
+
+				return 0, err
+			}
+
+			// discard all previous data,
+			// start again from the snapshot.
+			r.logs = []gc.Log{}
+			prevLogIndex = sm.LastLogIndex
+			prevLogTerm = sm.LastLogTerm
+			logCount = 0
 		}
 	}
 

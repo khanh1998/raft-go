@@ -294,6 +294,7 @@ func Test_nodeImpl_AppendEntries(t *testing.T) {
 				Term:         3,
 				PrevLogIndex: 2,
 				PrevLogTerm:  2,
+				Entries:      []gc.Log{common.MockedLog{Term: 3}},
 			},
 			out: common.AppendEntriesOutput{
 				Success: false,
@@ -371,7 +372,7 @@ func Test_nodeImpl_AppendEntries(t *testing.T) {
 				PrevLogIndex: 2,
 				PrevLogTerm:  2,
 				Entries: []gc.Log{
-					common.MockedLog{Term: 1, Command: "set z 3"},
+					common.MockedLog{Term: 3, Command: "set z 3"},
 				},
 			},
 			out: common.AppendEntriesOutput{

@@ -15,6 +15,7 @@ type Config struct {
 		StateMachineBTreeDegree     int           `mapstructure:"state_machine_btree_degree"`
 		MaxWaitTimeout              time.Duration `mapstructure:"http_client_max_wait_timeout"`
 	} `mapstructure:"extension"`
+	NetworkSimulation gc.NetworkSimulationConfig `mapstructure:"network_simulation"`
 }
 
 func ReadConfigFromFile(filePath *string) (*Config, error) {
@@ -36,6 +37,7 @@ func ReadConfigFromFile(filePath *string) (*Config, error) {
 	}
 
 	config.RaftCore.StringToTime(v)
+	config.NetworkSimulation.StringToTime(v)
 
 	return &config, nil
 }

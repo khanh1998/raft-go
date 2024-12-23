@@ -14,15 +14,22 @@ import (
 	"time"
 )
 
+const (
+	NodeRunning = "running"
+	NodeStopped = "stopped"
+)
+
 type Cluster struct {
 	Nodes               map[int]*node.Node // nodes or servers in cluster
-	RpcAgent            RpcAgentImpl       // use this rpc agent to get real-time status from servers in cluster
+	NodeState           map[int]string
+	RpcAgent            RpcAgentImpl // use this rpc agent to get real-time status from servers in cluster
 	HttpAgent           HttpAgent
 	log                 observability.Logger
 	createNodeParams    map[int]node.NewNodeParams
 	MaxElectionTimeout  time.Duration
 	MaxHeartbeatTimeout time.Duration
 	config              *common.Config
+	lock                sync.Mutex
 }
 
 // after a cluster is created, need to wait a moment so a follower can win a election and become leader
@@ -31,6 +38,25 @@ func NewCluster(filePath string) *Cluster {
 	c.init(filePath)
 
 	return &c
+}
+
+func (c *Cluster) createStaticNode(ctx context.Context, mem gc.ClusterServerConfig) {
+	id := mem.ID
+	rpcUrl := fmt.Sprintf("%s:%d", mem.Host, mem.RpcPort)
+	httpUrl := fmt.Sprintf("%s:%d", mem.Host, mem.HttpPort)
+
+	param, err := node.PrepareNewNodeParams(ctx, id, httpUrl, rpcUrl, false, c.config, c.log)
+	if err != nil {
+		c.log.FatalContext(ctx, "PrepareNewNodeParams", "error", err)
+	}
+
+	n := node.NewNode(ctx, param)
+	n.Start(ctx)
+
+	c.lock.Lock()
+	c.createNodeParams[mem.ID] = param
+	c.Nodes[mem.ID] = n
+	c.lock.Unlock()
 }
 
 func (c *Cluster) init(filePath string) {
@@ -49,6 +75,7 @@ func (c *Cluster) init(filePath string) {
 	gc.CreateFolderIfNotExists(config.RaftCore.DataFolder)
 
 	log := observability.NewZerolog(config.Observability, 0)
+	c.log = log
 
 	c.Nodes = make(map[int]*node.Node)
 	c.createNodeParams = make(map[int]node.NewNodeParams)
@@ -57,20 +84,7 @@ func (c *Cluster) init(filePath string) {
 	for _, mem := range config.RaftCore.Cluster.Servers {
 		l.Add(1)
 		go func(mem gc.ClusterServerConfig) {
-			id := mem.ID
-			rpcUrl := fmt.Sprintf("%s:%d", mem.Host, mem.RpcPort)
-			httpUrl := fmt.Sprintf("%s:%d", mem.Host, mem.HttpPort)
-
-			param, err := node.PrepareNewNodeParams(ctx, id, httpUrl, rpcUrl, false, config, log)
-			if err != nil {
-				log.FatalContext(ctx, "PrepareNewNodeParams", "error", err)
-			}
-
-			n := node.NewNode(ctx, param)
-			n.Start(ctx)
-
-			c.createNodeParams[mem.ID] = param
-			c.Nodes[mem.ID] = n
+			c.createStaticNode(ctx, mem)
 			l.Done()
 		}(mem)
 	}
@@ -103,7 +117,6 @@ func (c *Cluster) init(filePath string) {
 
 	c.RpcAgent = *rpcAgent
 	c.HttpAgent = *httpAgent
-	c.log = log
 
 	l.Wait()
 }
@@ -172,15 +185,13 @@ func (c *Cluster) StopNode(nodeId int) error {
 	return nil
 }
 
-// for static cluster only
+// for static cluster only.
+// to start a stopped node.
 func (c *Cluster) StartNode(nodeId int) error {
-	for _, node := range c.Nodes {
-		if node == nil {
-			continue
-		}
-		if node.ID == nodeId {
-			node.Start(context.Background())
-			break
+	for _, memInfo := range c.config.RaftCore.Cluster.Servers {
+		if memInfo.ID == nodeId {
+			// this command helps us to deserialize data from files, it also starts the node.
+			c.createStaticNode(context.Background(), memInfo)
 		}
 	}
 
@@ -196,8 +207,12 @@ func (c *Cluster) RestartNode(nodeId int, sleep time.Duration) {
 			c.Nodes[index].Stop(context.Background())
 			time.AfterFunc(sleep, func() {
 				// new node will read data from log file and recreate the state of the node
-				c.Nodes[index] = node.NewNode(context.Background(), c.createNodeParams[index])
-				c.log.Info(fmt.Sprintf("new node is replaced %d", nodeId))
+				err := c.createNewNode(context.Background(), nodeId)
+				if err != nil {
+					c.log.Error("RestartNode", err)
+				} else {
+					c.log.Info(fmt.Sprintf("new node is replaced %d", nodeId))
+				}
 			})
 			break
 		}

@@ -56,6 +56,7 @@ func (c *Cluster) RemoveServer(id int) error {
 	return errors.New("no setup was found")
 }
 
+// create or recreate
 func (c *Cluster) createNewNode(ctx context.Context, id int) error {
 	rpcUrl, httpUrl := fmt.Sprintf("localhost:%d", 1233+id), fmt.Sprintf("localhost:%d", 8079+id)
 	catchingUp := id > 1
@@ -70,11 +71,15 @@ func (c *Cluster) createNewNode(ctx context.Context, id int) error {
 
 	c.createNodeParams[id] = param
 	c.Nodes[id] = n
-	c.HttpAgent.serverInfos = append(c.HttpAgent.serverInfos, HttpServerConnectionInfo{
-		Id:  id,
-		Url: httpUrl,
-	})
-	c.HttpAgent.serverUrls[id] = httpUrl
+
+	// create new
+	if _, ok := c.HttpAgent.serverUrls[id]; !ok {
+		c.HttpAgent.serverInfos = append(c.HttpAgent.serverInfos, HttpServerConnectionInfo{
+			Id:  id,
+			Url: httpUrl,
+		})
+		c.HttpAgent.serverUrls[id] = httpUrl
+	}
 	return c.RpcAgent.ConnectToRpcServer(id, rpcUrl, 5, 150*time.Millisecond)
 }
 

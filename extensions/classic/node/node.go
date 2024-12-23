@@ -69,6 +69,8 @@ func NewNode(ctx context.Context, params NewNodeParams) *Node {
 	brain.SetStateMachine(stateMachine)
 
 	n := &Node{ID: params.ID, brain: brain, rpc: rpcProxy, http: httpProxy, logger: params.Logger}
+	n.CatchingUp = params.RaftCore.Brain.CachingUp
+	n.ClusterMode = params.RaftCore.Brain.Mode
 
 	return n
 }

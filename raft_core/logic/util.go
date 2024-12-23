@@ -31,16 +31,19 @@ func (n *RaftBrainImpl) deleteLogFrom(ctx context.Context, index int) (err error
 
 	// clear all data in state machine, reload latest snapshot from file,
 	// so logs can be applied from beginning again.
-	err = n.stateMachine.Reset(ctx) // TODO: in log compaction, no need to to this.
-	if err != nil {
-		return err
-	}
+	// err = n.stateMachine.Reset(ctx) // TODO: in log compaction, no need to to this.
+	// if err != nil {
+	// 	return err
+	// }
+
+	// no need to reset the state machine, because only committed logs are push into state machine,
+	// and committed logs can't be deleted
 
 	// figure out which index to begin re-applying the logs
-	snapshot := n.persistState.GetLatestSnapshotMetadata()
+	// snapshot := n.persistState.GetLatestSnapshotMetadata()
 	// these two numbers will be calculated again later.
-	n.lastApplied = snapshot.LastLogIndex
-	n.commitIndex = snapshot.LastLogIndex
+	// n.lastApplied = snapshot.LastLogIndex
+	// n.commitIndex = snapshot.LastLogIndex
 
 	for i := len(deletedLogs) - 1; i >= 0; i-- {
 		n.revertChangeMember(deletedLogs[i])
@@ -71,6 +74,13 @@ func (n *RaftBrainImpl) appendLog(ctx context.Context, logItem gc.Log) (int, err
 	// we need to update cluster membership information as soon as we receive the log,
 	// don't need to wait until it get committed.
 	n.changeMember(logItem)
+
+	lastLog, err := n.persistState.GetLastLog()
+	if err == nil {
+		if lastLog.GetTime() > logItem.GetTime() {
+			n.log().FatalContext(ctx, "next", logItem, "prev", lastLog)
+		}
+	}
 
 	index, err := n.persistState.AppendLog(ctx, []gc.Log{logItem})
 	if err != nil {

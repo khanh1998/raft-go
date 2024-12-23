@@ -105,6 +105,8 @@ func (n *RaftBrainImpl) BroadCastRequestVote(ctx context.Context) {
 		span.AddEvent("to follower")
 	}
 
+	duration := time.Since(startTime)
+
 	n.log().InfoContext(ctx,
 		"BroadCastRequestVote",
 		"responses", responses,
@@ -113,10 +115,10 @@ func (n *RaftBrainImpl) BroadCastRequestVote(ctx context.Context) {
 		"maxTerm", maxTerm,
 		"maxTermId", maxTermID,
 		"quorum", n.Quorum(),
+		"duration", duration.String(),
 	)
 
 	span.SetStatus(codes.Ok, "finish send request vote")
-	duration := time.Since(startTime)
 	observability.SetRequestVoteDuration(ctx, duration)
 }
 
@@ -331,6 +333,8 @@ func (n *RaftBrainImpl) BroadcastAppendEntries(ctx context.Context) (majorityOK 
 		span.AddEvent("majority ok")
 	}
 
+	duration := time.Since(start)
+
 	n.log().InfoContext(ctx,
 		"BroadcastAppendEntries",
 		"successCount", successCount,
@@ -340,6 +344,7 @@ func (n *RaftBrainImpl) BroadcastAppendEntries(ctx context.Context) (majorityOK 
 		"members", n.members,
 		"majorityOk", majorityOK,
 		"quorum", n.Quorum(),
+		"duration", duration.String(),
 	)
 
 	// n.applyLog(ctx)
@@ -348,7 +353,6 @@ func (n *RaftBrainImpl) BroadcastAppendEntries(ctx context.Context) (majorityOK 
 
 	n.log().InfoContext(ctx, "BroadcastAppendEntries Done")
 
-	duration := time.Since(start)
 	observability.SetAppendEntriesDuration(ctx, duration)
 
 	return

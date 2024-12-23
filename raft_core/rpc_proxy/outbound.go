@@ -22,6 +22,18 @@ func extractSpanInfo(span trace.Span) (valid bool, traceID string, spanID string
 }
 
 func (r *RPCProxyImpl) SendInstallSnapshot(ctx context.Context, peerId int, timeout *time.Duration, input common.InstallSnapshotInput) (output common.InstallSnapshotOutput, err error) {
+	if !r.accessible {
+		return output, ErrInaccessible
+	}
+
+	if r.simulation != nil {
+		if err = r.simulation.ProcessInbound(peerId); err != nil {
+			r.log().ErrorContext(ctx, "Ping_ProcessInbound", err, "input", input)
+
+			return output, err
+		}
+	}
+
 	ctx, span := tracer.Start(ctx, "SendInstallSnapshot")
 	defer span.End()
 
@@ -33,10 +45,6 @@ func (r *RPCProxyImpl) SendInstallSnapshot(ctx context.Context, peerId int, time
 			TraceFlags: traceFlags,
 			TraceState: traceState,
 		}
-	}
-
-	if !r.accessible {
-		return output, ErrInaccessible
 	}
 
 	serviceMethod := "RPCProxyImpl.InstallSnapshot"
@@ -55,6 +63,19 @@ func (r *RPCProxyImpl) SendInstallSnapshot(ctx context.Context, peerId int, time
 }
 
 func (r *RPCProxyImpl) SendAppendEntries(ctx context.Context, peerId int, timeout *time.Duration, input common.AppendEntriesInput) (output common.AppendEntriesOutput, err error) {
+	begin := time.Now()
+	if !r.accessible {
+		return output, ErrInaccessible
+	}
+
+	if r.simulation != nil {
+		if err = r.simulation.ProcessInbound(peerId); err != nil {
+			r.log().ErrorContext(ctx, "SendAppendEntries_ProcessInbound", err, "input", input)
+
+			return output, err
+		}
+	}
+
 	ctx, span := tracer.Start(ctx, "SendAppendEntries")
 	defer span.End()
 
@@ -66,10 +87,6 @@ func (r *RPCProxyImpl) SendAppendEntries(ctx context.Context, peerId int, timeou
 			TraceFlags: traceFlags,
 			TraceState: traceState,
 		}
-	}
-
-	if !r.accessible {
-		return output, ErrInaccessible
 	}
 
 	serviceMethod := "RPCProxyImpl.AppendEntries"
@@ -84,10 +101,26 @@ func (r *RPCProxyImpl) SendAppendEntries(ctx context.Context, peerId int, timeou
 		}
 	}
 
+	duration := time.Since(begin)
+	r.log().InfoContext(ctx, "SendAppendEntries", "duration", duration.String())
+
 	return output, nil
 }
 
 func (r *RPCProxyImpl) SendRequestVote(ctx context.Context, peerId int, timeout *time.Duration, input common.RequestVoteInput) (output common.RequestVoteOutput, err error) {
+	begin := time.Now()
+	if !r.accessible {
+		return output, ErrInaccessible
+	}
+
+	if r.simulation != nil {
+		if err = r.simulation.ProcessInbound(peerId); err != nil {
+			r.log().ErrorContext(ctx, "SendRequestVote_ProcessInbound", err, "input", input)
+
+			return output, err
+		}
+	}
+
 	ctx, span := tracer.Start(ctx, "SendRequestVote")
 	defer span.End()
 
@@ -101,9 +134,6 @@ func (r *RPCProxyImpl) SendRequestVote(ctx context.Context, peerId int, timeout 
 		}
 	}
 
-	if !r.accessible {
-		return output, ErrInaccessible
-	}
 	serviceMethod := "RPCProxyImpl.RequestVote"
 
 	if timeout != nil {
@@ -116,10 +146,26 @@ func (r *RPCProxyImpl) SendRequestVote(ctx context.Context, peerId int, timeout 
 		}
 	}
 
+	duration := time.Since(begin)
+	r.log().InfoContext(ctx, "SendRequestVote", "duration", duration.String())
+
 	return output, nil
 }
 
 func (r *RPCProxyImpl) SendPing(ctx context.Context, peerId int, timeout *time.Duration) (responseMsg gc.PingResponse, err error) {
+	begin := time.Now()
+	if !r.accessible {
+		return responseMsg, ErrInaccessible
+	}
+
+	if r.simulation != nil {
+		if err = r.simulation.ProcessInbound(peerId); err != nil {
+			r.log().ErrorContext(ctx, "SendPing_ProcessInbound", err)
+
+			return responseMsg, err
+		}
+	}
+
 	ctx, span := tracer.Start(ctx, "SendAppendEntries")
 	defer span.End()
 
@@ -138,9 +184,6 @@ func (r *RPCProxyImpl) SendPing(ctx context.Context, peerId int, timeout *time.D
 		}
 	}
 
-	if !r.accessible {
-		return responseMsg, ErrInaccessible
-	}
 	serviceMethod := "RPCProxyImpl.Ping"
 
 	if timeout != nil {
@@ -152,6 +195,8 @@ func (r *RPCProxyImpl) SendPing(ctx context.Context, peerId int, timeout *time.D
 			return responseMsg, err
 		}
 	}
+	duration := time.Since(begin)
+	r.log().InfoContext(ctx, "SendPing", "duration", duration.String())
 
 	return responseMsg, nil
 }
@@ -160,6 +205,15 @@ func (r *RPCProxyImpl) SendToVotingMember(ctx context.Context, peerId int, timeo
 	if !r.accessible {
 		return ErrInaccessible
 	}
+
+	if r.simulation != nil {
+		if err = r.simulation.ProcessInbound(peerId); err != nil {
+			r.log().ErrorContext(ctx, "SendToVotingMember_ProcessInbound", err)
+
+			return err
+		}
+	}
+
 	serviceMethod := "RPCProxyImpl.ToVotingMember"
 	input, output := struct{}{}, struct{}{}
 

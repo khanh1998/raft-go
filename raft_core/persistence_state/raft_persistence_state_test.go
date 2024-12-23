@@ -697,3 +697,325 @@ func TestRaftPersistanceStateImpl_CommitSnapshot(t *testing.T) {
 		})
 	}
 }
+
+func TestRaftPersistenceStateImpl_DeleteLogFrom(t *testing.T) {
+	type fields struct {
+		logs           []gc.Log
+		latestSnapshot gc.SnapshotMetadata
+		storage        StorageInterface
+	}
+	type args struct {
+		index int
+	}
+	logger := observability.NewZerologForTest()
+	tests := []struct {
+		name            string
+		fields          fields
+		args            args
+		wantDeletedLogs []gc.Log
+		wantLogs        []gc.Log
+		wantErr         bool
+	}{
+		{
+			name: "no snapshot",
+			fields: fields{
+				logs: []gc.Log{
+					common.MockedLog{Term: 1, ClusterTime: 1},
+					common.MockedLog{Term: 1, ClusterTime: 2},
+					common.MockedLog{Term: 1, ClusterTime: 3},
+				},
+				storage: storage.NewStorageForTest(storage.NewStorageParams{
+					WalSize:    1000,
+					DataFolder: "data/",
+					Logger:     logger,
+				}, storage.NewFileWrapperMock()),
+			},
+			args:            args{index: 3},
+			wantDeletedLogs: []gc.Log{common.MockedLog{Term: 1, ClusterTime: 3}},
+			wantLogs: []gc.Log{
+				common.MockedLog{Term: 1, ClusterTime: 1},
+				common.MockedLog{Term: 1, ClusterTime: 2},
+			},
+			wantErr: false,
+		},
+		{
+			name: "no snapshot",
+			fields: fields{
+				logs: []gc.Log{
+					common.MockedLog{Term: 1, ClusterTime: 1},
+					common.MockedLog{Term: 1, ClusterTime: 2},
+					common.MockedLog{Term: 1, ClusterTime: 3},
+					common.MockedLog{Term: 1, ClusterTime: 4},
+					common.MockedLog{Term: 1, ClusterTime: 5},
+				},
+				storage: storage.NewStorageForTest(storage.NewStorageParams{
+					WalSize:    1000,
+					DataFolder: "data/",
+					Logger:     logger,
+				}, storage.NewFileWrapperMock()),
+			},
+			args: args{index: 3},
+			wantDeletedLogs: []gc.Log{
+				common.MockedLog{Term: 1, ClusterTime: 3},
+				common.MockedLog{Term: 1, ClusterTime: 4},
+				common.MockedLog{Term: 1, ClusterTime: 5},
+			},
+			wantLogs: []gc.Log{
+				common.MockedLog{Term: 1, ClusterTime: 1},
+				common.MockedLog{Term: 1, ClusterTime: 2},
+			},
+			wantErr: false,
+		},
+		{
+			name: "no snapshot",
+			fields: fields{
+				latestSnapshot: gc.SnapshotMetadata{
+					LastLogTerm:  1,
+					LastLogIndex: 10,
+				},
+				logs: []gc.Log{
+					common.MockedLog{Term: 1, ClusterTime: 1},
+					common.MockedLog{Term: 1, ClusterTime: 2},
+					common.MockedLog{Term: 1, ClusterTime: 3},
+					common.MockedLog{Term: 1, ClusterTime: 4},
+					common.MockedLog{Term: 1, ClusterTime: 5},
+				},
+				storage: storage.NewStorageForTest(storage.NewStorageParams{
+					WalSize:    1000,
+					DataFolder: "data/",
+					Logger:     logger,
+				}, storage.NewFileWrapperMock()),
+			},
+			args: args{index: 13},
+			wantDeletedLogs: []gc.Log{
+				common.MockedLog{Term: 1, ClusterTime: 3},
+				common.MockedLog{Term: 1, ClusterTime: 4},
+				common.MockedLog{Term: 1, ClusterTime: 5},
+			},
+			wantLogs: []gc.Log{
+				common.MockedLog{Term: 1, ClusterTime: 1},
+				common.MockedLog{Term: 1, ClusterTime: 2},
+			},
+			wantErr: false,
+		},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			r := &RaftPersistenceStateImpl{
+				logs:           tt.fields.logs,
+				latestSnapshot: tt.fields.latestSnapshot,
+				storage:        tt.fields.storage,
+				lock:           sync.RWMutex{},
+				logger:         logger,
+			}
+			gotDeletedLogs, err := r.DeleteLogFrom(context.Background(), tt.args.index)
+			if (err != nil) != tt.wantErr {
+				t.Errorf("RaftPersistenceStateImpl.DeleteLogFrom() error = %v, wantErr %v", err, tt.wantErr)
+				return
+			}
+			if !reflect.DeepEqual(gotDeletedLogs, tt.wantDeletedLogs) {
+				t.Errorf("RaftPersistenceStateImpl.DeleteLogFrom() = %v, want %v", gotDeletedLogs, tt.wantDeletedLogs)
+			}
+			if !reflect.DeepEqual(r.logs, tt.wantLogs) {
+				t.Errorf("RaftPersistenceStateImpl.DeleteLogFrom() logs = %v, want %v", r.logs, tt.wantLogs)
+			}
+		})
+	}
+}
+
+func TestRaftPersistenceStateImpl_Deserialize(t *testing.T) {
+	type fields struct {
+		votedFor    int
+		currentTerm int
+		logs        []gc.Log
+	}
+	type args struct {
+		keyValuePairs []string
+		snapshot      gc.SnapshotMetadata
+	}
+	tests := []struct {
+		name             string
+		args             args
+		wantLastLogIndex int
+		wantErr          bool
+		wantState        fields
+	}{
+		{
+			name: "no snapshot, first wal file",
+			args: args{
+				keyValuePairs: []string{
+					"current_term", "1",
+					"voted_for", "2",
+					"append_log", common.MockedLog{Term: 1, Command: "x=1"}.ToString(),
+					"append_log", common.MockedLog{Term: 1, Command: "x=2"}.ToString(),
+					"append_log", common.MockedLog{Term: 1, Command: "x=3"}.ToString(),
+					"delete_log", "1",
+				},
+				snapshot: gc.SnapshotMetadata{},
+			},
+			wantLastLogIndex: 2,
+			wantErr:          false,
+			wantState: fields{
+				votedFor:    2,
+				currentTerm: 1,
+				logs: []gc.Log{
+					common.MockedLog{Term: 1, Command: "x=1"},
+					common.MockedLog{Term: 1, Command: "x=2"},
+				},
+			},
+		},
+		{
+			name: "no snapshot, non-first wal file",
+			args: args{
+				keyValuePairs: []string{
+					prevWalLastLogInfoKey, "1|3",
+					"current_term", "1",
+					"voted_for", "2",
+					"append_log", common.MockedLog{Term: 1, Command: "x=1"}.ToString(),
+					"append_log", common.MockedLog{Term: 1, Command: "x=2"}.ToString(),
+					"append_log", common.MockedLog{Term: 1, Command: "x=3"}.ToString(),
+					"delete_log", "1",
+				},
+				snapshot: gc.SnapshotMetadata{},
+			},
+			wantLastLogIndex: 5,
+			wantErr:          false,
+			wantState: fields{
+				votedFor:    2,
+				currentTerm: 1,
+				logs: []gc.Log{
+					common.MockedLog{Term: 1, Command: "x=1"},
+					common.MockedLog{Term: 1, Command: "x=2"},
+				},
+			},
+		},
+		{
+			name: "with snapshot",
+			args: args{
+				keyValuePairs: []string{
+					prevWalLastLogInfoKey, "1|3",
+					"current_term", "1",
+					"voted_for", "2",
+					"append_log", common.MockedLog{Term: 1, Command: "x=1"}.ToString(),
+					"append_log", common.MockedLog{Term: 1, Command: "x=2"}.ToString(),
+					"append_log", common.MockedLog{Term: 1, Command: "x=3"}.ToString(),
+					"delete_log", "1",
+				},
+				snapshot: gc.SnapshotMetadata{
+					LastLogTerm:  1,
+					LastLogIndex: 4,
+				},
+			},
+			wantLastLogIndex: 5,
+			wantErr:          false,
+			wantState: fields{
+				votedFor:    2,
+				currentTerm: 1,
+				logs: []gc.Log{
+					common.MockedLog{Term: 1, Command: "x=2"},
+				},
+			},
+		},
+		{
+			name: "with snapshot installing",
+			args: args{
+				keyValuePairs: []string{
+					prevWalLastLogInfoKey, "1|3",
+					"current_term", "1",
+					"voted_for", "2",
+					"append_log", common.MockedLog{Term: 1, Command: "x=1"}.ToString(),
+					"append_log", common.MockedLog{Term: 1, Command: "x=2"}.ToString(),
+					"append_log", common.MockedLog{Term: 1, Command: "x=3"}.ToString(),
+					"delete_log", "1",
+					"current_term", "3",
+					"voted_for", "1",
+					"install_snapshot", gc.SnapshotMetadata{LastLogTerm: 3, LastLogIndex: 10}.ToString(),
+					"append_log", common.MockedLog{Term: 3, Command: "x=5"}.ToString(),
+					"append_log", common.MockedLog{Term: 3, Command: "x=6"}.ToString(),
+					"append_log", common.MockedLog{Term: 3, Command: "x=7"}.ToString(),
+				},
+				snapshot: gc.SnapshotMetadata{
+					LastLogTerm:  3,
+					LastLogIndex: 10,
+				},
+			},
+			wantLastLogIndex: 13,
+			wantErr:          false,
+			wantState: fields{
+				votedFor:    1,
+				currentTerm: 3,
+				logs: []gc.Log{
+					common.MockedLog{Term: 3, Command: "x=5"},
+					common.MockedLog{Term: 3, Command: "x=6"},
+					common.MockedLog{Term: 3, Command: "x=7"},
+				},
+			},
+		},
+		{
+			name: "with snapshot installing",
+			args: args{
+				keyValuePairs: []string{
+					prevWalLastLogInfoKey, "1|3",
+					"current_term", "1",
+					"voted_for", "2",
+					"append_log", common.MockedLog{Term: 1, Command: "x=1"}.ToString(),
+					"append_log", common.MockedLog{Term: 1, Command: "x=2"}.ToString(),
+					"append_log", common.MockedLog{Term: 1, Command: "x=3"}.ToString(),
+					"delete_log", "1",
+					"current_term", "3",
+					"voted_for", "1",
+					"install_snapshot", gc.SnapshotMetadata{LastLogTerm: 3, LastLogIndex: 10}.ToString(),
+					"append_log", common.MockedLog{Term: 3, Command: "x=5"}.ToString(),
+					"append_log", common.MockedLog{Term: 3, Command: "x=6"}.ToString(),
+					"append_log", common.MockedLog{Term: 3, Command: "x=7"}.ToString(),
+				},
+				snapshot: gc.SnapshotMetadata{
+					LastLogTerm:  3,
+					LastLogIndex: 20,
+				},
+			},
+			wantLastLogIndex: 13,
+			wantErr:          false,
+			wantState: fields{
+				votedFor:    1,
+				currentTerm: 3,
+				logs:        []gc.Log{},
+			},
+		},
+	}
+
+	logger := observability.NewZerologForTest()
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			r := &RaftPersistenceStateImpl{
+				logs: []gc.Log{},
+				storage: storage.NewStorageForTest(storage.NewStorageParams{
+					WalSize:    1000,
+					DataFolder: "data/",
+					Logger:     logger,
+				}, storage.NewFileWrapperMock()),
+				lock:       sync.RWMutex{},
+				logger:     logger,
+				logFactory: common.MockedLogFactory{},
+			}
+			gotLastLogIndex, err := r.Deserialize(tt.args.keyValuePairs, tt.args.snapshot)
+			if (err != nil) != tt.wantErr {
+				t.Errorf("RaftPersistenceStateImpl.Deserialize() error = %v, wantErr %v", err, tt.wantErr)
+				return
+			}
+			if gotLastLogIndex != tt.wantLastLogIndex {
+				t.Errorf("RaftPersistenceStateImpl.Deserialize() = %v, want %v", gotLastLogIndex, tt.wantLastLogIndex)
+			}
+			got := fields{
+				votedFor:    r.votedFor,
+				currentTerm: r.currentTerm,
+				logs:        make([]gc.Log, len(r.logs)),
+			}
+			copy(got.logs, r.logs)
+
+			if !reflect.DeepEqual(got, tt.wantState) {
+				t.Errorf("RaftPersistenceStateImpl.Deserialize() state = %v, want %v", got, tt.wantState)
+			}
+		})
+	}
+}

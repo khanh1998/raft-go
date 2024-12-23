@@ -15,17 +15,26 @@ raft_core:
         host: "localhost"
         http_port: 8082
         rpc_port: 1236
+      - id: 4
+        host: "localhost"
+        http_port: 8083
+        rpc_port: 1237
+      - id: 5
+        host: "localhost"
+        http_port: 8084
+        rpc_port: 1238
   # timeout in milliseconds
-  min_election_timeout: 12s
-  max_election_timeout: 15s
-  min_heartbeat_timeout: 2s
-  max_heartbeat_timeout: 5s
+  min_election_timeout: 150ms
+  max_election_timeout: 300ms
+  min_heartbeat_timeout: 1ms
+  max_heartbeat_timeout: 20ms
   data_folder: data/
-  wal_size_limit: 512
-  log_length_limit: 5
-  rpc_dial_timeout: 5s
-  rpc_request_timeout: 1s
-  rpc_reconnect_duration: 30s
+  state_machine_snapshot: true
+  wal_size_limit: 10240
+  log_length_limit: 100
+  rpc_dial_timeout: 200ms
+  rpc_request_timeout: 150ms
+  rpc_reconnect_duration: 300ms
   snapshot_chunk_size: 100
   cluster_time_commit_max_duration: 30s
   http_client_request_max_timeout: 60m

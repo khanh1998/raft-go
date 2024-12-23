@@ -40,6 +40,10 @@ type ClientQueryOutput struct {
 	LeaderHint string              `json:"leader_hint"`
 }
 
+type GetStatusRequest struct {
+	SenderId int `json:"id"`
+}
+
 type GetStatusResponse struct {
 	ID          int       `json:"id"`
 	State       RaftState `json:"state"`

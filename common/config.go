@@ -32,6 +32,19 @@ type ObservabilityConfig struct {
 	LokiPushURL   string `mapstructure:"loki_push_url"`
 }
 
+// network_simulation:
+//   enable: true
+//   min_delay: 5ms
+//   max_delay: 10ms
+//   msg_drop_rate: 5
+
+type NetworkSimulationConfig struct {
+	Enable      bool          `mapstructure:"enable"`
+	MinDelay    time.Duration `mapstructure:"min_delay"`
+	MaxDelay    time.Duration `mapstructure:"max_delay"`
+	MsgDropRate uint          `mapstructure:"msg_drop_rate"`
+}
+
 type RaftCoreConfig struct {
 	Cluster                      ClusterConfig       `mapstructure:"cluster"`
 	MinElectionTimeout           time.Duration       `mapstructure:"min_election_timeout" validate:"required,gt=0"`

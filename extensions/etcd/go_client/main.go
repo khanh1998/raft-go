@@ -6,6 +6,7 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	"io"
 	gc "khanh/raft-go/common"
 	"khanh/raft-go/extensions/etcd/common"
 	"khanh/raft-go/observability"
@@ -68,6 +69,9 @@ func NewHttpClient(nodeUrls []Member, logger observability.Logger) (*HttpClient,
 	}
 
 	h.client.CheckRedirect = func(req *http.Request, via []*http.Request) error {
+		// this function shouldn't return any error,
+		// if this func returns error,
+		// it will stop the process of finding a reachable node of the method `h.do`
 		locationHeader := req.Header.Get("Location")
 		if locationHeader != "" {
 			// Check if the URL is missing the scheme (http:// or https://)
@@ -125,11 +129,24 @@ func (h HttpClient) leaderUrl() string {
 	return ""
 }
 
+// default the client will find and send request to a random node,
+// and follow the redirection to the current leader.
+// this option is for testing purpose, when you want to send request to a specified node.
+// it will find node's host by `NodeId`,
+// if nodeId doesn't exist, it will use the `NodeHost`.
+type SelectedNode struct {
+	NodeId int
+
+	NodeHost string // format http://localhost:8080
+}
+
 type GetRequest struct {
 	Key       string
 	Wait      bool
 	WaitIndex int
 	Prefix    bool
+
+	Target *SelectedNode
 }
 
 func (gr GetRequest) ToQueryString() string {
@@ -193,9 +210,67 @@ func (h *HttpClient) handleKeyApiResponse(ctx context.Context, httpRes *http.Res
 	return success, err
 }
 
-// find an reachable server and send request.
-// if we reach an follower it will redirect us to leader.
-func (h HttpClient) findAndDo(ctx context.Context, httpReq *http.Request) (httpRes *http.Response, err error) {
+// similar to `findAndDo` but it's not random
+func (h HttpClient) findAndDo2(ctx context.Context, method string, path string, data *string, headers map[string]string) (httpRes *http.Response, err error) {
+	if len(h.nodeUrls) == 0 {
+		return httpRes, ErrNodeListIsEmpty
+	}
+
+	if h.leaderId > 0 {
+		httpRes, err = h.doWithoutFind(ctx, method, path, data, headers, SelectedNode{NodeId: h.leaderId})
+		if err == nil {
+			return httpRes, nil
+		}
+	}
+
+	for _, node := range h.nodeUrls {
+		url := fmt.Sprintf("%s://%s%s", node.Scheme, node.Host, path)
+		var body io.Reader
+		if data != nil {
+			body = bytes.NewBufferString(*data)
+		}
+		httpReq, err := http.NewRequestWithContext(ctx, method, url, body)
+		if err != nil {
+			return nil, err
+		}
+		for key, value := range headers {
+			httpReq.Header.Add(key, value)
+		}
+
+		dumpReq, _ := httputil.DumpRequestOut(httpReq, true)
+
+		httpRes, err = h.client.Do(httpReq)
+		if err != nil {
+			h.logger.ErrorContext(
+				ctx, "findAndDo_do", err,
+				"dumpReq", dumpReq,
+			)
+			continue
+		} else {
+			dumpRes, _ := httputil.DumpResponse(httpRes, true)
+			h.logger.InfoContext(
+				ctx, "findAndDo", "action", httpReq.Method,
+				"dumpReq", dumpReq,
+				"dumpRes", dumpRes,
+			)
+
+			// follower will return 503 if it doesn't know which one is current leader
+			if httpRes.StatusCode == http.StatusServiceUnavailable {
+				continue
+			} else {
+				return httpRes, nil
+			}
+		}
+
+	}
+
+	return httpRes, ErrNoLeaderCanBeFound
+}
+
+// findAndDo keeps sending request to nodes until found a response,
+// since some nodes might be crashed and will not response.
+// if we reach an follower, it can redirect us to leader.
+func (h HttpClient) findAndDo(ctx context.Context, method string, path string, data *string, headers map[string]string) (httpRes *http.Response, err error) {
 	if len(h.nodeUrls) == 0 {
 		return httpRes, ErrNodeListIsEmpty
 	}
@@ -209,7 +284,11 @@ func (h HttpClient) findAndDo(ctx context.Context, httpReq *http.Request) (httpR
 		}
 	}
 
-	for i := 0; i < len(h.nodeUrls); i++ {
+	for {
+		if len(tried) >= len(h.nodeUrls) {
+			break
+		}
+
 		if targetNodeIndex == 0 {
 			// find a random server that we've never tried and send request to get leader hint
 			for j := 0; j < 10; j++ {
@@ -226,8 +305,18 @@ func (h HttpClient) findAndDo(ctx context.Context, httpReq *http.Request) (httpR
 		tried[targetNodeIndex] = struct{}{}
 
 		target := h.nodeUrls[targetNodeIndex]
-		httpReq.URL.Host = target.Host
-		httpReq.URL.Scheme = target.Scheme
+		url := fmt.Sprintf("%s://%s%s", target.Scheme, target.Host, path)
+		var body io.Reader
+		if data != nil {
+			body = bytes.NewBufferString(*data)
+		}
+		httpReq, err := http.NewRequestWithContext(ctx, method, url, body)
+		if err != nil {
+			return nil, err
+		}
+		for key, value := range headers {
+			httpReq.Header.Add(key, value)
+		}
 
 		dumpReq, _ := httputil.DumpRequestOut(httpReq, true)
 
@@ -247,7 +336,12 @@ func (h HttpClient) findAndDo(ctx context.Context, httpReq *http.Request) (httpR
 				"dumpRes", dumpRes,
 			)
 
-			return httpRes, nil
+			// follower will return 503 if it doesn't know which one is current leader
+			if httpRes.StatusCode == http.StatusServiceUnavailable {
+				continue
+			} else {
+				return httpRes, nil
+			}
 		}
 
 	}
@@ -255,16 +349,67 @@ func (h HttpClient) findAndDo(ctx context.Context, httpReq *http.Request) (httpR
 	return httpRes, ErrNoLeaderCanBeFound
 }
 
+func (h HttpClient) doWithoutFind(ctx context.Context, method string, path string, data *string, headers map[string]string, selected SelectedNode) (httpRes *http.Response, err error) {
+	h.logger.InfoContext(ctx, "doWithoutFind", "nodes", h.nodeUrlsMap, "selected", selected)
+	node, ok := h.nodeUrlsMap[selected.NodeId]
+	var body io.Reader
+	if data != nil {
+		body = bytes.NewBufferString(*data)
+	}
+	url := ""
+	if !ok {
+		scheme, host, port, err := ParseHttpUrl(selected.NodeHost)
+		if err != nil {
+			return nil, fmt.Errorf("selected node's address is wrong: %w", err)
+		}
+		url = fmt.Sprintf("%s://%s:%s%s", scheme, host, port, path)
+	} else {
+		url = fmt.Sprintf("%s://%s%s", node.Scheme, node.Host, path)
+	}
+
+	h.logger.Info("doWithoutFind", "url", url, "node", node)
+
+	httpReq, err := http.NewRequestWithContext(ctx, method, url, body)
+	if err != nil {
+		return nil, err
+	}
+
+	for key, value := range headers {
+		httpReq.Header.Add(key, value)
+	}
+
+	dumpReq, _ := httputil.DumpRequestOut(httpReq, true)
+	httpRes, err = h.client.Do(httpReq)
+	if err != nil {
+		h.logger.ErrorContext(
+			ctx, "doWithoutFind_do", err,
+			"dumpReq", dumpReq,
+		)
+		return nil, err
+	}
+
+	dumpRes, _ := httputil.DumpResponse(httpRes, true)
+	h.logger.InfoContext(
+		ctx, "doWithoutFind", "action", httpReq.Method,
+		"dumpReq", dumpReq,
+		"dumpRes", dumpRes,
+	)
+
+	return httpRes, nil
+}
+
+func (h HttpClient) do(ctx context.Context, method string, path string, data *string, headers map[string]string, selected *SelectedNode) (httpRes *http.Response, err error) {
+	if selected != nil {
+		return h.doWithoutFind(ctx, method, path, data, headers, *selected)
+	}
+	return h.findAndDo2(ctx, method, path, data, headers)
+}
+
 // find leader and send get request to it
 func (h HttpClient) Get(ctx context.Context, req GetRequest) (success EtcdResponse, err error) {
-	leaderUrl := h.leaderUrl() + KeyApiPath + req.Key
-	httpReq, err := http.NewRequestWithContext(ctx, http.MethodGet, leaderUrl, nil)
-	if err != nil {
-		return success, err
-	}
-	httpReq.URL.RawQuery = req.ToQueryString()
+	path := KeyApiPath + req.Key + "?" + req.ToQueryString()
 
-	httpRes, err := h.findAndDo(ctx, httpReq)
+	httpRes, err := h.do(ctx, http.MethodGet, path, nil, nil, req.Target)
 	if err != nil {
 		return success, err
 	}
@@ -281,6 +426,11 @@ type SetRequest struct {
 	PrevIndex int
 	PrevValue *string
 	Refresh   bool
+
+	// submit requests to server without waiting for response
+	IgnoreResponse bool
+
+	Target *SelectedNode
 }
 
 func (sr SetRequest) ToFormData() string {
@@ -311,21 +461,28 @@ func (sr SetRequest) ToFormData() string {
 }
 
 func (h HttpClient) Set(ctx context.Context, req SetRequest) (success EtcdResponse, err error) {
-	url := h.leaderUrl() + KeyApiPath + req.Key
+	path := KeyApiPath + req.Key
 	formData := req.ToFormData()
-	httpReq, err := http.NewRequestWithContext(ctx, http.MethodPut, url, bytes.NewBufferString(formData))
-	if err != nil {
-		return success, err
-	}
-	httpReq.Header.Set("Content-Type", "application/x-www-form-urlencoded")
 
-	httpRes, err := h.findAndDo(ctx, httpReq)
-	if err != nil {
-		return success, err
-	}
-	defer httpRes.Body.Close()
+	headers := map[string]string{"Content-Type": "application/x-www-form-urlencoded"}
 
-	return h.handleKeyApiResponse(ctx, httpRes)
+	if req.IgnoreResponse {
+		go func() {
+			h.do(ctx, http.MethodPut, path, &formData, headers, req.Target)
+		}()
+
+		success.Action = "submit"
+
+		return success, nil
+	} else {
+		httpRes, err := h.do(ctx, http.MethodPut, path, &formData, headers, req.Target)
+		if err != nil {
+			return success, err
+		}
+		defer httpRes.Body.Close()
+
+		return h.handleKeyApiResponse(ctx, httpRes)
+	}
 }
 
 type DeleteRequest struct {
@@ -334,6 +491,8 @@ type DeleteRequest struct {
 	PrevExist *bool
 	PrevIndex int
 	PrevValue *string
+
+	Target *SelectedNode
 }
 
 func (sr DeleteRequest) ToQueryString() string {
@@ -354,14 +513,9 @@ func (sr DeleteRequest) ToQueryString() string {
 }
 
 func (h HttpClient) Delete(ctx context.Context, req DeleteRequest) (success EtcdResponse, err error) {
-	url := h.leaderUrl() + KeyApiPath + req.Key
-	httpReq, err := http.NewRequestWithContext(ctx, http.MethodDelete, url, nil)
-	if err != nil {
-		return success, err
-	}
-	httpReq.URL.RawQuery = req.ToQueryString()
+	path := KeyApiPath + req.Key + "?" + req.ToQueryString()
 
-	httpRes, err := h.findAndDo(ctx, httpReq)
+	httpRes, err := h.do(ctx, http.MethodDelete, path, nil, nil, req.Target)
 	if err != nil {
 		return success, err
 	}
@@ -386,6 +540,9 @@ func handleMemberApiResponse(httpRes *http.Response) (err error) {
 type ClusterMemberRequest struct {
 	gc.ClusterMember
 	Https bool
+
+	// optional: select a node to process your request
+	Target *SelectedNode
 }
 
 func (c ClusterMemberRequest) ToQueryString() (string, error) {
@@ -409,14 +566,10 @@ func (c ClusterMemberRequest) ToQueryString() (string, error) {
 	return values.Encode(), nil
 }
 
-func (h HttpClient) GetMembers(ctx context.Context) (members []gc.ClusterMember, err error) {
-	url := h.leaderUrl() + KeyApiPath
-	httpReq, err := http.NewRequestWithContext(ctx, http.MethodGet, url, nil)
-	if err != nil {
-		return members, err
-	}
+func (h HttpClient) GetMembers(ctx context.Context, target *SelectedNode) (members []gc.ClusterMember, err error) {
+	path := KeyApiPath
 
-	httpRes, err := h.findAndDo(ctx, httpReq)
+	httpRes, err := h.do(ctx, http.MethodGet, path, nil, nil, target)
 	if err != nil {
 		return members, err
 	}
@@ -476,18 +629,13 @@ func (h *HttpClient) AddMember(ctx context.Context, req ClusterMemberRequest) (e
 		}
 	}()
 
-	url := fmt.Sprintf("%s%s%d", h.leaderUrl(), MemberApiPath, req.ID)
-	httpReq, err := http.NewRequestWithContext(ctx, http.MethodPost, url, nil)
+	query, err := req.ToQueryString()
 	if err != nil {
 		return err
 	}
 
-	httpReq.URL.RawQuery, err = req.ToQueryString()
-	if err != nil {
-		return err
-	}
-
-	httpRes, err := h.findAndDo(ctx, httpReq)
+	path := fmt.Sprintf("%s%d?%s", MemberApiPath, req.ID, query)
+	httpRes, err := h.do(ctx, http.MethodPost, path, nil, nil, req.Target)
 	if err != nil {
 		return err
 	}
@@ -503,17 +651,14 @@ func (h *HttpClient) RemoveMember(ctx context.Context, req ClusterMemberRequest)
 		}
 	}()
 
-	url := fmt.Sprintf("%s%s%d", h.leaderUrl(), MemberApiPath, req.ID)
-	httpReq, err := http.NewRequestWithContext(ctx, http.MethodDelete, url, nil)
-	if err != nil {
-		return err
-	}
-	httpReq.URL.RawQuery, err = req.ToQueryString()
+	query, err := req.ToQueryString()
 	if err != nil {
 		return err
 	}
 
-	httpRes, err := h.findAndDo(ctx, httpReq)
+	path := fmt.Sprintf("%s%d?%s", MemberApiPath, req.ID, query)
+
+	httpRes, err := h.do(ctx, http.MethodDelete, path, nil, nil, req.Target)
 	if err != nil {
 		return err
 	}
