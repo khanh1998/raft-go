@@ -1,0 +1,54 @@
+# this config file is for network simulation testing purpose,
+# this assume network RTT between nodes is about 100 - 150 ms.
+raft_core:
+  cluster: 
+    mode: static # the cluster can be either 'static' or 'dynamic'
+    servers: # if the mode is 'dynamic', `servers` will be ignored
+      - id: 1
+        host: "localhost"
+        http_port: 8080
+        rpc_port: 1234
+      - id: 2
+        host: "localhost"
+        http_port: 8081
+        rpc_port: 1235
+      - id: 3
+        host: "localhost"
+        http_port: 8082
+        rpc_port: 1236
+      - id: 4
+        host: "localhost"
+        http_port: 8083
+        rpc_port: 1237
+      - id: 5
+        host: "localhost"
+        http_port: 8084
+        rpc_port: 1238
+  # timeout in milliseconds
+  min_election_timeout: 500ms
+  max_election_timeout: 750ms
+  min_heartbeat_timeout: 100ms
+  max_heartbeat_timeout: 150ms
+  data_folder: data/
+  state_machine_snapshot: true
+  wal_size_limit: 10240
+  log_length_limit: 10
+  rpc_dial_timeout: 200ms
+  rpc_request_timeout: 200ms
+  rpc_reconnect_duration: 100ms
+  snapshot_chunk_size: 100
+  cluster_time_commit_max_duration: 30s
+  http_client_request_max_timeout: 60m
+extension:
+  state_machine_history_capacity: 10
+  state_machine_btree_degree: 32
+  http_client_max_wait_timeout: 60m
+observability:
+  disabled: true
+  trace_endpoint: 'localhost:4318'
+  log_endpoint: 'localhost:3100'
+  loki_push_url: 'http://localhost:3100/loki/api/v1/push'
+network_simulation:
+  min_delay: 5ms
+  max_delay: 10ms
+  msg_drop_rate: 5

@@ -34,8 +34,8 @@ type RaftBrain interface {
 
 // for testing purpose: to simulate network partition and unreliable,
 type NetworkSimulation struct {
-	// the current node can't receive or send request from/to the nodes in restricted list.
-	Restricts map[int]struct{}
+	// the current node are allow to send and receive request from/to the nodes in allows list.
+	Allows map[int]struct{}
 
 	// the delay we add to every RPC request (50ms - 100ms)
 	MinDelay time.Duration
@@ -80,7 +80,7 @@ func NormalRandomWithBoundsInt64(mean, stddev, min, max int64) int64 {
 
 func (n NetworkSimulation) ProcessInbound(id int) error {
 	n.Logger.Info("ProcessInbound begin", "id", id)
-	if _, ok := n.Restricts[id]; ok {
+	if _, ok := n.Allows[id]; !ok {
 		return errors.New("network: restricted")
 	}
 

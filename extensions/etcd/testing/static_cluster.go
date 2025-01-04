@@ -37,6 +37,44 @@ func NewCluster(filePath string) *Cluster {
 	return &c
 }
 
+func (c *Cluster) UnsetSimulateNetworkPartition() {
+	for _, n := range c.Nodes {
+		ns := n.GetNetworkSimulation()
+		if ns != nil {
+			ns.Allows = nil
+			n.SetNetworkSimulation(*ns)
+		} else {
+			n.SetNetworkSimulation(rpc_proxy.NetworkSimulation{
+				Allows: nil,
+				Logger: c.log,
+			})
+		}
+	}
+}
+
+func (c *Cluster) SimulateNetworkPartition(networks [][]int) {
+	for _, net := range networks {
+		allows := map[int]struct{}{}
+		for _, nodeId := range net {
+			allows[nodeId] = struct{}{}
+		}
+
+		for _, nodeId := range net {
+			n := c.Nodes[nodeId]
+			ns := n.GetNetworkSimulation()
+			if ns != nil {
+				ns.Allows = allows
+				n.SetNetworkSimulation(*ns)
+			} else {
+				n.SetNetworkSimulation(rpc_proxy.NetworkSimulation{
+					Allows: allows,
+					Logger: c.log,
+				})
+			}
+		}
+	}
+}
+
 func (c *Cluster) IsolateNode(nodeId int) error {
 	n := c.Nodes[nodeId]
 	n.SetInaccessible(context.Background())

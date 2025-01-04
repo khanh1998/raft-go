@@ -199,6 +199,7 @@ func (r *RaftPersistenceStateImpl) CommitSnapshot(ctx context.Context, sm gc.Sna
 	}
 
 	// should delete all previous logs in memory
+	r.logs = []gc.Log{}
 
 	r.latestSnapshot = sm
 
@@ -234,7 +235,7 @@ func (r *RaftPersistenceStateImpl) SaveSnapshot(ctx context.Context, snapshot gc
 	}
 
 	r.lock.Lock()
-	err = r.storage.AppendWal(r.metadata(), "snapshot", sm.ToString())
+	err = r.storage.AppendWal(r.metadata(), "snapshot", sm.ToString()) // this WAL is unnecessary, just a log
 	if err != nil {
 		return err
 	}

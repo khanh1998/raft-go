@@ -82,6 +82,7 @@ func (n *RaftBrainImpl) InstallSnapshot(ctx context.Context, input *common.Insta
 			Message: "lastIndex <= the latest snapshot's of responder",
 			NodeID:  n.id,
 		}
+		return
 	}
 
 	sm := gc.SnapshotMetadata{
@@ -105,7 +106,7 @@ func (n *RaftBrainImpl) InstallSnapshot(ctx context.Context, input *common.Insta
 	// discard log up through lastIndex (but retain any following entries) and reply
 
 	// 7. Discard the entire log (if any)
-	n.persistState.DeleteAllLog(ctx)
+	// in-memory logs are discarded in the method `CommitSnapshot`
 
 	output = &common.InstallSnapshotOutput{
 		Term:    n.GetCurrentTerm(),

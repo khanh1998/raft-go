@@ -35,3 +35,8 @@ todos:
 - async set, don't wait for log commit
 - allow node with some data to catch up, currently only completely new node (no data) can.
 - vault
+- test with nodes running on docker
+- simulate network partition (split brain) with code
+- check snapshot installing
+- deploy to k8s
+- adding timeout to context of RPC

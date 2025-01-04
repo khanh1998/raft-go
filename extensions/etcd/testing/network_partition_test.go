@@ -2,6 +2,7 @@ package testing
 
 import (
 	"context"
+	"errors"
 	gc "khanh/raft-go/common"
 	"khanh/raft-go/extensions/etcd/go_client"
 	"os"
@@ -187,4 +188,203 @@ func TestTwoLeaders(t *testing.T) {
 	// send request to leader l2, which now is a follower
 	_, err = c.HttpAgent.Get(context.Background(), go_client.GetRequest{Key: "counter", Target: &go_client.SelectedNode{NodeId: l2.ID}})
 	assert.Error(t, err)
+}
+
+func TestSplitBrain1(t *testing.T) {
+	os.RemoveAll("data/")
+	c := NewCluster("config/5-nodes-ns.yml")
+	l1 := AssertHavingOneLeader(t, c)
+	AssertIncreaseCounter(t, c, "counter", 5)
+	// divide the cluster into two partitions,
+	// first partition has 3 followers,
+	// the second has a follower and the current leader
+	ids := []int{1, 2, 3, 4, 5}
+	partitions := []int{2, 3}
+	networks, err := BucketizeAndMove(ids, partitions, l1.ID, 0)
+	assert.NoError(t, err)
+	c.SimulateNetworkPartition(networks)
+
+	time.Sleep(c.MaxElectionTimeout) // wait for the isolated leader steps down
+
+	l2 := AssertHavingOneLeader(t, c)
+	AssertIncreaseCounter(t, c, "counter", 5)
+
+	assert.NotEqual(t, l1.ID, l2.ID)
+}
+
+func TestSplitBrain2(t *testing.T) {
+	os.RemoveAll("data/")
+	c := NewCluster("config/5-nodes-ns.yml")
+	l1 := AssertHavingOneLeader(t, c)
+	AssertIncreaseCounter(t, c, "counter", 5)
+	// divide the cluster into two partitions,
+	// first partition has 2 followers and a leader,
+	// the second has a two followers.
+	ids := []int{1, 2, 3, 4, 5}
+	partitions := []int{2, 3}
+	networks, err := BucketizeAndMove(ids, partitions, l1.ID, 1)
+	assert.NoError(t, err)
+	c.SimulateNetworkPartition(networks)
+
+	time.Sleep(c.MaxElectionTimeout) // wait for the isolated leader steps down
+
+	l2 := AssertHavingOneLeader(t, c)
+	AssertIncreaseCounter(t, c, "counter", 5)
+
+	assert.Equal(t, l1.ID, l2.ID)
+}
+
+func TestSplitBrain3(t *testing.T) {
+	os.RemoveAll("data/")
+	c := NewCluster("config/5-nodes-ns.yml")
+	l1 := AssertHavingOneLeader(t, c)
+	AssertIncreaseCounter(t, c, "counter", 5)
+	// divide the cluster into three partitions,
+	ids := []int{1, 2, 3, 4, 5}
+	partitions := []int{2, 2, 1}
+	networks, err := BucketizeAndMove(ids, partitions, l1.ID, 0)
+	assert.NoError(t, err)
+	c.SimulateNetworkPartition(networks)
+
+	time.Sleep(c.MaxElectionTimeout) // wait for the isolated leader steps down
+
+	time.Sleep(4 * c.MaxElectionTimeout) // wait for nodes trying to elect leader
+
+	AssertHavingNoLeader(t, c)
+}
+
+// BucketizeAndMove divides array a into n buckets with sizes specified in b
+// and moves num to the specified bucketIndex.
+func BucketizeAndMove(a []int, b []int, num int, bucketIndex int) ([][]int, error) {
+	n := len(b)
+
+	// Check if the sum of b equals the length of a
+	sumB := 0
+	for _, size := range b {
+		sumB += size
+	}
+	if sumB != len(a) {
+		return nil, errors.New("sum of bucket sizes does not match the length of the array")
+	}
+
+	// Check if the bucketIndex is valid
+	if bucketIndex < 0 || bucketIndex >= n {
+		return nil, errors.New("invalid bucketIndex")
+	}
+
+	// Initialize buckets
+	buckets := make([][]int, n)
+	buckets[bucketIndex] = append(buckets[bucketIndex], num)
+	b[bucketIndex]--
+
+	// Remove `num` from a
+	for index, value := range a {
+		if value == num {
+			a = append(a[:index], a[index+1:]...)
+		}
+	}
+
+	start := 0
+	for i, size := range b {
+		if size < 0 {
+			return nil, errors.New("bucket size cannot be negative")
+		}
+		end := start + size
+		buckets[i] = append(buckets[i], a[start:end]...)
+		start = end
+	}
+
+	return buckets, nil
+}
+
+func TestBucketizeAndMove(t *testing.T) {
+	type args struct {
+		a           []int
+		b           []int
+		num         int
+		bucketIndex int
+	}
+	tests := []struct {
+		name    string
+		args    args
+		want    [][]int
+		wantErr bool
+	}{
+		{
+			name: "Test case 1",
+			args: args{
+				a:           []int{1, 2, 3, 4, 5, 6, 7, 8, 9},
+				b:           []int{3, 3, 3},
+				num:         5,
+				bucketIndex: 1,
+			},
+			want: [][]int{
+				{1, 2, 3}, {5, 4, 6}, {7, 8, 9},
+			},
+			wantErr: false,
+		},
+		{
+			name: "Test case 2",
+			args: args{
+				a:           []int{1, 2, 3, 4, 5, 6, 7, 8, 9},
+				b:           []int{3, 3, 3},
+				num:         5,
+				bucketIndex: 0,
+			},
+			want: [][]int{
+				{5, 1, 2}, {3, 4, 6}, {7, 8, 9},
+			},
+			wantErr: false,
+		},
+		{
+			name: "Test case 3",
+			args: args{
+				a:           []int{1, 2, 3, 4, 5},
+				b:           []int{2, 3},
+				num:         1,
+				bucketIndex: 1,
+			},
+			want: [][]int{
+				{2, 3}, {1, 4, 5},
+			},
+			wantErr: false,
+		},
+		{
+			name: "Test case 4",
+			args: args{
+				a:           []int{1, 2, 3, 4, 5},
+				b:           []int{2, 3},
+				num:         2,
+				bucketIndex: 0,
+			},
+			want: [][]int{
+				{2, 1}, {3, 4, 5},
+			},
+			wantErr: false,
+		},
+		{
+			name: "Test case 5",
+			args: args{
+				a:           []int{1, 2, 3, 4, 5},
+				b:           []int{2, 2, 1},
+				num:         2,
+				bucketIndex: 2,
+			},
+			want: [][]int{
+				{1, 3}, {4, 5}, {2},
+			},
+			wantErr: false,
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			got, err := BucketizeAndMove(tt.args.a, tt.args.b, tt.args.num, tt.args.bucketIndex)
+			if (err != nil) != tt.wantErr {
+				t.Errorf("BucketizeAndMove() error = %v, wantErr %v", err, tt.wantErr)
+				return
+			}
+			assert.Equal(t, tt.want, got)
+		})
+	}
 }
