@@ -10,8 +10,7 @@ import (
 	"khanh/raft-go/extensions/classic/state_machine"
 	"khanh/raft-go/observability"
 	"khanh/raft-go/raft_core"
-	"khanh/raft-go/raft_core/logic"
-	"khanh/raft-go/raft_core/rpc_proxy"
+	rcCommon "khanh/raft-go/raft_core/common"
 )
 
 type HttpServer interface {
@@ -26,8 +25,8 @@ type Node struct {
 	ClusterMode gc.ClusterMode
 	CatchingUp  bool
 
-	brain  *logic.RaftBrainImpl
-	rpc    *rpc_proxy.RPCProxyImpl
+	brain  rcCommon.RaftBrain
+	rpc    rcCommon.InternalRpcServer
 	http   HttpServer
 	logger observability.Logger
 }
@@ -51,20 +50,25 @@ func NewNode(ctx context.Context, params NewNodeParams) *Node {
 	stateMachine := state_machine.NewClassicStateMachine(params.Extension.StateMachine)
 	httpProxy := http_server.NewClassicHttpProxy(params.Extension.HttpServer)
 
-	brain, err := logic.NewRaftBrain(params.RaftCore.Brain)
-	if err != nil {
-		params.Logger.FatalContext(ctx, "NewNode_NewRaftBrain", "error", err.Error())
-	}
+	// brain, err := logic.NewRaftBrain(params.RaftCore.Brain)
+	// if err != nil {
+	// 	params.Logger.FatalContext(ctx, "NewNode_NewRaftBrain", "error", err.Error())
+	// }
+
+	// rpcProxy, err := rpc_proxy.NewInternalRPC(params.RaftCore.RPCProxy)
+	// if err != nil {
+	// 	params.Logger.FatalContext(ctx, "NewNode_NewRPCImpl", "error", err.Error())
+	// }
 
 	params.RaftCore.RPCProxy.HostID = params.ID
-	rpcProxy, err := rpc_proxy.NewInternalRPC(params.RaftCore.RPCProxy)
+	brain, rpcProxy, err := raft_core.NewRaftCore(ctx, params.RaftCore)
 	if err != nil {
-		params.Logger.FatalContext(ctx, "NewNode_NewRPCImpl", "error", err.Error())
+		params.Logger.FatalContext(ctx, "NewRaftCore", "error", err)
 	}
 
-	rpcProxy.SetBrain(brain)
+	// rpcProxy.SetBrain(brain)
+	// brain.SetRpcProxy(rpcProxy)
 	httpProxy.SetBrain(brain)
-	brain.SetRpcProxy(rpcProxy)
 
 	brain.SetStateMachine(stateMachine)
 
@@ -119,10 +123,11 @@ func (n *Node) Restart() error {
 }
 
 func (n *Node) GetStatus() (res common.GetStatusResponse) {
+	info := n.brain.GetInfo()
 	res = common.GetStatusResponse{
-		ID:    n.brain.GetId(),
-		State: n.brain.GetState(),
-		Term:  n.brain.GetCurrentTerm(),
+		ID:    info.ID,
+		State: info.State,
+		Term:  info.Term,
 	}
 	return
 }

@@ -10,8 +10,7 @@ import (
 	etcdSt "khanh/raft-go/extensions/etcd/state_machine"
 	"khanh/raft-go/observability"
 	"khanh/raft-go/raft_core"
-	"khanh/raft-go/raft_core/logic"
-	"khanh/raft-go/raft_core/rpc_proxy"
+	rcCommon "khanh/raft-go/raft_core/common"
 )
 
 type HttpServer interface {
@@ -26,8 +25,8 @@ type Node struct {
 	ClusterMode gc.ClusterMode
 	CatchingUp  bool
 
-	brain  *logic.RaftBrainImpl
-	rpc    *rpc_proxy.RPCProxyImpl
+	brain  rcCommon.RaftBrain
+	rpc    rcCommon.InternalRpcServer
 	http   HttpServer
 	logger observability.Logger
 }
@@ -56,10 +55,10 @@ func NewNode(ctx context.Context, params NewNodeParams) *Node {
 		params.Logger.FatalContext(ctx, "NewRaftCore", "error", err)
 	}
 
-	rpcProxy.SetBrain(brain)
-	httpProxy.SetBrain(brain)
-	brain.SetRpcProxy(rpcProxy)
+	// rpcProxy.SetBrain(brain)
+	// brain.SetRpcProxy(rpcProxy)
 
+	httpProxy.SetBrain(brain)
 	brain.SetStateMachine(stateMachine)
 
 	n := &Node{
@@ -114,10 +113,11 @@ func (n *Node) Restart() error {
 }
 
 func (n *Node) GetStatus() (res common.GetStatusResponse) {
+	info := n.brain.GetInfo()
 	res = common.GetStatusResponse{
-		ID:    n.brain.GetId(),
-		State: n.brain.GetState(),
-		Term:  n.brain.GetCurrentTerm(),
+		ID:    info.ID,
+		State: info.State,
+		Term:  info.Term,
 	}
 	return
 }
@@ -130,11 +130,11 @@ func (n *Node) log() observability.Logger {
 	return sub
 }
 
-func (r *Node) SetNetworkSimulation(network rpc_proxy.NetworkSimulation) {
+func (r *Node) SetNetworkSimulation(network rcCommon.NetworkSimulation) {
 	r.rpc.SetNetworkSimulation(network)
 }
 
-func (r *Node) GetNetworkSimulation() *rpc_proxy.NetworkSimulation {
+func (r *Node) GetNetworkSimulation() *rcCommon.NetworkSimulation {
 	return r.rpc.GetNetworkSimulation()
 }
 

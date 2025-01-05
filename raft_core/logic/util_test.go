@@ -206,7 +206,7 @@ func TestRaftBrainImpl_deleteLogFrom(t *testing.T) {
 		state                     gc.RaftState
 		id                        int
 		leaderID                  int
-		stateMachine              SimpleStateMachine
+		stateMachine              common.SimpleStateMachine
 		electionTimeOut           *time.Timer
 		heartBeatTimeOut          *time.Timer
 		heartBeatTimeOutMin       time.Duration

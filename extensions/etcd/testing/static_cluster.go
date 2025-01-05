@@ -9,7 +9,7 @@ import (
 	"khanh/raft-go/extensions/etcd/go_client"
 	"khanh/raft-go/extensions/etcd/node"
 	"khanh/raft-go/observability"
-	"khanh/raft-go/raft_core/rpc_proxy"
+	rcCommon "khanh/raft-go/raft_core/common"
 	"log"
 	"os"
 	"sync"
@@ -44,7 +44,7 @@ func (c *Cluster) UnsetSimulateNetworkPartition() {
 			ns.Allows = nil
 			n.SetNetworkSimulation(*ns)
 		} else {
-			n.SetNetworkSimulation(rpc_proxy.NetworkSimulation{
+			n.SetNetworkSimulation(rcCommon.NetworkSimulation{
 				Allows: nil,
 				Logger: c.log,
 			})
@@ -66,7 +66,7 @@ func (c *Cluster) SimulateNetworkPartition(networks [][]int) {
 				ns.Allows = allows
 				n.SetNetworkSimulation(*ns)
 			} else {
-				n.SetNetworkSimulation(rpc_proxy.NetworkSimulation{
+				n.SetNetworkSimulation(rcCommon.NetworkSimulation{
 					Allows: allows,
 					Logger: c.log,
 				})
@@ -142,7 +142,7 @@ func (c *Cluster) init(filePath string) {
 
 			nsCfg := c.config.NetworkSimulation
 			if nsCfg.Enable {
-				n.SetNetworkSimulation(rpc_proxy.NetworkSimulation{
+				n.SetNetworkSimulation(rcCommon.NetworkSimulation{
 					MinDelay:    nsCfg.MinDelay,
 					MaxDelay:    nsCfg.MaxDelay,
 					MsgDropRate: nsCfg.MsgDropRate,

@@ -20,7 +20,7 @@ func TestRaftBrainImpl_BroadCastRequestVote(t *testing.T) {
 		Peers               []gc.ClusterMember
 		State               gc.RaftState
 		ID                  int
-		StateMachine        SimpleStateMachine
+		StateMachine        common.SimpleStateMachine
 		ElectionTimeOut     *time.Timer
 		HeartBeatTimeOut    *time.Timer
 		HeartBeatTimeOutMin time.Duration
@@ -98,7 +98,7 @@ func TestRaftBrainImpl_BroadcastAppendEntries(t *testing.T) {
 		state                     gc.RaftState
 		id                        int
 		leaderID                  int
-		stateMachine              SimpleStateMachine
+		stateMachine              common.SimpleStateMachine
 		electionTimeOut           *time.Timer
 		heartBeatTimeOut          *time.Timer
 		rpcProxy                  RPCProxy

@@ -68,7 +68,7 @@ type RaftBrainImpl struct {
 	state                     gc.RaftState
 	id                        int
 	leaderID                  int
-	stateMachine              SimpleStateMachine
+	stateMachine              common.SimpleStateMachine
 	electionTimeOut           *time.Timer
 	heartBeatTimeOut          *time.Timer
 	heartBeatTimeOutMin       time.Duration
@@ -135,13 +135,6 @@ type LogAppliedEvent struct {
 	SequenceNum int
 	Response    string
 	Err         error
-}
-
-type SimpleStateMachine interface {
-	Reset(ctx context.Context) error
-	Process(ctx context.Context, logIndex int, log gc.Log) (result gc.LogResult, err error)
-	StartSnapshot(ctx context.Context) error
-	GetLastConfig() map[int]gc.ClusterMember
 }
 
 type RPCProxy interface {

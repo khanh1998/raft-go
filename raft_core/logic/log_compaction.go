@@ -132,6 +132,6 @@ func (n *RaftBrainImpl) InstallSnapshot(ctx context.Context, input *common.Insta
 
 }
 
-func (n *RaftBrainImpl) SetStateMachine(sm SimpleStateMachine) {
+func (n *RaftBrainImpl) SetStateMachine(sm common.SimpleStateMachine) {
 	n.stateMachine = sm
 }

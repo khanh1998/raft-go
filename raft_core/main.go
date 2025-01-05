@@ -4,6 +4,7 @@ import (
 	"context"
 	"fmt"
 	"khanh/raft-go/observability"
+	"khanh/raft-go/raft_core/common"
 	"khanh/raft-go/raft_core/logic"
 	"khanh/raft-go/raft_core/rpc_proxy"
 )
@@ -17,7 +18,7 @@ type NewRaftCoreParams struct {
 	Logger observability.Logger
 }
 
-func NewRaftCore(ctx context.Context, params NewRaftCoreParams) (*logic.RaftBrainImpl, *rpc_proxy.RPCProxyImpl, error) {
+func NewRaftCore(ctx context.Context, params NewRaftCoreParams) (common.RaftBrain, common.InternalRpcServer, error) {
 	brain, err := logic.NewRaftBrain(params.Brain)
 	if err != nil {
 		return nil, nil, fmt.Errorf("NewRaftBrain: %w", err)
